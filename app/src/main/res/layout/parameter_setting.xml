@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center">
+    <!--    <LinearLayout-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="match_parent"-->
+    <!--        android:orientation="horizontal">-->
+    <!--        <TextView-->
+    <!--            android:layout_width="wrap_content"-->
+    <!--            android:layout_height="wrap_content"-->
+    <!--            android:text="电压"-->
+    <!--            android:id="@+id/voltage"></TextView>-->
+    <!--        <EditText-->
+    <!--            android:layout_width="200dp"-->
+    <!--            android:layout_height="wrap_content"-->
+    <!--            android:id="@+id/voltage_Edit"></EditText>-->
+
+    <!--    </LinearLayout>-->
+    <!--    <LinearLayout-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="match_parent"-->
+    <!--        android:orientation="horizontal">-->
+    <!--        <TextView-->
+    <!--            android:layout_width="wrap_content"-->
+    <!--            android:layout_height="wrap_content"-->
+    <!--            android:text="占空比"-->
+    <!--            android:id="@+id/control_ratio"></TextView>-->
+    <!--        <EditText-->
+    <!--            android:layout_width="200dp"-->
+    <!--            android:layout_height="wrap_content"-->
+    <!--            android:id="@+id/control_ratio_Edit"></EditText>-->
+    <!--    </LinearLayout>-->
+    <!--    <Button-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="wrap_content"-->
+    <!--        android:id="@+id/sub_information"-->
+    <!--        android:text="提交"></Button>-->
+    <!--占空比-->
+    <TextView
+        android:id="@+id/control_ratio_String"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="请输入占控比(%),输入范围0~100 "
+        android:textColor="@color/black"
+        android:textSize="15dp" />
+    <EditText
+        android:id="@+id/control_ratio_Edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="70"
+        android:textSize="15dp"
+        android:textColor="#333333"
+        android:padding="10dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:hint="占控比"
+        />
+    <!--提取时间-->
+    <TextView
+        android:id="@+id/extraction_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="请输入提取时间，单位min "
+        android:textColor="@color/black"
+        android:textSize="15dp" />
+    <EditText
+        android:id="@+id/extraction_time_edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="20"
+        android:textSize="15dp"
+        android:textColor="#333333"
+        android:padding="10dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:hint="提取时间"
+
+        />
+    <!--高电平占时间-->
+    <TextView
+        android:id="@+id/high_level"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="提取周期,单位S "
+        android:textColor="@color/black"
+        android:textSize="15dp" />
+    <EditText
+        android:id="@+id/high_level_edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="10"
+        android:textSize="15dp"
+        android:textColor="#333333"
+        android:padding="10dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:hint="提取周期"
+
+        />
+    <!--提取电压-->
+    <TextView
+        android:id="@+id/voltage_string"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="请输入偏压，单位mV "
+        android:textColor="@color/black"
+        android:textSize="15dp" />
+
+    <EditText
+        android:id="@+id/voltage_Edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="300"
+        android:textSize="15dp"
+        android:textColor="#333333"
+        android:padding="10dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:hint="偏压"
+
+        />
+    <!--检测时间-->
+    <TextView
+        android:id="@+id/detection_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:text="请输入检测时间，单位S "                                
+        android:textColor="@color/black"
+        android:textSize="15dp" />
+    <EditText
+        android:id="@+id/detection_time_edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="60"
+        android:textSize="15dp"
+        android:textColor="#333333"
+        android:padding="10dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:hint="检测时间"
+
+        />
+</LinearLayout>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:id="@+id/hid_name"
+    tools:context=".activity.HIDActivity"
+    android:orientation="vertical">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:paddingRight="8dp"
+        android:paddingLeft="8dp"
+        android:scrollbars="none"
+        android:layout_height="match_parent"
+        tools:ignore="UselessParent">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="10dp"
+                android:textSize="16sp"
+                android:text="@string/activity_hid_one"/>
+            <TextView
+                android:id="@+id/a_hint_web_download1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:textSize="16sp"
+                android:textColor="@color/skyBlue"
+                android:layout_gravity="center"
+                android:text="@string/activity_hid_check_copy"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="15dp"
+                android:paddingBottom="15dp"
+                android:textSize="16sp"
+                android:text="@string/activity_hid_two"/>
+
+            <ImageView
+                android:id="@+id/a_hint_image_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:src="@drawable/hid_download_web"
+                android:contentDescription="@string/activity_hid_two" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="30dp"
+                android:paddingBottom="15dp"
+                android:textSize="16sp"
+                android:text="@string/activity_hid_three"/>
+
+            <TextView
+                android:id="@+id/a_hint_download_framework"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:textColor="@color/skyBlue"
+                android:layout_gravity="center"
+                android:paddingBottom="10dp"
+                android:text="@string/activity_hid_check_copy_framework"/>
+
+            <ImageView
+                android:id="@+id/a_hint_image_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:src="@drawable/hid_framework"
+                android:contentDescription="@string/activity_hid_check_copy_framework" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="30dp"
+                android:paddingBottom="15dp"
+                android:textSize="16sp"
+                android:text="@string/activity_hid_four"/>
+
+            <TextView
+                android:id="@+id/a_hint_web_download2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:textColor="@color/skyBlue"
+                android:paddingBottom="10dp"
+                android:layout_gravity="center"
+                android:text="@string/activity_hid_check_copy_ch340"/>
+
+            <ImageView
+                android:id="@+id/a_hint_image_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:src="@drawable/hint_ch340"
+                android:layout_gravity="center"
+                android:contentDescription="@string/activity_hid_check_copy_ch340" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/activity_hid_hc_t"
+                android:paddingTop="15dp"
+                android:textSize="16sp"/>
+
+            <ImageView
+                android:id="@+id/a_hint_image_4"
+                android:layout_width="350dp"
+                android:layout_height="230dp"
+                android:layout_gravity="center"
+                android:src="@drawable/hint_hc_t_software"
+                android:contentDescription="@string/activity_hid_hc_t" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="10dp"/>
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

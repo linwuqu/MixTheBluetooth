@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.hc.mixthebluetooth">
+
+    <uses-feature android:name="android.hardware.location.gps" /> <!-- 蓝牙权限开通 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS"
+        tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/blood"
+        android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MixTheBluetooth"
+        android:name="com.hc.basiclibrary.viewBasic.HomeApplication"
+        tools:ignore="GoogleAppIndexingWarning">
+        <activity
+            android:name=".activity.LoginActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activity.IntroActivity"
+            android:exported="true"
+            >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+
+        <activity android:name=".activity.SendFileActivity" />
+        <activity android:name=".activity.HIDActivity" />
+        <activity android:name=".activity.CommunicationActivity" />
+        <activity android:name=".activity.DebugActivity" />
+
+        <activity
+            android:name=".activity.MainActivity"
+            android:exported="true">
+        </activity>
+    </application>
+
+</manifest>
