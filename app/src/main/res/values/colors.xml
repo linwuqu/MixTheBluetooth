@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#64F4AF</color>
+    <color name="colorPrimaryDark">#4CDB9B</color>
+    <color name="colorAccent">#64F4AF</color>
+    <color name="colorPrimaryLight">#80E0B0</color>
+    <color name="baseLine">#d1d2d6</color>
+    <color name="black">#000000</color>
+    <color name="lightBlue">#64F4AF</color>
+    <color name="skyBlue">#64F4AF</color>
+    <color name="dustyBlue">#64F4AF</color>
+    <color name="popWindowBack">#FAFAFA</color>
+    <color name="hintWindowTitle">#EDEDED</color>
+    <color name="recyclerBack">#F2F2F2</color>
+    <color name="red">#FE4F6E</color>
+    <color name="green">#79D0A5</color>
+    <color name="orange">#FF7C10</color>
+    <color name="yellow">#FDD200</color>
+    <color name="gray">#757575</color>
+    <color name="darkRed">#B55656</color>
+    <color name="frenchGrey">#737373</color>
+    <color name="backGreen">#64F4AF</color>
+    <color name="white">#FFFFFF</color>
+    <color name="light_gray">#EEEEEE</color>
+    <color name="background_gradient_start">#64F4AF</color>
+    <color name="background_gradient_end">#4CDB9B</color>
+    <color name="gray_light">#FFE5E5E5</color>
+
+    <color name="background">#F0F4F2</color>
+</resources>
