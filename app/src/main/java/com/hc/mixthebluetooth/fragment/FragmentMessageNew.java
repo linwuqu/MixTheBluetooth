@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.logging.SimpleFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,6 +39,8 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
     private final List<FragmentMessageItem> mDataList = new ArrayList<>();
     private DeviceModule module;
 
+    private boolean mIsRecording = false;
+
     // Chart owns
     private LineChart mChartOhm;
     private LineChart mChartUs;
@@ -48,12 +49,18 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
     private long mStartTimeMs;
     private static final int MAX_POINTS = 500;
 
+    private static final Pattern EIS_PATTERN = Pattern.compile(
+            "\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*Ω\\s*,\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*(?:uS|µS)\\s*",
+            Pattern.CASE_INSENSITIVE
+    );
 
     @Override
     protected void initAll(View view, Context context) {
         initRecycler();
-        initCharts();
         initData();
+        initCharts();
+        initControls();
+        setBottomInfo("Ready");
     }
 
     private void initRecycler() {
@@ -62,56 +69,114 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
         viewBinding.recyclerMessageNew.setAdapter(mAdapter);
     }
 
-    private void initCharts() {
-        // binding
-        mChartOhm = viewBinding.chartOhm;
-        mChartUs = viewBinding.chartUs;
-        // get current/system time
-        mStartTimeMs = System.currentTimeMillis();
-        // init canvas
-        setupChartBase(mChartOhm);
-        setupChartBase(mChartUs);
-        // create dataset
-        mSetOhm = createSet("阻抗 (Ω) ", Color.RED);
-        mSetUs = createSet("电导 (uS) ", Color.BLUE);
-        // update dataset
-        mChartOhm.setData(new LineData(mSetOhm));
-        mChartUs.setData(new LineData(mSetUs));
+    private void initData() {
+        subscription(
+                StaticConstants.FRAGMENT_STATE_DATA,
+                StaticConstants.MESSAGE_NEW_RECORD_STATE,
+                StaticConstants.MESSAGE_NEW_EXPORT_RESULT
+        );
     }
 
-    private void initData() {
-        subscription(StaticConstants.FRAGMENT_STATE_DATA);
+    private void initControls() {
+        bindOnClickListener(viewBinding.btnStartRecord, viewBinding.btnStopRecord, viewBinding.btnExport);
+    }
+
+    private void initCharts() {
+        mChartOhm = viewBinding.chartOhm;
+        mChartUs = viewBinding.chartUs;
+
+        mStartTimeMs = System.currentTimeMillis();
+
+        setupChartBase(mChartOhm);
+        setupChartBase(mChartUs);
+
+        mSetOhm = createSet("阻抗 (Ω)", Color.RED);
+        mSetUs = createSet("电导 (uS)", Color.BLUE);
+
+        mChartOhm.setData(new LineData(mSetOhm));
+        mChartUs.setData(new LineData(mSetUs));
     }
 
     @SuppressLint("NotifyDataSetChanged")
     @Override
     protected void updateState(String sign, Object o) {
-        if (!StaticConstants.FRAGMENT_STATE_DATA.equals(sign) || o == null) return;
+        if (StaticConstants.MESSAGE_NEW_RECORD_STATE.equals(sign) && o instanceof Boolean) {
+            boolean on = (Boolean) o;
+            mIsRecording = on;
+            viewBinding.tvRecordState.setText(on ? "Record: ON" : "Record: OFF");
+            logWarn("MessageNew record state: " + (on ? "ON" : "OFF"));
+            setBottomInfo(on ? "Recording started" : "Recording stopped");
+            if (on) resetChartsForNewSession();
+            return;
+        }
 
+        if (StaticConstants.MESSAGE_NEW_EXPORT_RESULT.equals(sign)) {
+            String msg = o == null ? "Export: (empty)" : ("Export: " + o);
+            toastShort(msg);
+            logWarn("MessageNew export result: " + o);
+            setBottomInfo(msg);
+            return;
+        }
+
+        if (StaticConstants.FRAGMENT_STATE_DATA.equals(sign)) {
+            handleBluetoothPayload(o);
+        }
+    }
+
+    @Override
+    protected void onClickView(View v) {
+        if (isCheck(viewBinding.btnStartRecord)) {
+            logWarn("MessageNew click: START");
+            setBottomInfo("Start clicked");
+            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_START_RECORD);
+            return;
+        }
+
+        if (isCheck(viewBinding.btnStopRecord)) {
+            logWarn("MessageNew click: STOP");
+            setBottomInfo("Stop clicked");
+            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_STOP_RECORD);
+            return;
+        }
+
+        if (isCheck(viewBinding.btnExport)) {
+            logWarn("MessageNew click: EXPORT");
+            setBottomInfo("Export clicked");
+            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_EXPORT);
+        }
+    }
+
+    private void handleBluetoothPayload(Object o) {
         if (o instanceof DeviceModule) {
             module = (DeviceModule) o;
+            logWarn("MessageNew got module: " + module.getName() + " / " + module.getMac());
             return;
         }
         if (!(o instanceof Object[])) return;
         Object[] arr = (Object[]) o;
         if (arr.length < 2) return;
+        if (!(arr[1] instanceof byte[])) return;
 
-        DeviceModule m = (arr[0] instanceof DeviceModule) ? (DeviceModule) arr[0] : module;
+        if (arr[0] instanceof DeviceModule) module = (DeviceModule) arr[0];
         byte[] bytes = (byte[]) arr[1];
-        // decode
+
         String line = decodePayload(bytes);
         if (line.isEmpty()) return;
 
-        mDataList.add(new FragmentMessageItem(line, null, false, m, false));
+        mDataList.add(new FragmentMessageItem(line, null, false, module, false));
         mAdapter.notifyItemInserted(mDataList.size() - 1);
-        // parse
-        float[] v = parseEisLine(line);
-        if (v != null) appendPoint(v[0], v[1]);
-    }
+        viewBinding.recyclerMessageNew.smoothScrollToPosition(mDataList.size() - 1);
 
-    @Override
-    protected FragmentMessageNewBinding getViewBinding() {
-        return FragmentMessageNewBinding.inflate(getLayoutInflater());
+        float[] v = parseEisLine(line);
+        if (v == null) {
+            logWarn("MessageNew parse failed, raw: " + line);
+            return;
+        }
+
+        if (!mIsRecording) return;
+
+        appendPoint(v[0], v[1]);
+        sendDataToActivity(StaticConstants.MESSAGE_NEW_SAMPLE_JSONL, buildJsonLine(line, v[0], v[1]));
     }
 
     // chart tool func
@@ -128,7 +193,6 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
         x.setPosition(XAxis.XAxisPosition.BOTTOM);
         x.setGranularity(1f);
         x.setDrawGridLines(false);
-
         x.setValueFormatter(new ValueFormatter() {
             private final SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
@@ -153,11 +217,14 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
     }
 
     private void appendPoint(float ohm, float us) {
-        float x = (System.currentTimeMillis() - mStartTimeMs) / 1000f;
+        if (mChartOhm == null || mChartUs == null) return;
+        if (mSetOhm == null || mSetUs == null) return;
 
         LineData dataOhm = mChartOhm.getData();
         LineData dataUs = mChartUs.getData();
+        if (dataOhm == null || dataUs == null) return;
 
+        float x = (System.currentTimeMillis() - mStartTimeMs) / 1000f;
         dataOhm.addEntry(new Entry(x, ohm), 0);
         dataUs.addEntry(new Entry(x, us), 0);
 
@@ -172,8 +239,30 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
 
         mChartOhm.setVisibleXRangeMaximum(60f);
         mChartUs.setVisibleXRangeMaximum(60f);
-        mChartOhm.moveViewToX(dataOhm.getEntryCount());
-        mChartUs.moveViewToX(dataUs.getEntryCount());
+
+        if (mSetOhm.getEntryCount() > 0) {
+            float lastX = mSetOhm.getEntryForIndex(mSetOhm.getEntryCount() - 1).getX();
+            mChartOhm.moveViewToX(lastX);
+            mChartUs.moveViewToX(lastX);
+        }
+
+        mChartOhm.invalidate();
+        mChartUs.invalidate();
+    }
+
+    private void resetChartsForNewSession() {
+        mStartTimeMs = System.currentTimeMillis();
+        if (mSetOhm != null) mSetOhm.clear();
+        if (mSetUs != null) mSetUs.clear();
+        if (mChartOhm != null) {
+            mChartOhm.notifyDataSetChanged();
+            mChartOhm.invalidate();
+        }
+        if (mChartUs != null) {
+            mChartUs.notifyDataSetChanged();
+            mChartUs.invalidate();
+        }
+        logWarn("MessageNew charts reset");
     }
 
     // decode & parse tool func
@@ -181,14 +270,13 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
         if (raw == null || raw.length == 0) return "";
 
         String code = FragmentParameter.getInstance().getCodeFormat(getContext());
-        boolean hasCrLf = raw.length > 2 && raw[raw.length - 2] == 13 && raw[raw.length - 1] == 10;
+        boolean hasCrLf = raw.length >= 2 && raw[raw.length - 2] == 13 && raw[raw.length - 1] == 10;
 
         byte[] copy = raw.clone();
         String s = Analysis.getByteToString(copy, code, false, hasCrLf);
         if (s == null) return "";
 
-        s = s.replace("\u0000", "").trim();
-        return s;
+        return s.replace("\u0000", "").trim();
     }
 
     private @Nullable float[] parseEisLine(String line) {
@@ -199,13 +287,42 @@ public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> 
 
         line = line.replace("\u0000", "").trim();
 
-        final Pattern EIS_PATTERN = Pattern.compile("\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*Ω\\s*,\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*(?:uS|µS)\\s*", Pattern.CASE_INSENSITIVE);
         Matcher m = EIS_PATTERN.matcher(line);
-        if (!m.matches()) return null;
+        if (!m.find()) return null;
 
-        float ohm = Float.parseFloat(m.group(1)); // 阻抗
-        float us = Float.parseFloat(m.group(2)); // 电导
+        float ohm = Float.parseFloat(m.group(1));
+        float us = Float.parseFloat(m.group(2));
         return new float[]{ohm, us};
     }
 
+    // export tool func
+    private String buildJsonLine(String rawLine, float ohm, float us) {
+        String mac = module != null ? module.getMac() : "";
+        String name = module != null ? module.getName() : "";
+
+        return "{"
+                + "\"tMs\":" + System.currentTimeMillis()
+                + ",\"mac\":\"" + escapeJson(mac) + "\""
+                + ",\"name\":\"" + escapeJson(name) + "\""
+                + ",\"ohm\":" + ohm
+                + ",\"us\":" + us
+                + ",\"raw\":\"" + escapeJson(rawLine) + "\""
+                + "}";
+    }
+
+    private String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private void setBottomInfo(String text) {
+        if (viewBinding == null) return;
+        viewBinding.tvBottomInfo.setText(text == null ? "" : text);
+    }
+
+    @Override
+    protected FragmentMessageNewBinding getViewBinding() {
+        return FragmentMessageNewBinding.inflate(getLayoutInflater());
+    }
 }
+

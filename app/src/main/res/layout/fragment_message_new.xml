@@ -6,16 +6,62 @@
     android:keepScreenOn="true">
 
     <LinearLayout
+        android:id="@+id/controls_container"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <Button
+            android:id="@+id/btnStartRecord"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Start Record" />
+
+        <Button
+            android:id="@+id/btnStopRecord"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop Record" />
+
+        <Button
+            android:id="@+id/btnExport"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Export" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvRecordState"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="6dp"
+        android:text="Record: OFF"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/controls_container" />
+
+    <LinearLayout
         android:id="@+id/chart_ohm_container"
         android:layout_width="0dp"
         android:layout_height="190dp"
-        android:layout_margin="10dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="10dp"
         android:background="@drawable/window_back"
         android:elevation="8dp"
         android:orientation="vertical"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/tvRecordState">
 
         <com.github.mikephil.charting.charts.LineChart
             android:id="@+id/chart_ohm"
@@ -28,8 +74,8 @@
         android:layout_width="0dp"
         android:layout_height="190dp"
         android:layout_marginStart="10dp"
+        android:layout_marginTop="10dp"
         android:layout_marginEnd="10dp"
-        android:layout_marginBottom="10dp"
         android:background="@drawable/window_back"
         android:elevation="8dp"
         android:orientation="vertical"
@@ -43,15 +89,27 @@
             android:layout_height="match_parent" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/tvBottomInfo"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/window_back"
+        android:padding="10dp"
+        android:text="Ready"
+        android:textColor="@color/black"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerMessageNew"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:paddingBottom="10dp"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/chart_us_container"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:paddingBottom="10dp"
+        app:layout_constraintBottom_toTopOf="@id/tvBottomInfo"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/chart_us_container" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

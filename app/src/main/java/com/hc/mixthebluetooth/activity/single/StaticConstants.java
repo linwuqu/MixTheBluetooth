@@ -51,8 +51,40 @@ public class StaticConstants {
     public static final String FRAGMENT_CUSTOM_NEWLINE = "FRAGMENT_CUSTOM_NEWLINE";
 
 
+    /************  FragmentMessageNew (Record/Export)  ************/
 
+    /**
+     * FragmentMessageNew -> CommunicationActivity
+     * payload: String cmd, use MESSAGE_NEW_CMD_*
+     */
+    public static final String MESSAGE_NEW_CONTROL = "MESSAGE_NEW_CONTROL";
 
-    private StaticConstants(){}
+    /**
+     * FragmentMessageNew -> CommunicationActivity
+     * payload: String jsonLine (JSON Lines: one sample per line)
+     */
+    public static final String MESSAGE_NEW_SAMPLE_JSONL = "MESSAGE_NEW_SAMPLE_JSONL";
+
+    /**
+     * CommunicationActivity -> FragmentMessageNew
+     * payload: Boolean isRecording
+     */
+    public static final String MESSAGE_NEW_RECORD_STATE = "MESSAGE_NEW_RECORD_STATE";
+
+    /**
+     * CommunicationActivity -> FragmentMessageNew
+     * payload: String absolutePath
+     */
+    public static final String MESSAGE_NEW_EXPORT_RESULT = "MESSAGE_NEW_EXPORT_RESULT";
+
+    /**
+     * Commands for MESSAGE_NEW_CONTROL
+     */
+    public static final String MESSAGE_NEW_CMD_START_RECORD = "MESSAGE_NEW_CMD_START_RECORD";
+    public static final String MESSAGE_NEW_CMD_STOP_RECORD = "MESSAGE_NEW_CMD_STOP_RECORD";
+    public static final String MESSAGE_NEW_CMD_EXPORT = "MESSAGE_NEW_CMD_EXPORT";
+
+    private StaticConstants() {
+    }
 
 }

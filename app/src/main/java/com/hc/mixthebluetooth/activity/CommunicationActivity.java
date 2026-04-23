@@ -1,6 +1,7 @@
 package com.hc.mixthebluetooth.activity;
 
 
+import android.os.Environment;
 import android.os.Handler;
 import android.view.Gravity;
 import android.view.View;
@@ -30,7 +31,17 @@ import com.hc.mixthebluetooth.fragment.FragmentThree;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class CommunicationActivity extends BaseActivity<ActivityCommunicationBinding> {
 
@@ -51,6 +62,11 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     private String mDeviceName; // 添加成员变量来存储设备名称
 
+    private final ExecutorService messageNewIo = Executors.newSingleThreadExecutor();
+    private volatile boolean messageNewRecording = false;
+    private volatile File messageNewRecordFile = null;
+    private int messageNewSampleCount = 0;
+
     @Override
     public void initAll() {
         mHoldBluetooth = HoldBluetooth.getInstance();
@@ -64,7 +80,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         initFragment();
         mUnderlineTV = viewBinding.one.setState(true);
         bindClickListener(viewBinding.one, viewBinding.two, viewBinding.three, viewBinding.ionAnalysis, viewBinding.log);
-        subscription(StaticConstants.DATA_TO_MODULE);
+        subscription(StaticConstants.DATA_TO_MODULE, StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_SAMPLE_JSONL);
         //setGuide();
     }
 
@@ -75,9 +91,24 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     @Override
     protected void update(String sign, Object data) {
-        if (sign.equals(StaticConstants.DATA_TO_MODULE)) {
+//        if (sign.equals(StaticConstants.DATA_TO_MODULE)) {
+//            FragmentMessageItem item = (FragmentMessageItem) data;
+//            mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+//        }
+
+        if (StaticConstants.DATA_TO_MODULE.equals(sign)) {
             FragmentMessageItem item = (FragmentMessageItem) data;
             mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+            return;
+        }
+
+        if (StaticConstants.MESSAGE_NEW_CONTROL.equals(sign)) {
+            handleMessageNewControl(data);
+            return;
+        }
+
+        if (StaticConstants.MESSAGE_NEW_SAMPLE_JSONL.equals(sign)) {
+            handleMessageNewSample(data);
         }
     }
 
@@ -255,12 +286,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 }
             }
         };
-        mTitle = new DefaultNavigationBar
-                .Builder(this, findViewById(R.id.communication_name))
-                .setLeftText("Biosensors System", 18)
-                .setRightText(CONNECTING)
-                .setRightClickListener(listener)
-                .builer();
+        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.communication_name)).setLeftText("Biosensors System", 18).setRightText(CONNECTING).setRightClickListener(listener).builer();
         mTitle.updateLoadingState(true);
 
     }
@@ -293,26 +319,18 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
      * 设置引导界面
      */
     private void setGuide() {
-        NewbieGuide.with(this)
-                .setLabel("guide1")
-                .anchor(getWindow().getDecorView())
-                .addGuidePage(GuidePage.newInstance()
-                        .addHighLight(mTitle.getView(R.id.right_more),
-                                new RelativeGuide(R.layout.guide_page_main, Gravity.START))
-                        .setOnLayoutInflatedListener((view, controller) -> {
-                            String data = "设置MTU，发送文件在这👉";
-                            TextView textView = view.findViewById(R.id.guide_page_text);
-                            if (textView != null) textView.setText(data);
-                        }))
-                .show();
+        NewbieGuide.with(this).setLabel("guide1").anchor(getWindow().getDecorView()).addGuidePage(GuidePage.newInstance().addHighLight(mTitle.getView(R.id.right_more), new RelativeGuide(R.layout.guide_page_main, Gravity.START)).setOnLayoutInflatedListener((view, controller) -> {
+            String data = "设置MTU，发送文件在这👉";
+            TextView textView = view.findViewById(R.id.guide_page_text);
+            if (textView != null) textView.setText(data);
+        })).show();
     }
 
     private void popupWindow(View view) {
 
         final CommonPopupWindow window = new CommonPopupWindow(R.layout.pop_window_title, view);
 
-        if (HoldBluetooth.getInstance().getConnectedArray().size() > 0 &&
-                HoldBluetooth.getInstance().getConnectedArray().get(0).isBLE()) {
+        if (HoldBluetooth.getInstance().getConnectedArray().size() > 0 && HoldBluetooth.getInstance().getConnectedArray().get(0).isBLE()) {
             String data = "修改MTU(" + mMTUNumber + ")";
             TextView mtu = window.findViewById(R.id.pop_title_mtu);
             mtu.setText(data);
@@ -345,13 +363,76 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
         window.setListeners(listener, R.id.pop_title_file, R.id.pop_title_mtu);//设置点击事件
 
-        window.getBuilder().setPopupWindowsPosition(
-                        CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT,
-                        CommonPopupWindow.VerticalPosition.BELOW)
-                .setExcursion(this, 0, 10)
-                .setAnim(R.style.pop_window_anim)
-                .setShadow(this, 0.9f)
-                .create().show();
+        window.getBuilder().setPopupWindowsPosition(CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT, CommonPopupWindow.VerticalPosition.BELOW).setExcursion(this, 0, 10).setAnim(R.style.pop_window_anim).setShadow(this, 0.9f).create().show();
+    }
+
+    private void handleMessageNewControl(Object data) {
+        String cmd = data != null ? data.toString() : "";
+        logWarn("MessageNew control: " + cmd);
+
+        if (StaticConstants.MESSAGE_NEW_CMD_START_RECORD.equals(cmd)) {
+            messageNewRecordFile = createMessageNewRecordFile();
+            messageNewRecording = true;
+            messageNewSampleCount = 0;
+
+            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, true);
+            toastShortAlive("MessageNew record: ON");
+            logWarn("MessageNew record file: " + (messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "null"));
+            return;
+        }
+
+        if (StaticConstants.MESSAGE_NEW_CMD_STOP_RECORD.equals(cmd)) {
+            messageNewRecording = false;
+
+            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, false);
+            toastShortAlive("MessageNew record: OFF");
+            logWarn("MessageNew samples recorded: " + messageNewSampleCount);
+            return;
+        }
+
+        if (StaticConstants.MESSAGE_NEW_CMD_EXPORT.equals(cmd)) {
+            String path = messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "";
+            sendDataToFragment(StaticConstants.MESSAGE_NEW_EXPORT_RESULT, path);
+            toastShortAlive(path.isEmpty() ? "No record file yet" : ("Export: " + path));
+            logWarn("MessageNew export path: " + path);
+        }
+    }
+
+    private void handleMessageNewSample(Object data) {
+        if (!messageNewRecording) return;
+        if (messageNewRecordFile == null) return;
+
+        final String jsonLine = data != null ? data.toString() : "";
+        if (jsonLine.trim().isEmpty()) return;
+
+        messageNewSampleCount++;
+        if (messageNewSampleCount == 1 || messageNewSampleCount % 50 == 0) {
+            logWarn("MessageNew sample count: " + messageNewSampleCount);
+        }
+
+        messageNewIo.execute(() -> appendUtf8Line(messageNewRecordFile, jsonLine));
+    }
+
+    private File createMessageNewRecordFile() {
+        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        if (dir == null) dir = getExternalFilesDir(null);
+        if (dir == null) dir = getFilesDir();
+
+        String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        File file = new File(dir, "message_new_" + ts + ".jsonl");
+
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        return file;
+    }
+
+    private void appendUtf8Line(File file, String line) {
+        try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
+            w.write(line);
+            w.newLine();
+        } catch (Exception e) {
+            logError("MessageNew write failed: " + e.getMessage());
+        }
     }
 
     @Override
