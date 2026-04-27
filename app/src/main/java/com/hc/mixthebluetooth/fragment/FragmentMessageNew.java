@@ -2,327 +2,257 @@ package com.hc.mixthebluetooth.fragment;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.github.mikephil.charting.charts.LineChart;
-import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.components.YAxis;
-import com.github.mikephil.charting.data.Entry;
-import com.github.mikephil.charting.data.LineData;
-import com.github.mikephil.charting.data.LineDataSet;
-import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.basiclibrary.viewBasic.BaseFragment;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.single.FragmentParameter;
+import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.activity.tool.ChartRegistry;
+import com.hc.mixthebluetooth.activity.tool.CommunicateTool;
+import com.hc.mixthebluetooth.activity.tool.RecyclerTool;
 import com.hc.mixthebluetooth.databinding.FragmentMessageNewBinding;
-import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
+import com.hc.mixthebluetooth.storage.Storage;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-public class FragmentMessageNew extends BaseFragment<FragmentMessageNewBinding> {
+/**
+ * FragmentMessageNew 重构参考实现。
+ *
+ * 重构亮点：
+ * 1. 继承 BTFragment，接收类型安全的 BTPackage，不再需要 instanceof 判断
+ * 2. 使用 ChartRegistry 管理两个 LineChart，信道注册 + 数据追加全自动
+ * 3. 使用 CommunicateTool 管理行缓冲、编解码、JSON 构建
+ * 4. 使用 RecyclerTool 管理消息列表
+ * 5. initAllImpl() 结构清晰：initStorage() → initRecycler() → initCharts() → initControls()
+ * 6. 所有录制逻辑通过 BTPackage 路由，不再需要字符串常量比较
+ *
+ * init 主线（极度清晰）：
+ *   initStorage()       — 持久化配置
+ *   initRecycler()      — RecyclerView 初始化
+ *   initCharts()        — 两个 LineChart 注册
+ *   initControls()      — 按钮绑定
+ *   setBottomInfo()     — 状态栏
+ *
+ * 信道（仅2个，职责分明）：
+ *   CH_BT_DATA         → onBtData() / onBtConnected()
+ *   CH_REC_STATE       → onRecStateChanged()
+ *
+ * 控制指令（Fragment → Activity）：
+ *   CMD_MSG_NEW_CONTROL → 开始/停止录制、导出
+ *   CH_REC_SAMPLE      → 单条 JSON Line
+ */
+public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
 
-    private FragmentMessAdapter mAdapter;
-    private final List<FragmentMessageItem> mDataList = new ArrayList<>();
+    // ─── 工具实例 ─────────────────────────────────────────────────────
+
+    private final RecyclerTool    recycler = new RecyclerTool();
+    private final ChartRegistry   chartRegistry = new ChartRegistry();
+    private final CommunicateTool  comm = new CommunicateTool();
+
+    // ─── 状态 ────────────────────────────────────────────────────────
+
     private DeviceModule module;
+    private boolean      mIsRecording = false;
+    private long         mStartTimeMs;
+    private Storage      mStorage;
 
-    private boolean mIsRecording = false;
+    // ─── 配置常量 ─────────────────────────────────────────────────────
 
-    // Chart owns
-    private LineChart mChartOhm;
-    private LineChart mChartUs;
-    private LineDataSet mSetOhm;
-    private LineDataSet mSetUs;
-    private long mStartTimeMs;
-    private static final int MAX_POINTS = 500;
+    private static final int   MAX_POINTS           = 500;
+    private static final float VISIBLE_WINDOW_SEC   = 60f;
 
-    private static final Pattern EIS_PATTERN = Pattern.compile(
-            "\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*Ω\\s*,\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*(?:uS|µS)\\s*",
-            Pattern.CASE_INSENSITIVE
-    );
+    private static final String KEY_SHOW_RAW_LIST    = "MSG_NEW_SHOW_RAW_LIST";
+    private static final String KEY_AUTO_START_RECORD = "MSG_NEW_AUTO_START_RECORD";
+
+    // ─── Channel 注册 ─────────────────────────────────────────────────
 
     @Override
-    protected void initAll(View view, Context context) {
-        initRecycler();
-        initData();
+    protected void initChannels() {
+        register(StaticConstants.CH_BT_DATA, StaticConstants.CH_REC_STATE);
+    }
+
+    // ─── Init 主线 ────────────────────────────────────────────────────
+
+    @Override
+    protected void initAllImpl(@NonNull View view, @NonNull Context context) {
+        initStorage(context);
+        initRecycler(context);
         initCharts();
         initControls();
         setBottomInfo("Ready");
     }
 
-    private void initRecycler() {
-        mAdapter = new FragmentMessAdapter(getContext(), mDataList, R.layout.item_message_fragment);
-        viewBinding.recyclerMessageNew.setLayoutManager(new LinearLayoutManager(getContext()));
-        viewBinding.recyclerMessageNew.setAdapter(mAdapter);
+    private void initStorage(@NonNull Context ctx) {
+        mStorage = new Storage(ctx);
+        if (mStorage.getData(KEY_AUTO_START_RECORD)) {
+            sendControl(MessageNewCmd.START_RECORD);
+        }
     }
 
-    private void initData() {
-        subscription(
-                StaticConstants.FRAGMENT_STATE_DATA,
-                StaticConstants.MESSAGE_NEW_RECORD_STATE,
-                StaticConstants.MESSAGE_NEW_EXPORT_RESULT
-        );
-    }
-
-    private void initControls() {
-        bindOnClickListener(viewBinding.btnStartRecord, viewBinding.btnStopRecord, viewBinding.btnExport);
+    private void initRecycler(@NonNull Context ctx) {
+        recycler.init(ctx, R.layout.item_message_fragment)
+                .layoutManager(RecyclerTool.Layout.LINEAR)
+                .attach(viewBinding.recyclerMessageNew)
+                .build();
     }
 
     private void initCharts() {
-        mChartOhm = viewBinding.chartOhm;
-        mChartUs = viewBinding.chartUs;
-
         mStartTimeMs = System.currentTimeMillis();
+        SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
-        setupChartBase(mChartOhm);
-        setupChartBase(mChartUs);
+        chartRegistry.register(viewBinding.chartOhm, new ChartRegistry.ChartConfig.Builder()
+                .label("阻抗 (Ω)")
+                .color(0xFFFF0000) // ARGB RED
+                .maxPoints(MAX_POINTS)
+                .visibleWindowSeconds(VISIBLE_WINDOW_SEC)
+                .lineWidth(1.2f)
+                .xAxisFormatter(ts -> fmt.format(new Date(ts)))
+                .build());
 
-        mSetOhm = createSet("阻抗 (Ω)", Color.RED);
-        mSetUs = createSet("电导 (uS)", Color.BLUE);
-
-        mChartOhm.setData(new LineData(mSetOhm));
-        mChartUs.setData(new LineData(mSetUs));
+        chartRegistry.register(viewBinding.chartUs, new ChartRegistry.ChartConfig.Builder()
+                .label("电导 (uS)")
+                .color(0xFF0000FF) // ARGB BLUE
+                .maxPoints(MAX_POINTS)
+                .visibleWindowSeconds(VISIBLE_WINDOW_SEC)
+                .lineWidth(1.2f)
+                .xAxisFormatter(ts -> fmt.format(new Date(ts)))
+                .build());
     }
 
-    @SuppressLint("NotifyDataSetChanged")
-    @Override
-    protected void updateState(String sign, Object o) {
-        if (StaticConstants.MESSAGE_NEW_RECORD_STATE.equals(sign) && o instanceof Boolean) {
-            boolean on = (Boolean) o;
-            mIsRecording = on;
-            viewBinding.tvRecordState.setText(on ? "Record: ON" : "Record: OFF");
-            logWarn("MessageNew record state: " + (on ? "ON" : "OFF"));
-            setBottomInfo(on ? "Recording started" : "Recording stopped");
-            if (on) resetChartsForNewSession();
-            return;
-        }
-
-        if (StaticConstants.MESSAGE_NEW_EXPORT_RESULT.equals(sign)) {
-            String msg = o == null ? "Export: (empty)" : ("Export: " + o);
-            toastShort(msg);
-            logWarn("MessageNew export result: " + o);
-            setBottomInfo(msg);
-            return;
-        }
-
-        if (StaticConstants.FRAGMENT_STATE_DATA.equals(sign)) {
-            handleBluetoothPayload(o);
-        }
+    private void initControls() {
+        bindOnClickListener(
+                viewBinding.btnStartRecord,
+                viewBinding.btnStopRecord,
+                viewBinding.btnExport
+        );
     }
+
+    // ─── BTFragment 类型安全回调 ──────────────────────────────────────
 
     @Override
-    protected void onClickView(View v) {
-        if (isCheck(viewBinding.btnStartRecord)) {
-            logWarn("MessageNew click: START");
-            setBottomInfo("Start clicked");
-            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_START_RECORD);
-            return;
-        }
+    protected void onBtConnected(@NonNull DeviceModule m) {
+        module = m;
+        logWarn("MessageNew connected: " + m.getName() + " / " + m.getMac());
+    }
 
-        if (isCheck(viewBinding.btnStopRecord)) {
-            logWarn("MessageNew click: STOP");
-            setBottomInfo("Stop clicked");
-            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_STOP_RECORD);
-            return;
-        }
+    @Override
+    protected void onBtData(@NonNull BTPackage.BTData d) {
+        String code = com.hc.mixthebluetooth.activity.single.FragmentParameter
+                .getInstance().getCodeFormat(requireContext());
+        String chunk = CommunicateTool.decode(d.bytes, code);
+        if (chunk == null || chunk.isEmpty()) return;
 
-        if (isCheck(viewBinding.btnExport)) {
-            logWarn("MessageNew click: EXPORT");
-            setBottomInfo("Export clicked");
-            sendDataToActivity(StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_CMD_EXPORT);
+        comm.addRxBytes(d.bytes.length);
+        String line;
+        while ((line = comm.pollLine(chunk)) != null) {
+            if (line.isEmpty()) continue;
+            processOneLine(line);
         }
     }
 
-    private void handleBluetoothPayload(Object o) {
-        if (o instanceof DeviceModule) {
-            module = (DeviceModule) o;
-            logWarn("MessageNew got module: " + module.getName() + " / " + module.getMac());
-            return;
-        }
-        if (!(o instanceof Object[])) return;
-        Object[] arr = (Object[]) o;
-        if (arr.length < 2) return;
-        if (!(arr[1] instanceof byte[])) return;
+    @Override
+    protected void onRecStateChanged(boolean recording) {
+        mIsRecording = recording;
+        viewBinding.tvRecordState.setText(recording ? "Record: ON" : "Record: OFF");
+        setBottomInfo(recording ? "Recording started" : "Recording stopped");
+        if (recording) chartRegistry.resetAll(System.currentTimeMillis());
+        logWarn("MessageNew record: " + (recording ? "ON" : "OFF"));
+    }
 
-        if (arr[0] instanceof DeviceModule) module = (DeviceModule) arr[0];
-        byte[] bytes = (byte[]) arr[1];
+    @Override
+    protected void onRecExportResult(@Nullable String path) {
+        String msg = path != null ? "Export: " + path : "Export: (empty)";
+        toastShort(msg);
+        setBottomInfo(msg);
+        logWarn("MessageNew export: " + path);
+    }
 
-        String line = decodePayload(bytes);
-        if (line.isEmpty()) return;
+    // ─── 业务逻辑 ─────────────────────────────────────────────────────
 
-        mDataList.add(new FragmentMessageItem(line, null, false, module, false));
-        mAdapter.notifyItemInserted(mDataList.size() - 1);
-        viewBinding.recyclerMessageNew.smoothScrollToPosition(mDataList.size() - 1);
-
-        float[] v = parseEisLine(line);
+    private void processOneLine(@NonNull String line) {
+        float[] v = CommunicateTool.parseEisLine(line);
         if (v == null) {
+            comm.incLinesFail();
             logWarn("MessageNew parse failed, raw: " + line);
+            updateBottomInfo();
             return;
         }
 
-        if (!mIsRecording) return;
-
-        appendPoint(v[0], v[1]);
-        sendDataToActivity(StaticConstants.MESSAGE_NEW_SAMPLE_JSONL, buildJsonLine(line, v[0], v[1]));
-    }
-
-    // chart tool func
-    private void setupChartBase(LineChart chart) {
-        chart.getDescription().setEnabled(false);
-        chart.setTouchEnabled(true);
-        chart.setDragEnabled(true);
-        chart.setScaleEnabled(true);
-        chart.setPinchZoom(true);
-        chart.setDrawGridBackground(false);
-        chart.getAxisRight().setEnabled(false);
-
-        XAxis x = chart.getXAxis();
-        x.setPosition(XAxis.XAxisPosition.BOTTOM);
-        x.setGranularity(1f);
-        x.setDrawGridLines(false);
-        x.setValueFormatter(new ValueFormatter() {
-            private final SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-
-            @Override
-            public String getFormattedValue(float value) {
-                long t = mStartTimeMs + (long) (value * 1000);
-                return fmt.format(new Date(t));
-            }
-        });
-
-        YAxis y = chart.getAxisLeft();
-        y.setDrawGridLines(false);
-    }
-
-    private LineDataSet createSet(String label, int color) {
-        LineDataSet set = new LineDataSet(new ArrayList<>(), label);
-        set.setLineWidth(1.2f);
-        set.setColor(color);
-        set.setDrawCircles(false);
-        set.setDrawValues(false);
-        return set;
-    }
-
-    private void appendPoint(float ohm, float us) {
-        if (mChartOhm == null || mChartUs == null) return;
-        if (mSetOhm == null || mSetUs == null) return;
-
-        LineData dataOhm = mChartOhm.getData();
-        LineData dataUs = mChartUs.getData();
-        if (dataOhm == null || dataUs == null) return;
-
-        float x = (System.currentTimeMillis() - mStartTimeMs) / 1000f;
-        dataOhm.addEntry(new Entry(x, ohm), 0);
-        dataUs.addEntry(new Entry(x, us), 0);
-
-        if (mSetOhm.getEntryCount() > MAX_POINTS) mSetOhm.removeFirst();
-        if (mSetUs.getEntryCount() > MAX_POINTS) mSetUs.removeFirst();
-
-        dataOhm.notifyDataChanged();
-        dataUs.notifyDataChanged();
-
-        mChartOhm.notifyDataSetChanged();
-        mChartUs.notifyDataSetChanged();
-
-        mChartOhm.setVisibleXRangeMaximum(60f);
-        mChartUs.setVisibleXRangeMaximum(60f);
-
-        if (mSetOhm.getEntryCount() > 0) {
-            float lastX = mSetOhm.getEntryForIndex(mSetOhm.getEntryCount() - 1).getX();
-            mChartOhm.moveViewToX(lastX);
-            mChartUs.moveViewToX(lastX);
+        comm.incLinesOk();
+        if (mStorage.getData(KEY_SHOW_RAW_LIST)) {
+            recycler.addTextLine(line, module, false);
         }
 
-        mChartOhm.invalidate();
-        mChartUs.invalidate();
-    }
+        if (mIsRecording) {
+            long tMs = System.currentTimeMillis();
+            chartRegistry.append("阻抗 (Ω)", tMs, v[0]);
+            chartRegistry.append("电导 (uS)", tMs, v[1]);
 
-    private void resetChartsForNewSession() {
-        mStartTimeMs = System.currentTimeMillis();
-        if (mSetOhm != null) mSetOhm.clear();
-        if (mSetUs != null) mSetUs.clear();
-        if (mChartOhm != null) {
-            mChartOhm.notifyDataSetChanged();
-            mChartOhm.invalidate();
+            String jsonLine = CommunicateTool.buildJsonLine(
+                    tMs, module,
+                    new CommunicateTool.Pair("ohm", v[0]),
+                    new CommunicateTool.Pair("us",  v[1]),
+                    line
+            );
+            sendDataToActivity(StaticConstants.CH_REC_SAMPLE, jsonLine);
         }
-        if (mChartUs != null) {
-            mChartUs.notifyDataSetChanged();
-            mChartUs.invalidate();
+
+        updateBottomInfo();
+    }
+
+    private void sendControl(@NonNull String cmd) {
+        sendDataToActivity(StaticConstants.CMD_MSG_NEW_CONTROL, cmd);
+        logWarn("MessageNew send control: " + cmd);
+    }
+
+    // ─── 点击事件 ─────────────────────────────────────────────────────
+
+    @Override
+    protected void onClickView(@NonNull View v) {
+        if (isCheck(viewBinding.btnStartRecord)) {
+            setBottomInfo("Start clicked");
+            sendControl(MessageNewCmd.START_RECORD);
+        } else if (isCheck(viewBinding.btnStopRecord)) {
+            setBottomInfo("Stop clicked");
+            sendControl(MessageNewCmd.STOP_RECORD);
+        } else if (isCheck(viewBinding.btnExport)) {
+            setBottomInfo("Export clicked");
+            sendControl(MessageNewCmd.EXPORT);
         }
-        logWarn("MessageNew charts reset");
     }
 
-    // decode & parse tool func
-    private String decodePayload(byte[] raw) {
-        if (raw == null || raw.length == 0) return "";
+    // ─── UI 辅助 ──────────────────────────────────────────────────────
 
-        String code = FragmentParameter.getInstance().getCodeFormat(getContext());
-        boolean hasCrLf = raw.length >= 2 && raw[raw.length - 2] == 13 && raw[raw.length - 1] == 10;
-
-        byte[] copy = raw.clone();
-        String s = Analysis.getByteToString(copy, code, false, hasCrLf);
-        if (s == null) return "";
-
-        return s.replace("\u0000", "").trim();
-    }
-
-    private @Nullable float[] parseEisLine(String line) {
-        if (line == null) return null;
-
-        int idx = line.lastIndexOf("dataString:");
-        if (idx >= 0) line = line.substring(idx + "dataString:".length());
-
-        line = line.replace("\u0000", "").trim();
-
-        Matcher m = EIS_PATTERN.matcher(line);
-        if (!m.find()) return null;
-
-        float ohm = Float.parseFloat(m.group(1));
-        float us = Float.parseFloat(m.group(2));
-        return new float[]{ohm, us};
-    }
-
-    // export tool func
-    private String buildJsonLine(String rawLine, float ohm, float us) {
-        String mac = module != null ? module.getMac() : "";
-        String name = module != null ? module.getName() : "";
-
-        return "{"
-                + "\"tMs\":" + System.currentTimeMillis()
-                + ",\"mac\":\"" + escapeJson(mac) + "\""
-                + ",\"name\":\"" + escapeJson(name) + "\""
-                + ",\"ohm\":" + ohm
-                + ",\"us\":" + us
-                + ",\"raw\":\"" + escapeJson(rawLine) + "\""
-                + "}";
-    }
-
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private void setBottomInfo(String text) {
+    private void setBottomInfo(@Nullable String text) {
         if (viewBinding == null) return;
-        viewBinding.tvBottomInfo.setText(text == null ? "" : text);
+        viewBinding.tvBottomInfo.setText(text != null ? text : "");
     }
+
+    private void updateBottomInfo() {
+        long total = comm.getLinesTotal();
+        String info = String.format(Locale.getDefault(),
+                "Rec=%s  Bytes=%d  Parse=%d/%d",
+                mIsRecording ? "ON" : "OFF",
+                comm.getRxBytes(),
+                comm.getLinesOk(),
+                total
+        );
+        viewBinding.tvBottomInfo.setText(info);
+    }
+
+    // ─── 生命周期 ─────────────────────────────────────────────────────
 
     @Override
     protected FragmentMessageNewBinding getViewBinding() {
         return FragmentMessageNewBinding.inflate(getLayoutInflater());
     }
 }
-

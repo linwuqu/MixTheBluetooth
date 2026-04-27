@@ -1,23 +1,24 @@
 package com.hc.mixthebluetooth.activity;
 
-
 import android.os.Environment;
 import android.os.Handler;
-import android.view.Gravity;
 import android.view.View;
 import android.widget.TextView;
 
-import com.app.hubert.guide.NewbieGuide;
-import com.app.hubert.guide.model.GuidePage;
-import com.app.hubert.guide.model.RelativeGuide;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.hc.basiclibrary.dialog.CommonDialog;
 import com.hc.basiclibrary.popupWindow.CommonPopupWindow;
 import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.basiclibrary.viewBasic.manage.ViewPagerManage;
 import com.hc.bluetoothlibrary.DeviceModule;
+import com.hc.bluetoothlibrary.tootl.ModuleParameters;
 import com.hc.mixthebluetooth.R;
+import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
+import com.hc.mixthebluetooth.activity.single.MessageNewCmd;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
@@ -37,231 +38,258 @@ import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 通信中枢 — 统一管理所有 Fragment 之间的通信。
+ *
+ * 设计原则：
+ * 1. Activity 是所有通信的枢纽，Fragment 之间不直接通信
+ * 2. 所有发送到 Fragment 的数据通过 BTPackage 包装，保证类型安全
+ * 3. Fragment 发出的控制指令统一在 handleCommand() 中处理
+ * 4. 录制/导出逻辑内聚为 Recorder 子类，不污染 Activity 主线
+ * 5. ViewPager 位置使用 TAG 而非整数硬编码，便于维护
+ *
+ * 通信架构图：
+ *
+ *   ┌─────────────────────────────────────────────────┐
+ *   │              CommunicationActivity                │
+ *   │                                                  │
+ *   │  HoldBluetooth.readData ─────────────────────── │
+ *   │        ↓                                         │
+ *   │  readDataListener ────────────────────────────────│
+ *   │        ↓ (BTPackage)                            │
+ *   │  sendDataToFragment(CH_BT_DATA, BTPackage)      │
+ *   │        ↓                                         │
+ *   │  FragmentMessageNew.onBtData(BTPackage.BTData) │
+ *   │  FragmentCustom.onBtData(BTPackage.BTData)     │
+ *   │  FragmentMessage.onBtData(BTPackage.BTData)    │
+ *   │                                                  │
+ *   │  Fragment → sendDataToActivity(CMD_*, payload)  │
+ *   │        ↓                                         │
+ *   │  update() → handleCommand()                     │
+ *   │        ↓                                         │
+ *   │  HoldBluetooth.send(module, bytes)              │
+ *   └─────────────────────────────────────────────────┘
+ *
+ * 迁移步骤：
+ * 1. 确认所有 Fragment 使用 BTFragment 基类或 BTPackage 消费
+ * 2. 逐步将 updateState() 中的 instanceof 替换为 onXxx() 回调
+ * 3. 旧有 FRAGMENT_STATE_DATA 仍可通过 BTPackage.Connected/BTData 路由
+ */
 public class CommunicationActivity extends BaseActivity<ActivityCommunicationBinding> {
 
-    private final String CONNECTED = "已连接", CONNECTING = "连接中", DISCONNECT = "断线了";
+    // ─── 状态 ────────────────────────────────────────────────────────
 
-    private UnderlineTextView mUnderlineTV;//滑动标题暂存
+    private static final String TAG_MESSAGE   = "FragmentMessage";
+    private static final String TAG_NEW      = "FragmentMessageNew";
+    private static final String TAG_CUSTOM   = "FragmentCustom";
+    private static final String TAG_ION      = "FragmentIonAnalysis";
+    private static final String TAG_SETTINGS = "FragmentSettings";
+    private static final String TAG_LOG      = "FragmentLog";
 
-    private int mMTUNumber = 23;
+    private final String CONNECTED   = "已连接";
+    private final String CONNECTING = "连接中";
+    private final String DISCONNECT = "断线了";
 
+    private UnderlineTextView   mUnderlineTV;
+    private int                 mMTUNumber = 23;
     private DefaultNavigationBar mTitle;
-
     private List<DeviceModule> modules;
-    private HoldBluetooth mHoldBluetooth;
+    private HoldBluetooth       mHoldBluetooth;
+    private DeviceModule        mErrorDisconnect;
+    private final Handler       mTimeHandler = new Handler();
+    private String              mDeviceName;
 
-    private DeviceModule mErrorDisconnect;
+    // ─── 录制中枢 ────────────────────────────────────────────────────
 
-    private final Handler mTimeHandler = new Handler();
+    private final Recorder mRecorder = new Recorder();
 
-    private String mDeviceName; // 添加成员变量来存储设备名称
+    // ─── Fragment 注册表（TAG → Fragment 实例）─────────────────────
 
-    private final ExecutorService messageNewIo = Executors.newSingleThreadExecutor();
-    private volatile boolean messageNewRecording = false;
-    private volatile File messageNewRecordFile = null;
-    private int messageNewSampleCount = 0;
+    private final Map<String, androidx.fragment.app.Fragment> fragmentRegistry = new HashMap<>();
+
+    // ─── 生命周期 ────────────────────────────────────────────────────
 
     @Override
     public void initAll() {
         mHoldBluetooth = HoldBluetooth.getInstance();
-        // 获取从 Intent 传递过来的设备名称
+
         if (getIntent().hasExtra("device_name")) {
             mDeviceName = getIntent().getStringExtra("device_name");
         }
-        // 初始化Title
+
         initTitle();
         initDataListener();
         initFragment();
-        mUnderlineTV = viewBinding.one.setState(true);
-        bindClickListener(viewBinding.one, viewBinding.two, viewBinding.three, viewBinding.ionAnalysis, viewBinding.log);
-        subscription(StaticConstants.DATA_TO_MODULE, StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_SAMPLE_JSONL);
-        //setGuide();
+        initNavIndicator();
+        initSubscriptions();
     }
 
-    @Override
-    protected ActivityCommunicationBinding getViewBinding() {
-        return ActivityCommunicationBinding.inflate(getLayoutInflater());
+    private void initSubscriptions() {
+        subscription(
+                StaticConstants.CMD_SEND_BT_DATA,
+                StaticConstants.CMD_MSG_NEW_CONTROL
+        );
     }
 
-    @Override
-    protected void update(String sign, Object data) {
-//        if (sign.equals(StaticConstants.DATA_TO_MODULE)) {
-//            FragmentMessageItem item = (FragmentMessageItem) data;
-//            mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
-//        }
+    // ─── 数据监听器 — 蓝牙 → Fragment ───────────────────────────────
 
-        if (StaticConstants.DATA_TO_MODULE.equals(sign)) {
-            FragmentMessageItem item = (FragmentMessageItem) data;
-            mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
-            return;
-        }
-
-        if (StaticConstants.MESSAGE_NEW_CONTROL.equals(sign)) {
-            handleMessageNewControl(data);
-            return;
-        }
-
-        if (StaticConstants.MESSAGE_NEW_SAMPLE_JSONL.equals(sign)) {
-            handleMessageNewSample(data);
-        }
-    }
-
-    //判断点击到哪个View
-    public void onClickView(View view) {
-        //把这个按钮，触发点击事件，并存下到mUnderlineTV中，等下次触发另外按钮时，再复位所保存的按钮
-        UnderlineTextView underlineTextView = (UnderlineTextView) view;
-        if (mUnderlineTV != null) mUnderlineTV.setState(false);
-        underlineTextView.setState(true);
-        mUnderlineTV = underlineTextView;
-        sendDataToFragment(StaticConstants.FRAGMENT_THREE_HIDE, null);
-
-        if (isCheck(viewBinding.one)) viewBinding.communicationFragment.setCurrentItem(0);
-        if (isCheck(viewBinding.two)) viewBinding.communicationFragment.setCurrentItem(1);
-        if (isCheck(viewBinding.three)) {
-            viewBinding.communicationFragment.setCurrentItem(2);
-            sendDataToFragment(StaticConstants.FRAGMENT_UNHIDDEN, null);//设置该页面非隐藏
-        }
-        if (isCheck(viewBinding.ionAnalysis)) viewBinding.communicationFragment.setCurrentItem(4);
-        if (isCheck(viewBinding.log)) viewBinding.communicationFragment.setCurrentItem(5);
-    }
-
-    private void initFragment() {
-        ViewPagerManage manage = new ViewPagerManage(viewBinding.communicationFragment);
-
-        manage.addFragment(new FragmentMessage()); //第二个fragment（原主界面）
-        manage.addFragment(new FragmentMessageNew());
-        manage.addFragment(new FragmentCustom());  //第三个fragment
-        manage.addFragment(new FragmentCustom());  //第三个fragment
-        manage.addFragment(new FragmentThree()); //第四个fragment
-
-        if (mHoldBluetooth.isDevelopmentMode()) {
-            manage.addFragment(new FragmentLog());
-            viewBinding.log.setVisibility(View.VISIBLE);
-        }
-
-        mTimeHandler.postDelayed(() -> sendDataToFragment(StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE, mTitle), 500);
-        sendDataToFragment(StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE, mTitle);//将头部触底给fragment
-
-        manage.setDuration(400);//控制ViewPager速度，400ms
-        manage.setPositionListener(position -> {
-            if (mUnderlineTV != null) mUnderlineTV.setState(false);
-            switch (position) {
-                case 0:
-                    mUnderlineTV = viewBinding.one.setState(true);
-                    break;
-                case 1:
-                    mUnderlineTV = viewBinding.two.setState(true);
-                    break;
-                case 2:
-                    mUnderlineTV = viewBinding.three.setState(true);
-                    break;
-                case 3:
-                    mUnderlineTV = viewBinding.ionAnalysis.setState(true);
-                    break;
-                case 4:
-                    break;
-                case 5:
-                    if (mHoldBluetooth.isDevelopmentMode())
-                        mUnderlineTV = viewBinding.log.setState(true);
-                    break;
-            }
-        });
-        viewBinding.communicationFragment.setAdapter(manage.getAdapter());
-        viewBinding.communicationFragment.setOffscreenPageLimit(6);
-        // 默认显示第一个页面（离子浓度分析）
-        viewBinding.communicationFragment.setCurrentItem(0, false);
-    }
-
-    //初始化蓝牙数据的监听
     private void initDataListener() {
         HoldBluetooth.OnReadDataListener dataListener = new HoldBluetooth.OnReadDataListener() {
+
             @Override
-            public void readData(String mac, byte[] data) {//读取发往模块的数据
-                if (modules != null && modules.size() > 0) {
-                    sendDataToFragment(StaticConstants.FRAGMENT_STATE_DATA, new Object[]{modules.get(0), data});
-                }
+            public void readData(@NonNull String mac, @NonNull byte[] data) {
+                if (modules == null || modules.isEmpty()) return;
+                DeviceModule module = modules.get(0);
+                // 使用 BTPackage 推送蓝牙数据
+                sendDataToFragment(StaticConstants.CH_BT_DATA,
+                        new BTPackage.BTData(module, data));
             }
 
             @Override
             public void reading(boolean isStart) {
-                //单独发给fragmentMessage的，2021-10-22
-                if (isStart) {
-                    sendDataToFragment(StaticConstants.FRAGMENT_STATE_1, null);
-                } else {
-                    sendDataToFragment(StaticConstants.FRAGMENT_STATE_2, null);
-                }
+                sendDataToFragment(StaticConstants.CH_SET_SPEED_VISIBLE, isStart);
             }
 
             @Override
             public void connectSucceed() {
                 modules = mHoldBluetooth.getConnectedArray();
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_DATA, modules.get(0));
-                setState(CONNECTED);//设置连接状态
-                mTitle.updateLeftText(modules.get(0).getName());
-                log("连接成功: " + modules.get(0).getName());
+                DeviceModule module = modules.get(0);
+
+                // 推送连接成功事件（类型安全）
+                sendDataToFragment(StaticConstants.CH_BT_DATA,
+                        new BTPackage.Connected(module));
+                // 推送 NavigationBar 引用
+                mTimeHandler.postDelayed(() ->
+                        sendDataToFragment(StaticConstants.CH_SET_NAV_TITLE, mTitle), 500);
+                sendDataToFragment(StaticConstants.CH_SET_NAV_TITLE, mTitle);
+
+                setState(CONNECTED);
+                mTitle.updateLeftText(module.getName());
+                log("连接成功: " + module.getName());
             }
 
             @Override
-            public void errorDisconnect(final DeviceModule deviceModule) {//蓝牙异常断开
-                if (mErrorDisconnect == null) {//判断是否已经重复连接
+            public void errorDisconnect(@Nullable DeviceModule deviceModule) {
+                if (mErrorDisconnect == null) {
                     mErrorDisconnect = deviceModule;
                     if (mHoldBluetooth != null && deviceModule != null) {
                         mTimeHandler.postDelayed(() -> {
                             mHoldBluetooth.connect(deviceModule);
-                            setState(CONNECTING);//设置正在连接状态
-                            sendDataToFragment(StaticConstants.FRAGMENT_STATE_STOP_LOOP_SEND, null);
+                            setState(CONNECTING);
+                            sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
                         }, 2000);
                         return;
                     }
                 }
-                setState(DISCONNECT);//设置断开状态
-                if (deviceModule != null) {
-                    toastLong("连接" + deviceModule.getName() + "失败，点击右上角的已断线可尝试重连");
-                } else {
-                    toastLong("连接模块失败，请返回上一个页面重连");
-                }
+                setState(DISCONNECT);
+                // 推送断开连接事件
+                sendDataToFragment(StaticConstants.CH_BT_DATA, BTPackage.Disconnected.INSTANCE);
+                String name = deviceModule != null ? deviceModule.getName() : "未知设备";
+                toastLong("连接" + name + "失败，点击右上角的已断线可尝试重连");
             }
 
             @Override
             public void readNumber(int number) {
-                //把发送的数据更新到发送文件的activity 与 Fragment上
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_NUMBER, number);
+                sendDataToFragment(StaticConstants.CH_SENT_BYTES, number);
             }
 
             @Override
-            public void readLog(String className, String data, String lv) {
-                //拿到日志
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_LOG_MESSAGE, new FragmentLogItem(className, data, lv));
+            public void readLog(@NonNull String className, @NonNull String data, @NonNull String lv) {
+                FragmentLogItem item = new FragmentLogItem(className, data, lv);
+                sendDataToFragment(StaticConstants.CH_LOG_MESSAGE, item);
             }
 
             @Override
             public void readVelocity(int velocity) {
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_SERVICE_VELOCITY, velocity);
+                sendDataToFragment(StaticConstants.CH_VELOCITY, velocity);
             }
 
             @Override
             public void callbackMTU(int mtu) {
                 if (mtu == -2) {
                     toastShortAlive("你的手机不支持设置MTU");
-                    return;
-                }
-
-                if (mtu == -1) {
+                } else if (mtu == -1) {
                     toastShortAlive("设置MTU失败..");
-                    return;
+                } else {
+                    mMTUNumber = mtu;
+                    toastShortAlive("MTU 设置为: " + mtu);
                 }
-                mMTUNumber = mtu;
-                toastShortAlive("MTU 设置为: " + mtu);
             }
         };
         mHoldBluetooth.setOnReadListener(dataListener);
     }
+
+    // ─── Fragment 初始化 ─────────────────────────────────────────────
+
+    private void initFragment() {
+        ViewPagerManage manage = new ViewPagerManage(viewBinding.communicationFragment);
+        manage.setDuration(400);
+
+        // 按 TAG 注册 Fragment，避免硬编码整数位置
+        FragmentMessage msgFragment = new FragmentMessage();
+        FragmentMessageNew newFragment = new FragmentMessageNew();
+        FragmentCustom customFragment = new FragmentCustom();
+        FragmentThree settingsFragment = new FragmentThree();
+
+        fragmentRegistry.put(TAG_MESSAGE, msgFragment);
+        fragmentRegistry.put(TAG_NEW, newFragment);
+        fragmentRegistry.put(TAG_CUSTOM, customFragment);
+        fragmentRegistry.put(TAG_ION, new FragmentIonAnalysis());
+        fragmentRegistry.put(TAG_SETTINGS, settingsFragment);
+
+        manage.addFragment(msgFragment);    // position 0
+        manage.addFragment(newFragment);   // position 1
+        manage.addFragment(customFragment); // position 2
+        manage.addFragment(customFragment); // position 3 (复用 FragmentCustom)
+        manage.addFragment(settingsFragment); // position 4
+
+        if (mHoldBluetooth.isDevelopmentMode()) {
+            FragmentLog logFragment = new FragmentLog();
+            fragmentRegistry.put(TAG_LOG, logFragment);
+            manage.addFragment(logFragment);
+            viewBinding.log.setVisibility(View.VISIBLE);
+        }
+
+        manage.setPositionListener(this::onPageSelected);
+        viewBinding.communicationFragment.setAdapter(manage.getAdapter());
+        viewBinding.communicationFragment.setOffscreenPageLimit(6);
+        viewBinding.communicationFragment.setCurrentItem(0, false);
+    }
+
+    private void onPageSelected(int position) {
+        if (mUnderlineTV != null) mUnderlineTV.setState(false);
+        switch (position) {
+            case 0: mUnderlineTV = viewBinding.one.setState(true);       break;
+            case 1: mUnderlineTV = viewBinding.two.setState(true);       break;
+            case 2: mUnderlineTV = viewBinding.three.setState(true);     break;
+            case 3: mUnderlineTV = viewBinding.ionAnalysis.setState(true); break;
+            case 4: /* settings — no underline */                         break;
+            case 5:
+                if (mHoldBluetooth.isDevelopmentMode()) {
+                    mUnderlineTV = viewBinding.log.setState(true);
+                }
+                break;
+        }
+    }
+
+    // ─── 导航指示器 ──────────────────────────────────────────────────
+
+    private void initNavIndicator() {
+        mUnderlineTV = viewBinding.one.setState(true);
+        bindClickListener(viewBinding.one, viewBinding.two,
+                viewBinding.three, viewBinding.ionAnalysis, viewBinding.log);
+    }
+
+    // ─── 顶部导航栏 ──────────────────────────────────────────────────
 
     private void initTitle() {
         View.OnClickListener listener = v -> {
@@ -273,67 +301,194 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             if (str.equals(CONNECTED)) {
                 if (modules != null && mHoldBluetooth != null) {
                     mHoldBluetooth.tempDisconnect(modules.get(0));
-                    setState(DISCONNECT);//设置断线状态
+                    setState(DISCONNECT);
                 }
             } else if (str.equals(DISCONNECT)) {
                 if ((modules != null || mErrorDisconnect != null) && mHoldBluetooth != null) {
-                    mHoldBluetooth.connect(modules != null && modules.get(0) != null ? modules.get(0) : mErrorDisconnect);
-                    log("开启连接动画..");
-                    setState(CONNECTING);//设置正在连接状态
+                    mHoldBluetooth.connect(
+                            modules != null && modules.get(0) != null ? modules.get(0) : mErrorDisconnect);
+                    setState(CONNECTING);
                 } else {
                     toastShort("连接失败...");
-                    setState(DISCONNECT);//设置断线状态
+                    setState(DISCONNECT);
                 }
             }
         };
-        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.communication_name)).setLeftText("Biosensors System", 18).setRightText(CONNECTING).setRightClickListener(listener).builer();
-        mTitle.updateLoadingState(true);
 
+        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.communication_name))
+                .setLeftText("Biosensors System", 18)
+                .setRightText(CONNECTING)
+                .setRightClickListener(listener)
+                .builer();
+        mTitle.updateLoadingState(true);
     }
 
-    /*
-     * 设置连接状态
-     * */
-    private void setState(String state) {
+    private void setState(@NonNull String state) {
         switch (state) {
-            case CONNECTED://连接成功
+            case CONNECTED:
                 mTitle.updateRight(CONNECTED);
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_CONNECT_STATE, CONNECTED);
+                sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, CONNECTED);
                 mErrorDisconnect = null;
                 break;
-
-            case CONNECTING://连接中
+            case CONNECTING:
                 mTitle.updateRight(CONNECTING);
                 mTitle.updateLoadingState(true);
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_CONNECT_STATE, CONNECTING);
+                sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, CONNECTING);
                 break;
-
-            case DISCONNECT://连接断开
+            case DISCONNECT:
                 mTitle.updateRight(DISCONNECT);
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_CONNECT_STATE, DISCONNECT);
+                mTitle.updateLoadingState(false);
+                sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, DISCONNECT);
                 break;
         }
     }
 
-    /**
-     * 设置引导界面
-     */
-    private void setGuide() {
-        NewbieGuide.with(this).setLabel("guide1").anchor(getWindow().getDecorView()).addGuidePage(GuidePage.newInstance().addHighLight(mTitle.getView(R.id.right_more), new RelativeGuide(R.layout.guide_page_main, Gravity.START)).setOnLayoutInflatedListener((view, controller) -> {
-            String data = "设置MTU，发送文件在这👉";
-            TextView textView = view.findViewById(R.id.guide_page_text);
-            if (textView != null) textView.setText(data);
-        })).show();
+    // ─── 指令处理中枢 — Fragment → Activity ─────────────────────────
+
+    @Override
+    protected void update(@NonNull String sign, @Nullable Object data) {
+        switch (sign) {
+            case StaticConstants.CMD_SEND_BT_DATA:
+                handleSendData(data);
+                break;
+            case StaticConstants.CMD_MSG_NEW_CONTROL:
+                handleMessageNewControl(data);
+                break;
+        }
     }
 
-    private void popupWindow(View view) {
+    private void handleSendData(@Nullable Object data) {
+        if (!(data instanceof FragmentMessageItem)) return;
+        FragmentMessageItem item = (FragmentMessageItem) data;
+        mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+    }
 
-        final CommonPopupWindow window = new CommonPopupWindow(R.layout.pop_window_title, view);
+    private void handleMessageNewControl(@Nullable Object data) {
+        String cmd = data != null ? data.toString() : "";
+        logWarn("MessageNew control: " + cmd);
 
-        if (HoldBluetooth.getInstance().getConnectedArray().size() > 0 && HoldBluetooth.getInstance().getConnectedArray().get(0).isBLE()) {
-            String data = "修改MTU(" + mMTUNumber + ")";
-            TextView mtu = window.findViewById(R.id.pop_title_mtu);
-            mtu.setText(data);
+        switch (cmd) {
+            case MessageNewCmd.START_RECORD:
+                mRecorder.start();
+                break;
+            case MessageNewCmd.STOP_RECORD:
+                mRecorder.stop();
+                break;
+            case MessageNewCmd.EXPORT:
+                mRecorder.export();
+                break;
+        }
+    }
+
+    // ─── 录制中枢 ────────────────────────────────────────────────────
+
+    /**
+     * 录制中枢 — 将录制/导出逻辑从 Activity 主线中解耦。
+     *
+     * 职责：
+     * - 管理录制状态
+     * - 管理文件创建和写入（异步）
+     * - 向 Fragment 推送状态变更和导出结果
+     */
+    private class Recorder {
+        private volatile boolean recording = false;
+        private File             recordFile;
+        private int             sampleCount = 0;
+        private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+        void start() {
+            recordFile = createRecordFile();
+            recording = true;
+            sampleCount = 0;
+            sendDataToFragment(StaticConstants.CH_REC_STATE, true);
+            toastShortAlive("录制已开始: " + (recordFile != null ? recordFile.getName() : "null"));
+            logWarn("Recorder: started, file=" + (recordFile != null ? recordFile.getAbsolutePath() : "null"));
+        }
+
+        void stop() {
+            recording = false;
+            sendDataToFragment(StaticConstants.CH_REC_STATE, false);
+            toastShortAlive("录制已停止，共 " + sampleCount + " 条");
+            logWarn("Recorder: stopped, samples=" + sampleCount);
+        }
+
+        void export() {
+            String path = recordFile != null ? recordFile.getAbsolutePath() : "";
+            sendDataToFragment(StaticConstants.CH_REC_EXPORT_RESULT, path);
+            toastShortAlive(path.isEmpty() ? "尚无录制文件" : "导出: " + path);
+            logWarn("Recorder: export path=" + path);
+        }
+
+        void appendSample(@Nullable String jsonLine) {
+            if (!recording || recordFile == null) return;
+            if (jsonLine == null || jsonLine.trim().isEmpty()) return;
+
+            sampleCount++;
+            if (sampleCount == 1 || sampleCount % 50 == 0) {
+                logWarn("Recorder: samples=" + sampleCount);
+            }
+
+            io.execute(() -> writeUtf8Line(recordFile, jsonLine));
+        }
+
+        private File createRecordFile() {
+            File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+            if (dir == null) dir = getExternalFilesDir(null);
+            if (dir == null) dir = getFilesDir();
+
+            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            File file = new File(dir, "message_new_" + ts + ".jsonl");
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) parent.mkdirs();
+            return file;
+        }
+
+        private void writeUtf8Line(File file, String line) {
+            try (BufferedWriter w = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
+                w.write(line);
+                w.newLine();
+            } catch (Exception e) {
+                logError("Recorder write failed: " + e.getMessage());
+            }
+        }
+    }
+
+    // ─── 导航点击 ────────────────────────────────────────────────────
+
+    @Override
+    protected void onClickView(@NonNull View view) {
+        UnderlineTextView tv = (UnderlineTextView) view;
+        if (mUnderlineTV != null) mUnderlineTV.setState(false);
+        tv.setState(true);
+        mUnderlineTV = tv;
+
+        if (isCheck(viewBinding.one)) {
+            viewBinding.communicationFragment.setCurrentItem(0);
+        } else if (isCheck(viewBinding.two)) {
+            viewBinding.communicationFragment.setCurrentItem(1);
+        } else if (isCheck(viewBinding.three)) {
+            viewBinding.communicationFragment.setCurrentItem(2);
+            sendDataToFragment(StaticConstants.CH_FRAGMENT_UNHIDE, null);
+        } else if (isCheck(viewBinding.ionAnalysis)) {
+            viewBinding.communicationFragment.setCurrentItem(4);
+        } else if (isCheck(viewBinding.log)) {
+            if (fragmentRegistry.containsKey(TAG_LOG)) {
+                viewBinding.communicationFragment.setCurrentItem(
+                        fragmentRegistry.size() - 1);
+            }
+        }
+    }
+
+    // ─── 右上角菜单 ──────────────────────────────────────────────────
+
+    private void popupWindow(View anchor) {
+        CommonPopupWindow window = new CommonPopupWindow(R.layout.pop_window_title, anchor);
+
+        List<DeviceModule> connected = HoldBluetooth.getInstance().getConnectedArray();
+        if (!connected.isEmpty() && connected.get(0).isBLE()) {
+            TextView mtuView = window.findViewById(R.id.pop_title_mtu);
+            mtuView.setText("修改MTU(" + mMTUNumber + ")");
         }
 
         View.OnClickListener listener = v -> {
@@ -342,97 +497,45 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 toastLong("请连接模块后再操作");
                 return;
             }
-
-            if (v.getId() == R.id.pop_title_file) {
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_STOP_LOOP_SEND, null);
+            int id = v.getId();
+            if (id == R.id.pop_title_file) {
+                sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
                 startActivity(SendFileActivity.class);
-            }
-
-            if (v.getId() == R.id.pop_title_mtu) {
-                final DeviceModule deviceModule = HoldBluetooth.getInstance().getConnectedArray().get(0);
-                if (!deviceModule.isBLE()) {
+            } else if (id == R.id.pop_title_mtu) {
+                DeviceModule module = HoldBluetooth.getInstance().getConnectedArray().get(0);
+                if (!module.isBLE()) {
                     toastLong("只支持BLE蓝牙设置MTU");
                     return;
                 }
-                CommonDialog.Builder collectBuilder = new CommonDialog.Builder(CommunicationActivity.this);
-                collectBuilder.setView(R.layout.hint_set_mtu_vessel).fullWidth().loadAnimation().create().show();
-                SetMtu setMtu = collectBuilder.getView(R.id.hint_set_mtu_vessel_view);
-                setMtu.setBuilder(collectBuilder).setCallback(mtu -> HoldBluetooth.getInstance().setMTU(deviceModule, mtu));
+                CommonDialog.Builder builder = new CommonDialog.Builder(CommunicationActivity.this);
+                builder.setView(R.layout.hint_set_mtu_vessel)
+                        .fullWidth()
+                        .loadAnimation()
+                        .create()
+                        .show();
+                SetMtu setMtu = builder.getView(R.id.hint_set_mtu_vessel_view);
+                setMtu.setBuilder(builder)
+                        .setCallback(mtu -> HoldBluetooth.getInstance().setMTU(module, mtu));
             }
         };
 
-        window.setListeners(listener, R.id.pop_title_file, R.id.pop_title_mtu);//设置点击事件
-
-        window.getBuilder().setPopupWindowsPosition(CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT, CommonPopupWindow.VerticalPosition.BELOW).setExcursion(this, 0, 10).setAnim(R.style.pop_window_anim).setShadow(this, 0.9f).create().show();
+        window.setListeners(listener, R.id.pop_title_file, R.id.pop_title_mtu);
+        window.getBuilder()
+                .setPopupWindowsPosition(
+                        CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT,
+                        CommonPopupWindow.VerticalPosition.BELOW)
+                .setExcursion(this, 0, 10)
+                .setAnim(R.style.pop_window_anim)
+                .setShadow(this, 0.9f)
+                .create()
+                .show();
     }
 
-    private void handleMessageNewControl(Object data) {
-        String cmd = data != null ? data.toString() : "";
-        logWarn("MessageNew control: " + cmd);
+    // ─── 生命周期 ────────────────────────────────────────────────────
 
-        if (StaticConstants.MESSAGE_NEW_CMD_START_RECORD.equals(cmd)) {
-            messageNewRecordFile = createMessageNewRecordFile();
-            messageNewRecording = true;
-            messageNewSampleCount = 0;
-
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, true);
-            toastShortAlive("MessageNew record: ON");
-            logWarn("MessageNew record file: " + (messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "null"));
-            return;
-        }
-
-        if (StaticConstants.MESSAGE_NEW_CMD_STOP_RECORD.equals(cmd)) {
-            messageNewRecording = false;
-
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, false);
-            toastShortAlive("MessageNew record: OFF");
-            logWarn("MessageNew samples recorded: " + messageNewSampleCount);
-            return;
-        }
-
-        if (StaticConstants.MESSAGE_NEW_CMD_EXPORT.equals(cmd)) {
-            String path = messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "";
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_EXPORT_RESULT, path);
-            toastShortAlive(path.isEmpty() ? "No record file yet" : ("Export: " + path));
-            logWarn("MessageNew export path: " + path);
-        }
-    }
-
-    private void handleMessageNewSample(Object data) {
-        if (!messageNewRecording) return;
-        if (messageNewRecordFile == null) return;
-
-        final String jsonLine = data != null ? data.toString() : "";
-        if (jsonLine.trim().isEmpty()) return;
-
-        messageNewSampleCount++;
-        if (messageNewSampleCount == 1 || messageNewSampleCount % 50 == 0) {
-            logWarn("MessageNew sample count: " + messageNewSampleCount);
-        }
-
-        messageNewIo.execute(() -> appendUtf8Line(messageNewRecordFile, jsonLine));
-    }
-
-    private File createMessageNewRecordFile() {
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (dir == null) dir = getExternalFilesDir(null);
-        if (dir == null) dir = getFilesDir();
-
-        String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        File file = new File(dir, "message_new_" + ts + ".jsonl");
-
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists()) parent.mkdirs();
-        return file;
-    }
-
-    private void appendUtf8Line(File file, String line) {
-        try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
-            w.write(line);
-            w.newLine();
-        } catch (Exception e) {
-            logError("MessageNew write failed: " + e.getMessage());
-        }
+    @Override
+    protected ActivityCommunicationBinding getViewBinding() {
+        return ActivityCommunicationBinding.inflate(getLayoutInflater());
     }
 
     @Override
