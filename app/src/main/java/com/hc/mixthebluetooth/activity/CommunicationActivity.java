@@ -17,7 +17,9 @@ import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.basiclibrary.viewBasic.manage.ViewPagerManage;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
+import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
+import com.hc.mixthebluetooth.activity.single.MessageNewCmd;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
@@ -40,6 +42,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -62,10 +65,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     private String mDeviceName; // 添加成员变量来存储设备名称
 
-    private final ExecutorService messageNewIo = Executors.newSingleThreadExecutor();
-    private volatile boolean messageNewRecording = false;
-    private volatile File messageNewRecordFile = null;
-    private int messageNewSampleCount = 0;
+    private final Recorder messageNewRecorder = new Recorder();
 
     @Override
     public void initAll() {
@@ -80,7 +80,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         initFragment();
         mUnderlineTV = viewBinding.one.setState(true);
         bindClickListener(viewBinding.one, viewBinding.two, viewBinding.three, viewBinding.ionAnalysis, viewBinding.log);
-        subscription(StaticConstants.DATA_TO_MODULE, StaticConstants.MESSAGE_NEW_CONTROL, StaticConstants.MESSAGE_NEW_SAMPLE_JSONL);
+        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_MSG_NEW_CONTROL, StaticConstants.EV_REC_SAMPLE);
         //setGuide();
     }
 
@@ -91,25 +91,40 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     @Override
     protected void update(String sign, Object data) {
-//        if (sign.equals(StaticConstants.DATA_TO_MODULE)) {
-//            FragmentMessageItem item = (FragmentMessageItem) data;
-//            mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
-//        }
+        switch (sign) {
+            case StaticConstants.CMD_SEND_BT_DATA:
+                handleSendBtData(data);
+                break;
 
-        if (StaticConstants.DATA_TO_MODULE.equals(sign)) {
-            FragmentMessageItem item = (FragmentMessageItem) data;
-            mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+            case StaticConstants.CMD_MSG_NEW_CONTROL:
+                handleMessageNewControl(data);
+                break;
+
+            case StaticConstants.EV_REC_SAMPLE:
+                messageNewRecorder.appendSample(data);
+                break;
+        }
+    }
+
+    private void handleSendBtData(Object data) {
+        if (!(data instanceof FragmentMessageItem)) {
+            logWarn("Ignore send data command, payload is not FragmentMessageItem: " + data);
             return;
         }
 
-        if (StaticConstants.MESSAGE_NEW_CONTROL.equals(sign)) {
-            handleMessageNewControl(data);
+        FragmentMessageItem item = (FragmentMessageItem) data;
+
+        if (item.getModule() == null) {
+            logWarn("Ignore send data command, module is null");
             return;
         }
 
-        if (StaticConstants.MESSAGE_NEW_SAMPLE_JSONL.equals(sign)) {
-            handleMessageNewSample(data);
+        if (item.getByteData() == null) {
+            logWarn("Ignore send data command, byteData is null");
+            return;
         }
+
+        mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
     }
 
     //判断点击到哪个View
@@ -183,8 +198,8 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         HoldBluetooth.OnReadDataListener dataListener = new HoldBluetooth.OnReadDataListener() {
             @Override
             public void readData(String mac, byte[] data) {//读取发往模块的数据
-                if (modules != null && modules.size() > 0) {
-                    sendDataToFragment(StaticConstants.FRAGMENT_STATE_DATA, new Object[]{modules.get(0), data});
+                if (modules != null && !modules.isEmpty()) {
+                    sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.BTData(modules.get(0), data));
                 }
             }
 
@@ -201,10 +216,13 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             @Override
             public void connectSucceed() {
                 modules = mHoldBluetooth.getConnectedArray();
-                sendDataToFragment(StaticConstants.FRAGMENT_STATE_DATA, modules.get(0));
+                DeviceModule module = modules.get(0);
+
+                sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.Connected(module));
+
                 setState(CONNECTED);//设置连接状态
-                mTitle.updateLeftText(modules.get(0).getName());
-                log("连接成功: " + modules.get(0).getName());
+                mTitle.updateLeftText(module.getName());
+                log("连接成功: " + module.getName());
             }
 
             @Override
@@ -221,6 +239,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                     }
                 }
                 setState(DISCONNECT);//设置断开状态
+                sendDataToFragment(StaticConstants.CH_BT_DATA, BTPackage.Disconnected.INSTANCE);
                 if (deviceModule != null) {
                     toastLong("连接" + deviceModule.getName() + "失败，点击右上角的已断线可尝试重连");
                 } else {
@@ -366,72 +385,98 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         window.getBuilder().setPopupWindowsPosition(CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT, CommonPopupWindow.VerticalPosition.BELOW).setExcursion(this, 0, 10).setAnim(R.style.pop_window_anim).setShadow(this, 0.9f).create().show();
     }
 
+    // ----------------- FragmentMessageNew 逻辑 ------------------
     private void handleMessageNewControl(Object data) {
         String cmd = data != null ? data.toString() : "";
         logWarn("MessageNew control: " + cmd);
 
-        if (StaticConstants.MESSAGE_NEW_CMD_START_RECORD.equals(cmd)) {
-            messageNewRecordFile = createMessageNewRecordFile();
-            messageNewRecording = true;
-            messageNewSampleCount = 0;
+        if (MessageNewCmd.START_RECORD.equals(cmd)) {
+            messageNewRecorder.start();
+            return;
+        }
 
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, true);
+        if (MessageNewCmd.STOP_RECORD.equals(cmd)) {
+            messageNewRecorder.stop();
+            return;
+        }
+
+        if (MessageNewCmd.EXPORT.equals(cmd)) {
+            messageNewRecorder.export();
+        }
+    }
+
+    private class Recorder {
+        private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+        private volatile boolean recording = false;
+        private volatile File recordFile = null;
+        private int sampleCount = 0;
+
+        void start() {
+            recordFile = createRecordFile();
+            recording = true;
+            sampleCount = 0;
+
+            sendDataToFragment(StaticConstants.CH_REC_STATE, true);
+
             toastShortAlive("MessageNew record: ON");
-            logWarn("MessageNew record file: " + (messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "null"));
-            return;
+            logWarn("Recorder file: " + (recordFile != null ? recordFile.getAbsolutePath() : "null"));
         }
 
-        if (StaticConstants.MESSAGE_NEW_CMD_STOP_RECORD.equals(cmd)) {
-            messageNewRecording = false;
+        void stop() {
+            recording = false;
 
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_RECORD_STATE, false);
+            sendDataToFragment(StaticConstants.CH_REC_STATE, false);
+
             toastShortAlive("MessageNew record: OFF");
-            logWarn("MessageNew samples recorded: " + messageNewSampleCount);
-            return;
+            logWarn("Recorder samples: " + sampleCount);
         }
 
-        if (StaticConstants.MESSAGE_NEW_CMD_EXPORT.equals(cmd)) {
-            String path = messageNewRecordFile != null ? messageNewRecordFile.getAbsolutePath() : "";
-            sendDataToFragment(StaticConstants.MESSAGE_NEW_EXPORT_RESULT, path);
+        void export() {
+            String path = recordFile != null ? recordFile.getAbsolutePath() : "";
+
+            sendDataToFragment(StaticConstants.CH_REC_EXPORT_RESULT, path);
+
             toastShortAlive(path.isEmpty() ? "No record file yet" : ("Export: " + path));
-            logWarn("MessageNew export path: " + path);
-        }
-    }
-
-    private void handleMessageNewSample(Object data) {
-        if (!messageNewRecording) return;
-        if (messageNewRecordFile == null) return;
-
-        final String jsonLine = data != null ? data.toString() : "";
-        if (jsonLine.trim().isEmpty()) return;
-
-        messageNewSampleCount++;
-        if (messageNewSampleCount == 1 || messageNewSampleCount % 50 == 0) {
-            logWarn("MessageNew sample count: " + messageNewSampleCount);
+            logWarn("Recorder export path: " + path);
         }
 
-        messageNewIo.execute(() -> appendUtf8Line(messageNewRecordFile, jsonLine));
-    }
+        void appendSample(Object data) {
+            if (!recording) return;
+            if (recordFile == null) return;
 
-    private File createMessageNewRecordFile() {
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (dir == null) dir = getExternalFilesDir(null);
-        if (dir == null) dir = getFilesDir();
+            String jsonLine = data != null ? data.toString() : "";
+            if (jsonLine.trim().isEmpty()) return;
 
-        String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        File file = new File(dir, "message_new_" + ts + ".jsonl");
+            sampleCount++;
+            if (sampleCount == 1 || sampleCount % 50 == 0) {
+                logWarn("MessageNew sample count: " + sampleCount);
+            }
 
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists()) parent.mkdirs();
-        return file;
-    }
+            io.execute(() -> appendUtf8Line(recordFile, jsonLine));
+        }
 
-    private void appendUtf8Line(File file, String line) {
-        try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
-            w.write(line);
-            w.newLine();
-        } catch (Exception e) {
-            logError("MessageNew write failed: " + e.getMessage());
+        private File createRecordFile() {
+            File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+            if (dir == null) dir = getExternalFilesDir(null);
+            if (dir == null) dir = getFilesDir();
+
+            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            File file = new File(dir, "message_new_" + ts + ".jsonl");
+
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) parent.mkdirs();
+            return file;
+        }
+
+        private void appendUtf8Line(File file, String line) {
+            try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
+                w.write(line);
+                w.newLine();
+            } catch (Exception e) {
+                logError("MessageNew write failed: " + e.getMessage());
+            }
+
         }
     }
 

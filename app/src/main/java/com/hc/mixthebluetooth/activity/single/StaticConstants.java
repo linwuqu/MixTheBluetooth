@@ -1,90 +1,147 @@
 package com.hc.mixthebluetooth.activity.single;
 
 /**
- * description: 存放静态值
+ * Central event-channel names used by Activity, Fragment, and services.
+ *
+ * Naming rules:
+ * CH_  means Activity -> Fragment state/data push.
+ * CMD_ means Fragment -> Activity command.
+ * EV_  means event style communication; use it when the direction is not
+ *      a stable UI state push.
+ *
+ * The deprecated constants at the bottom keep the old project working while
+ * each Fragment is migrated one by one.
  */
-public class StaticConstants {
-
-    /***********   CommunicationActivity   **********/
-
-    //FragmentThree隐藏状态
-    public static final String FRAGMENT_THREE_HIDE = "FRAGMENT_THREE_HIDE";
-    public static final String FRAGMENT_CUSTOM_HIDE = "FRAGMENT_CUSTOM_HIDE";
-
-    //FragmentThree非隐藏状态
-    public static final String FRAGMENT_UNHIDDEN = "FRAGMENT_UNHIDDEN";
-
-    //三个fragment发送数据到Activity
-    public static final String DATA_TO_MODULE = "DATA_TO_MODULE";
-
-    //fragmentMessage显示接收速度
-    public static final String FRAGMENT_STATE_1 = "FRAGMENT_STATE_1";
-
-    //fragmentMessage隐藏接收速度
-    public static final String FRAGMENT_STATE_2 = "FRAGMENT_STATE_2";
-
-    //activity发往fragment数据，包括连接成功模块信息
-    public static final String FRAGMENT_STATE_DATA = "FRAGMENT_STATE_DATA";
-
-    //从activity上已发送的数据
-    public static final String FRAGMENT_STATE_NUMBER = "FRAGMENT_STATE_NUMBER";
-
-    //将连接状态发给FragmentThree
-    public static final String FRAGMENT_STATE_CONNECT_STATE = "FRAGMENT_STATE_CONNECT_STATE";
-
-    //将activity头部传递到自定义按钮的fragment，用于判断是否可以发送数据
-    public static final String FRAGMENT_STATE_SEND_SEND_TITLE = "FRAGMENT_STATE_SEND_SEND_TITLE";
-
-    //将日志信息发送到fragmentLog上
-    public static final String FRAGMENT_STATE_LOG_MESSAGE = "FRAGMENT_STATE_LOG_MESSAGE";
-
-    //读取实时速度
-    public static final String FRAGMENT_STATE_SERVICE_VELOCITY = "FRAGMENT_STATE_SERVICE_VELOCITY";
-
-    //停止循环发送
-    public static final String FRAGMENT_STATE_STOP_LOOP_SEND = "FRAGMENT_STATE_STOP_LOOP_SEND";
-
-
-    /************  FragmentCustom  **************/
-
-    //将FragmentCustom设置的是否新行传递到子Fragment
-    public static final String FRAGMENT_CUSTOM_NEWLINE = "FRAGMENT_CUSTOM_NEWLINE";
-
-
-    /************  FragmentMessageNew (Record/Export)  ************/
-
-    /**
-     * FragmentMessageNew -> CommunicationActivity
-     * payload: String cmd, use MESSAGE_NEW_CMD_*
-     */
-    public static final String MESSAGE_NEW_CONTROL = "MESSAGE_NEW_CONTROL";
-
-    /**
-     * FragmentMessageNew -> CommunicationActivity
-     * payload: String jsonLine (JSON Lines: one sample per line)
-     */
-    public static final String MESSAGE_NEW_SAMPLE_JSONL = "MESSAGE_NEW_SAMPLE_JSONL";
-
-    /**
-     * CommunicationActivity -> FragmentMessageNew
-     * payload: Boolean isRecording
-     */
-    public static final String MESSAGE_NEW_RECORD_STATE = "MESSAGE_NEW_RECORD_STATE";
-
-    /**
-     * CommunicationActivity -> FragmentMessageNew
-     * payload: String absolutePath
-     */
-    public static final String MESSAGE_NEW_EXPORT_RESULT = "MESSAGE_NEW_EXPORT_RESULT";
-
-    /**
-     * Commands for MESSAGE_NEW_CONTROL
-     */
-    public static final String MESSAGE_NEW_CMD_START_RECORD = "MESSAGE_NEW_CMD_START_RECORD";
-    public static final String MESSAGE_NEW_CMD_STOP_RECORD = "MESSAGE_NEW_CMD_STOP_RECORD";
-    public static final String MESSAGE_NEW_CMD_EXPORT = "MESSAGE_NEW_CMD_EXPORT";
+public final class StaticConstants {
 
     private StaticConstants() {
     }
 
+    // Activity -> Fragment: Bluetooth data and device state.
+    public static final String CH_BT_DATA = "CH_BT_DATA";
+
+    // Activity -> Fragment: recording state and export result.
+    public static final String CH_REC_STATE = "CH_REC_STATE";
+    public static final String CH_REC_EXPORT_RESULT = "CH_REC_EXPORT_RESULT";
+
+    // Fragment -> Activity: one recording sample as a JSON line.
+    public static final String EV_REC_SAMPLE = "EV_REC_SAMPLE";
+
+    // Activity -> Fragment: general UI and connection state.
+    public static final String CH_SET_CONNECT_STATE = "CH_SET_CONNECT_STATE";
+    public static final String CH_SET_NAV_TITLE = "CH_SET_NAV_TITLE";
+    public static final String CH_SET_SPEED_VISIBLE = "CH_SET_SPEED_VISIBLE";
+    public static final String CH_VELOCITY = "CH_VELOCITY";
+    public static final String CH_SENT_BYTES = "CH_SENT_BYTES";
+    public static final String CH_STOP_LOOP_SEND = "CH_STOP_LOOP_SEND";
+    public static final String CH_LOG_MESSAGE = "CH_LOG_MESSAGE";
+    public static final String CH_FRAGMENT_HIDE = "CH_FRAGMENT_HIDE";
+    public static final String CH_FRAGMENT_UNHIDE = "CH_FRAGMENT_UNHIDE";
+
+    // Cross-fragment event currently used by FragmentCustom and its children.
+    public static final String EV_CUSTOM_NEWLINE = "EV_CUSTOM_NEWLINE";
+
+    // Fragment -> Activity commands.
+    public static final String CMD_SEND_BT_DATA = "CMD_SEND_BT_DATA";
+    public static final String CMD_MSG_NEW_CONTROL = "CMD_MSG_NEW_CONTROL";
+    public static final String CMD_MSG_NEW_START_RECORD = "CMD_MSG_NEW_START_RECORD";
+    public static final String CMD_MSG_NEW_STOP_RECORD = "CMD_MSG_NEW_STOP_RECORD";
+    public static final String CMD_MSG_NEW_EXPORT = "CMD_MSG_NEW_EXPORT";
+    public static final String CMD_FRAGMENT_DESTROY = "CMD_FRAGMENT_DESTROY";
+
+    // ---------------------------------------------------------------------
+    // Compatibility aliases. Old code may keep using these during migration.
+    // ---------------------------------------------------------------------
+
+    /** @deprecated Use {@link #CH_BT_DATA}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_DATA = CH_BT_DATA;
+
+    /** @deprecated Use {@link #CMD_SEND_BT_DATA}. */
+    @Deprecated
+    public static final String DATA_TO_MODULE = CMD_SEND_BT_DATA;
+
+    /** @deprecated Use {@link #CH_SET_CONNECT_STATE}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_CONNECT_STATE = CH_SET_CONNECT_STATE;
+
+    /** @deprecated Use {@link #CH_SET_NAV_TITLE}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_SEND_SEND_TITLE = CH_SET_NAV_TITLE;
+
+    /** @deprecated Use {@link #CH_LOG_MESSAGE}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_LOG_MESSAGE = CH_LOG_MESSAGE;
+
+    /** @deprecated Use {@link #CH_VELOCITY}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_SERVICE_VELOCITY = CH_VELOCITY;
+
+    /** @deprecated Use {@link #CH_STOP_LOOP_SEND}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_STOP_LOOP_SEND = CH_STOP_LOOP_SEND;
+
+    /**
+     * @deprecated Use {@link #CH_SET_SPEED_VISIBLE} with Boolean.TRUE.
+     * Kept as a separate string so old subscribers that still listen to
+     * FRAGMENT_STATE_1 continue receiving events until they are migrated.
+     */
+    @Deprecated
+    public static final String FRAGMENT_STATE_1 = "FRAGMENT_STATE_1";
+
+    /**
+     * @deprecated Use {@link #CH_SET_SPEED_VISIBLE} with Boolean.FALSE.
+     * Kept as a separate string so old subscribers that still listen to
+     * FRAGMENT_STATE_2 continue receiving events until they are migrated.
+     */
+    @Deprecated
+    public static final String FRAGMENT_STATE_2 = "FRAGMENT_STATE_2";
+
+    /** @deprecated Use {@link #CH_SENT_BYTES}. */
+    @Deprecated
+    public static final String FRAGMENT_STATE_NUMBER = CH_SENT_BYTES;
+
+    /** @deprecated Use {@link #CH_FRAGMENT_HIDE}. */
+    @Deprecated
+    public static final String FRAGMENT_THREE_HIDE = CH_FRAGMENT_HIDE;
+
+    /** @deprecated Use {@link #CH_FRAGMENT_UNHIDE}. */
+    @Deprecated
+    public static final String FRAGMENT_UNHIDDEN = CH_FRAGMENT_UNHIDE;
+
+    /** @deprecated Use {@link #EV_CUSTOM_NEWLINE}. */
+    @Deprecated
+    public static final String FRAGMENT_CUSTOM_NEWLINE = EV_CUSTOM_NEWLINE;
+
+    /** @deprecated Use {@link #CH_FRAGMENT_HIDE}. */
+    @Deprecated
+    public static final String FRAGMENT_CUSTOM_HIDE = CH_FRAGMENT_HIDE;
+
+    /** @deprecated Use {@link #CMD_MSG_NEW_CONTROL}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_CONTROL = CMD_MSG_NEW_CONTROL;
+
+    /** @deprecated Use {@link #CMD_MSG_NEW_START_RECORD}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_CMD_START_RECORD = MessageNewCmd.START_RECORD;
+
+    /** @deprecated Use {@link #CMD_MSG_NEW_STOP_RECORD}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_CMD_STOP_RECORD = MessageNewCmd.STOP_RECORD;
+
+    /** @deprecated Use {@link #CMD_MSG_NEW_EXPORT}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_CMD_EXPORT = MessageNewCmd.EXPORT;
+
+    /** @deprecated Use {@link #CH_REC_STATE}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_RECORD_STATE = CH_REC_STATE;
+
+    /** @deprecated Use {@link #CH_REC_EXPORT_RESULT}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_EXPORT_RESULT = CH_REC_EXPORT_RESULT;
+
+    /** @deprecated Use {@link #EV_REC_SAMPLE}. */
+    @Deprecated
+    public static final String MESSAGE_NEW_SAMPLE_JSONL = EV_REC_SAMPLE;
 }

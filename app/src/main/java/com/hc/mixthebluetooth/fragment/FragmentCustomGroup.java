@@ -152,7 +152,7 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
         log("过滤后的数据: "+data);
         bytes = Analysis.getBytes(data,mFragmentParameter.getCodeFormat(getContext()),isHex);
 
-        sendDataToActivity(StaticConstants.DATA_TO_MODULE,new FragmentMessageItem(false, bytes, null,
+        sendDataToActivity(StaticConstants.CMD_SEND_BT_DATA,new FragmentMessageItem(false, bytes, null,
                 true, HoldBluetooth.getInstance().getConnectedArray().get(0), false));
     }
 

@@ -788,7 +788,7 @@ public class FragmentMessage extends BaseFragment<FragmentMessageBinding> {
     }
 
     private void sendData(FragmentMessageItem item) {
-        sendDataToActivity(StaticConstants.DATA_TO_MODULE,item);
+        sendDataToActivity(StaticConstants.CMD_SEND_BT_DATA, item);
         //logWarn("发送数据");
         if (isShowMyData) {
             mDataList.add(item);

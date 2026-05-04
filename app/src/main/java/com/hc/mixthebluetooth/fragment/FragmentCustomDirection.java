@@ -272,7 +272,7 @@ public class FragmentCustomDirection extends BaseFragment<FragmentCustomButtonDi
         if (isHex) data = Analysis.getFiltrationHexString(data);
         bytes = Analysis.getBytes(data,mFragmentParameter.getCodeFormat(getContext()),isHex);
 
-        sendDataToActivity(StaticConstants.DATA_TO_MODULE,new FragmentMessageItem(isHex,bytes,null,
+        sendDataToActivity(StaticConstants.CMD_SEND_BT_DATA,new FragmentMessageItem(isHex,bytes,null,
                 true, HoldBluetooth.getInstance().getConnectedArray().get(0),false));
     }
 }
