@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.message;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -32,13 +32,13 @@ public class MessageListController {
     }
 
     public void addIncomingText(@NonNull String text, @Nullable DeviceModule module) {
-        dataList.add(new FragmentMessageItem(text, null, false, module, false));
+        MessageItemTools.appendIncoming(dataList, text, false, null, module, false);
         adapter.notifyItemInserted(dataList.size() - 1);
         scrollToBottom();
     }
 
     public void addOutgoingText(@NonNull String text, @Nullable DeviceModule module) {
-        dataList.add(new FragmentMessageItem(text, null, false, module, true));
+        dataList.add(MessageItemTools.outgoingText(text, null, module, true));
         adapter.notifyItemInserted(dataList.size() - 1);
         scrollToBottom();
     }

@@ -81,6 +81,40 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
                 }
                 break;
 
+            case StaticConstants.CH_SET_CONNECT_STATE:
+                onConnectStateChanged(data != null ? data.toString() : "");
+                break;
+
+            case StaticConstants.CH_SET_SPEED_VISIBLE:
+                if (data instanceof Boolean) {
+                    onSpeedVisibleChanged((Boolean) data);
+                }
+                break;
+
+            case StaticConstants.CH_VELOCITY:
+                if (data instanceof Number) {
+                    onVelocityChanged(((Number) data).intValue());
+                }
+                break;
+
+            case StaticConstants.CH_SENT_BYTES:
+                if (data instanceof Number) {
+                    onSentBytesChanged(((Number) data).intValue());
+                }
+                break;
+
+            case StaticConstants.CH_STOP_LOOP_SEND:
+                onStopLoopSend();
+                break;
+
+            case StaticConstants.CH_FRAGMENT_HIDE:
+                onFragmentVisibilityChanged(false);
+                break;
+
+            case StaticConstants.CH_FRAGMENT_UNHIDE:
+                onFragmentVisibilityChanged(true);
+                break;
+
             default:
                 updateStateImpl(sign, data);
                 break;
@@ -126,6 +160,18 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
     }
 
     protected void onConnectStateChanged(String state) {
+    }
+
+    protected void onSpeedVisibleChanged(boolean visible) {
+    }
+
+    protected void onVelocityChanged(int velocity) {
+    }
+
+    protected void onSentBytesChanged(int number) {
+    }
+
+    protected void onStopLoopSend() {
     }
 
     protected void onFragmentVisibilityChanged(boolean visible) {

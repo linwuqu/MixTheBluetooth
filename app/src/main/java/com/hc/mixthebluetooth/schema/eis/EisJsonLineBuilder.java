@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.schema.eis;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;

@@ -1,6 +1,9 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.schema.eis;
 
 import androidx.annotation.Nullable;
+
+import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSample;
+import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSampleParser;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -9,18 +12,24 @@ import java.util.regex.Pattern;
  * Parses EIS text lines, for example:
  * 670258.375Ω,1.492uS
  */
-public final class EisParser {
+public final class EisParser implements BluetoothSampleParser {
 
     private static final Pattern EIS_PATTERN = Pattern.compile(
             "\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*Ω\\s*,\\s*([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*(?:uS|μS|碌S)\\s*",
             Pattern.CASE_INSENSITIVE
     );
 
-    private EisParser() {
+    public EisParser() {
     }
 
     @Nullable
-    public static EisSample parse(@Nullable String line) {
+    @Override
+    public BluetoothSample parse(@Nullable String line) {
+        return parseLine(line);
+    }
+
+    @Nullable
+    public static EisSample parseLine(@Nullable String line) {
         if (line == null) return null;
 
         String clean = line;

@@ -180,5 +180,6 @@
     <string name="start_record">开始记录</string>
     <string name="stop_record">结束记录</string>
     <string name="export">导出</string>
+    <string name="setting">设置</string>
 
 </resources>

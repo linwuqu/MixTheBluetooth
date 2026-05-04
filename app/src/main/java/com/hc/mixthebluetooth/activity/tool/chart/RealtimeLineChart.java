@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.chart;
 
 import android.graphics.Color;
 

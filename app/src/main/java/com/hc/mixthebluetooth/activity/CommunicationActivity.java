@@ -1,7 +1,6 @@
 package com.hc.mixthebluetooth.activity;
 
 
-import android.os.Environment;
 import android.os.Handler;
 import android.view.Gravity;
 import android.view.View;
@@ -22,7 +21,6 @@ import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
-import com.hc.mixthebluetooth.activity.single.MessageNewCmd;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
@@ -32,21 +30,11 @@ import com.hc.mixthebluetooth.fragment.FragmentIonAnalysis;
 import com.hc.mixthebluetooth.fragment.FragmentLog;
 import com.hc.mixthebluetooth.fragment.FragmentMessage;
 import com.hc.mixthebluetooth.fragment.FragmentMessageNew;
-import com.hc.mixthebluetooth.fragment.FragmentThree;
+import com.hc.mixthebluetooth.fragment.FragmentSetting;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class CommunicationActivity extends BaseActivity<ActivityCommunicationBinding> {
     private static final String CONNECTED = "已连接";
@@ -57,7 +45,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     private static final int PAGE_MESSAGE_NEW = 1;
     private static final int PAGE_CUSTOM = 2;
     private static final int PAGE_ION_ANALYSIS = 3;
-    private static final int PAGE_THREE = 4;
+    private static final int PAGE_SETTING = 4;
     private static final int PAGE_LOG = 5;
 
     private DefaultNavigationBar mTitle;
@@ -74,7 +62,6 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     private String mDeviceName;
 
     private final Handler mTimeHandler = new Handler();
-    private final Recorder messageNewRecorder = new Recorder();
 
     // ----------------- Lifecycle -----------------
     @Override
@@ -182,7 +169,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         viewPagerManage.addFragment(new FragmentMessageNew());
         viewPagerManage.addFragment(new FragmentCustom());
         viewPagerManage.addFragment(new FragmentIonAnalysis());
-        viewPagerManage.addFragment(new FragmentThree());
+        viewPagerManage.addFragment(new FragmentSetting());
 
         if (showLogPage) {
             viewPagerManage.addFragment(new FragmentLog());
@@ -203,38 +190,23 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 viewBinding.tabMessageNew,
                 viewBinding.tabCustom,
                 viewBinding.tabIonAnalysis,
+                viewBinding.tabSetting,
                 viewBinding.tabLog
         );
     }
 
     private void initSubscription() {
-        subscription(
-                StaticConstants.CMD_SEND_BT_DATA,
-                StaticConstants.CMD_MSG_NEW_CONTROL,
-                StaticConstants.EV_REC_SAMPLE
-        );
+        subscription(StaticConstants.CMD_SEND_BT_DATA);
     }
 
 
     // ----------------- Fragment Commands -----------------
     @Override
     protected void update(@NonNull String sign, Object data) {
-        switch (sign) {
-            case StaticConstants.CMD_SEND_BT_DATA:
-                onSendBtDataCommand(data);
-                break;
-
-            case StaticConstants.CMD_MSG_NEW_CONTROL:
-                onMessageNewControlCommand(data);
-                break;
-
-            case StaticConstants.EV_REC_SAMPLE:
-                onMessageNewSampleEvent(data);
-                break;
-
-            default:
-                logWarn("Unknown activity command: " + sign);
-                break;
+        if (sign.equals(StaticConstants.CMD_SEND_BT_DATA)) {
+            onSendBtDataCommand(data);
+        } else {
+            logWarn("Unknown activity command: " + sign);
         }
     }
 
@@ -259,33 +231,10 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
     }
 
-    private void onMessageNewControlCommand(Object data) {
-        String cmd = data != null ? data.toString() : "";
-        logWarn("MessageNew control: " + cmd);
-
-        switch (cmd) {
-            case MessageNewCmd.START_RECORD:
-                messageNewRecorder.start();
-                return;
-            case MessageNewCmd.STOP_RECORD:
-                messageNewRecorder.stop();
-                return;
-            case MessageNewCmd.EXPORT:
-                messageNewRecorder.export();
-                break;
-        }
-
-    }
-
-    private void onMessageNewSampleEvent(Object data) {
-        messageNewRecorder.appendSample(data);
-    }
-
-
     // ----------------- Page Navigation -----------------
     @Override
     public void onClickView(View view) {
-        sendDataToFragment(StaticConstants.CH_FRAGMENT_HIDE, null);
+        publishFragmentHide();
 
         if (isCheck(viewBinding.tabMessage)) {
             showPage(PAGE_MESSAGE);
@@ -293,9 +242,11 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             showPage(PAGE_MESSAGE_NEW);
         } else if (isCheck(viewBinding.tabCustom)) {
             showPage(PAGE_CUSTOM);
-            sendDataToFragment(StaticConstants.CH_FRAGMENT_UNHIDE, null);
+            publishFragmentUnhide();
         } else if (isCheck(viewBinding.tabIonAnalysis)) {
             showPage(PAGE_ION_ANALYSIS);
+        } else if (isCheck(viewBinding.tabSetting)) {
+            showPage(PAGE_SETTING);
         } else if (isCheck(viewBinding.tabLog) && showLogPage) {
             showPage(PAGE_LOG);
         }
@@ -328,6 +279,10 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 mUnderlineTV = viewBinding.tabIonAnalysis.setState(true);
                 break;
 
+            case PAGE_SETTING:
+                mUnderlineTV = viewBinding.tabSetting.setState(true);
+                break;
+
             case PAGE_LOG:
                 if (showLogPage) {
                     mUnderlineTV = viewBinding.tabLog.setState(true);
@@ -350,10 +305,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void onBluetoothReading(boolean isStart) {
-        sendDataToFragment(
-                isStart ? StaticConstants.FRAGMENT_STATE_1 : StaticConstants.FRAGMENT_STATE_2,
-                null
-        );
+        publishSpeedVisible(isStart);
     }
 
     private void onBluetoothConnected() {
@@ -394,7 +346,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void onBluetoothReadNumber(int number) {
-        sendDataToFragment(StaticConstants.FRAGMENT_STATE_NUMBER, number);
+        publishSentBytes(number);
     }
 
     private void onBluetoothLog(String className, String data, String lv) {
@@ -402,7 +354,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void onBluetoothVelocity(int velocity) {
-        sendDataToFragment(StaticConstants.FRAGMENT_STATE_SERVICE_VELOCITY, velocity);
+        publishVelocity(velocity);
     }
 
     private void onBluetoothMtuChanged(int mtu) {
@@ -454,8 +406,28 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, state);
     }
 
+    private void publishSpeedVisible(boolean visible) {
+        sendDataToFragment(StaticConstants.CH_SET_SPEED_VISIBLE, visible);
+    }
+
+    private void publishVelocity(int velocity) {
+        sendDataToFragment(StaticConstants.CH_VELOCITY, velocity);
+    }
+
+    private void publishSentBytes(int number) {
+        sendDataToFragment(StaticConstants.CH_SENT_BYTES, number);
+    }
+
     private void publishStopLoopSend() {
         sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
+    }
+
+    private void publishFragmentHide() {
+        sendDataToFragment(StaticConstants.CH_FRAGMENT_HIDE, null);
+    }
+
+    private void publishFragmentUnhide() {
+        sendDataToFragment(StaticConstants.CH_FRAGMENT_UNHIDE, null);
     }
 
 
@@ -634,106 +606,6 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             TextView textView = view.findViewById(R.id.guide_page_text);
             if (textView != null) textView.setText(data);
         })).show();
-    }
-
-    // ----------------- Recorder -----------------
-    private class Recorder {
-        private final ExecutorService io = Executors.newSingleThreadExecutor();
-
-        private volatile boolean recording = false;
-        private volatile File recordFile = null;
-        private int sampleCount = 0;
-
-        void start() {
-            recordFile = createRecordFile();
-            recording = true;
-            sampleCount = 0;
-
-            notifyRecordStateChanged(true);
-
-            toastShortAlive("MessageNew record: ON");
-            logWarn("Recorder file: " + getRecordPath());
-        }
-
-        void stop() {
-            recording = false;
-
-            notifyRecordStateChanged(false);
-
-            toastShortAlive("MessageNew record: OFF");
-            logWarn("Recorder samples: " + sampleCount);
-        }
-
-        void export() {
-            String path = getRecordPath();
-
-            notifyRecordExported(path);
-
-            toastShortAlive(path.isEmpty() ? "No record file yet" : ("Export: " + path));
-            logWarn("Recorder export path: " + path);
-        }
-
-        void appendSample(Object data) {
-            if (!canAppendSample(data)) return;
-
-            String jsonLine = data.toString();
-            sampleCount++;
-
-            logSampleProgress();
-
-            File file = recordFile;
-            io.execute(() -> appendUtf8Line(file, jsonLine));
-        }
-
-        private boolean canAppendSample(Object data) {
-            if (!recording) return false;
-            if (recordFile == null) return false;
-            if (data == null) return false;
-
-            return !data.toString().trim().isEmpty();
-        }
-
-        private void logSampleProgress() {
-            if (sampleCount == 1 || sampleCount % 50 == 0) {
-                logWarn("MessageNew sample count: " + sampleCount);
-            }
-        }
-
-        private String getRecordPath() {
-            return recordFile != null ? recordFile.getAbsolutePath() : "";
-        }
-
-        private void notifyRecordStateChanged(boolean recording) {
-            sendDataToFragment(StaticConstants.CH_REC_STATE, recording);
-        }
-
-        private void notifyRecordExported(String path) {
-            sendDataToFragment(StaticConstants.CH_REC_EXPORT_RESULT, path);
-        }
-
-        @NonNull
-        private File createRecordFile() {
-            File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-            if (dir == null) dir = getExternalFilesDir(null);
-            if (dir == null) dir = getFilesDir();
-
-            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            File file = new File(dir, "message_new_" + ts + ".jsonl");
-
-            File parent = file.getParentFile();
-            if (parent != null && !parent.exists()) parent.mkdirs();
-            return file;
-        }
-
-        private void appendUtf8Line(File file, String line) {
-            try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))) {
-                w.write(line);
-                w.newLine();
-            } catch (Exception e) {
-                logError("MessageNew write failed: " + e.getMessage());
-            }
-
-        }
     }
 
 }
