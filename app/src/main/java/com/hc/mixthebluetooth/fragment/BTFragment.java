@@ -10,6 +10,7 @@ import com.hc.basiclibrary.viewBasic.BaseFragment;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
+import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -32,7 +33,7 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
 
     /**
      * Subclass writes normal init logic here.
-
+     * <p>
      * This replaces BaseFragment.initAll() for BTFragment children.
      */
     protected abstract void initAllImpl(View view, Context context);
@@ -74,6 +75,12 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
                 onRecExportResult(data != null ? data.toString() : null);
                 break;
 
+            case StaticConstants.CH_LOG_MESSAGE:
+                if (data instanceof FragmentLogItem) {
+                    onLogMessage((FragmentLogItem) data);
+                }
+                break;
+
             default:
                 updateStateImpl(sign, data);
                 break;
@@ -113,6 +120,15 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
     }
 
     protected void onRecExportResult(@Nullable String path) {
+    }
+
+    protected void onLogMessage(FragmentLogItem item) {
+    }
+
+    protected void onConnectStateChanged(String state) {
+    }
+
+    protected void onFragmentVisibilityChanged(boolean visible) {
     }
 
     /**

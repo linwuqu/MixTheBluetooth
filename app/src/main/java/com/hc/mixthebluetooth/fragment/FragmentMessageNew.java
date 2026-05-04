@@ -32,7 +32,6 @@ public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
     private static final String CHART_US = "us";
     private static final int MAX_POINTS = 500;
 
-
     @Override
     protected void initChannels() {
         register(StaticConstants.CH_BT_DATA, StaticConstants.CH_REC_STATE, StaticConstants.CH_REC_EXPORT_RESULT);

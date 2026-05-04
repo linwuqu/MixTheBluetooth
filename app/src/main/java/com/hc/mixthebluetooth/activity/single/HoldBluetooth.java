@@ -29,7 +29,7 @@ public class HoldBluetooth {
 
     private OnReadDataListener mDataListener;
 
-    private boolean isDevelopmentMode = false;//默认为false 控制是否打开日志
+    private boolean isDevelopmentMode = true;//默认为false 控制是否打开日志
 
     public void initHoldBluetooth(final Context context, final UpdateList updateList){
 

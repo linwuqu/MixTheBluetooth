@@ -177,5 +177,8 @@
     <string name="eis_impedance_title">电化学交流阻抗（EIS） (nF)</string>
     <string name="unit_pf">nF</string>
     <string name="new_message">新消息页</string>
+    <string name="start_record">开始记录</string>
+    <string name="stop_record">结束记录</string>
+    <string name="export">导出</string>
 
 </resources>

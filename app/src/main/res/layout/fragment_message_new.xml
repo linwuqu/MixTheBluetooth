@@ -20,21 +20,21 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Start Record" />
+            android:text="@string/start_record" />
 
         <Button
             android:id="@+id/btnStopRecord"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Stop Record" />
+            android:text="@string/stop_record" />
 
         <Button
             android:id="@+id/btnExport"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Export" />
+            android:text="@string/export" />
     </LinearLayout>
 
     <TextView

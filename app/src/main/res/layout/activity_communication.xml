@@ -22,9 +22,9 @@
             android:paddingBottom="10dp"
             android:orientation="horizontal">
             <com.hc.mixthebluetooth.customView.UnderlineTextView
-                android:id="@+id/one"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
+                android:id="@+id/tab_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:padding="5dp"
                 android:layout_marginRight="5dp"
                 android:layout_marginLeft="5dp"
@@ -34,9 +34,9 @@
                 app:UTextLineColor="@color/skyBlue"
                 android:text="@string/message_fragment"/>
             <com.hc.mixthebluetooth.customView.UnderlineTextView
-                android:id="@+id/two"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
+                android:id="@+id/tab_message_new"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:padding="5dp"
                 android:layout_marginRight="5dp"
                 android:layout_marginLeft="5dp"
@@ -44,11 +44,11 @@
                 app:UTextWidth="3dp"
                 app:UTextOriginalColor="@color/menuBack"
                 app:UTextLineColor="@color/skyBlue"
-                android:text=""/>
+                android:text="@string/new_message"/>
             <com.hc.mixthebluetooth.customView.UnderlineTextView
-                android:id="@+id/three"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
+                android:id="@+id/tab_custom"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:padding="5dp"
                 android:layout_marginRight="5dp"
                 android:layout_marginLeft="5dp"
@@ -56,12 +56,12 @@
                 app:UTextWidth="3dp"
                 app:UTextOriginalColor="@color/menuBack"
                 app:UTextLineColor="@color/skyBlue"
-                android:text=""/>
+                android:text="@string/custom_fragment"/>
                 
             <com.hc.mixthebluetooth.customView.UnderlineTextView
-                android:id="@+id/ion_analysis"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
+                android:id="@+id/tab_ion_analysis"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:padding="5dp"
                 android:layout_marginRight="5dp"
                 android:layout_marginLeft="5dp"
@@ -72,7 +72,7 @@
                 android:text="@string/ion_analysis_fragment"/>
 
             <com.hc.mixthebluetooth.customView.UnderlineTextView
-                android:id="@+id/log"
+                android:id="@+id/tab_log"
                 android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
