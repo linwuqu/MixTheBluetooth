@@ -29,8 +29,8 @@ import com.hc.mixthebluetooth.fragment.FragmentCustom;
 import com.hc.mixthebluetooth.fragment.FragmentIonAnalysis;
 import com.hc.mixthebluetooth.fragment.FragmentLog;
 import com.hc.mixthebluetooth.fragment.FragmentMessage;
-import com.hc.mixthebluetooth.fragment.FragmentMessageNew;
 import com.hc.mixthebluetooth.fragment.FragmentSetting;
+import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 
@@ -166,7 +166,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
         viewPagerManage = new ViewPagerManage(viewBinding.communicationFragment);
         viewPagerManage.addFragment(new FragmentMessage());
-        viewPagerManage.addFragment(new FragmentMessageNew());
+        viewPagerManage.addFragment(new UnifiedMessageFragment());
         viewPagerManage.addFragment(new FragmentCustom());
         viewPagerManage.addFragment(new FragmentIonAnalysis());
         viewPagerManage.addFragment(new FragmentSetting());
