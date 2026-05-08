@@ -1,44 +1,44 @@
 package com.hc.mixthebluetooth.fragment;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
 import android.view.View;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
+import com.hc.mixthebluetooth.activity.single.FragmentParameter;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
-import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSample;
-import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSampleRegistry;
-import com.hc.mixthebluetooth.activity.tool.chart.ChartRegistry;
-import com.hc.mixthebluetooth.schema.eis.EisJsonLineBuilder;
-import com.hc.mixthebluetooth.schema.eis.EisParser;
-import com.hc.mixthebluetooth.schema.eis.EisSample;
-import com.hc.mixthebluetooth.activity.tool.message.MessageListController;
-import com.hc.mixthebluetooth.activity.tool.message.MessagePipelineController;
-import com.hc.mixthebluetooth.activity.tool.chart.RealtimeLineChart;
-import com.hc.mixthebluetooth.activity.tool.chart.SampleChartBinder;
-import com.hc.mixthebluetooth.activity.tool.sample.SampleRecorder;
+import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
+import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
+import com.hc.mixthebluetooth.activity.tool.DeviceProfile;
+import com.hc.mixthebluetooth.activity.tool.EisProfileNew;
+import com.hc.mixthebluetooth.activity.tool.SampleConsumer;
+import com.hc.mixthebluetooth.activity.tool.SampleRecorder;
+import com.hc.mixthebluetooth.activity.tool.SampleRecorderImpl;
 import com.hc.mixthebluetooth.databinding.FragmentMessageNewBinding;
+import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
+import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
 
-    private static final String CHART_OHM = "ohm";
-    private static final String CHART_US = "us";
-    private static final int MAX_POINTS = 500;
+    private final HashMap<Integer, Runnable> controls = new HashMap<>();
+    private final HashMap<String, com.hc.mixthebluetooth.activity.tool.chart.RealtimeLineChart> charts = new HashMap<>();
+    private final ArrayList<BluetoothSampleParser> parsers = new ArrayList<>();
+    private final ArrayList<SampleConsumer> consumers = new ArrayList<>();
+    private final ArrayList<FragmentMessageItem> messageList = new ArrayList<>();
 
-    private MessageListController messageList;
-    private MessagePipelineController messagePipeline;
-    private SampleRecorder sampleRecorder;
-    private DeviceModule module;
-
-    private final ChartRegistry chartRegistry = new ChartRegistry();
-    private final BluetoothSampleRegistry sampleRegistry = new BluetoothSampleRegistry()
-            .register(new EisParser());
-    private SampleChartBinder chartBinder;
+    private FragmentMessAdapter adapter;
+    private SampleRecorder recorder;
+    private DeviceProfile<FragmentMessageNewBinding> profile;
 
     @Override
     protected void initChannels() {
@@ -47,181 +47,75 @@ public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
 
     @Override
     protected void initAllImpl(View view, Context context) {
-        initRecycler();
-        initCharts();
-        initRecorder();
-        initPipeline();
-        initControls();
+        profile = new EisProfileNew();
+        profile.registerCharts(viewBinding, charts);
+        parsers.addAll(profile.parsers());
+        recorder = new SampleRecorderImpl();
+        consumers.addAll(profile.consumers(viewBinding, recorder));
+
+        adapter = new FragmentMessAdapter(requireContext(), messageList, R.layout.item_message_fragment);
+        viewBinding.recyclerMessageNew.setLayoutManager(new LinearLayoutManager(requireContext()));
+        viewBinding.recyclerMessageNew.setAdapter(adapter);
+
+        profile.registerControls(viewBinding, controls);
+        controls.put(viewBinding.btnStartRecord.getId(), this::startRecording);
+        controls.put(viewBinding.btnStopRecord.getId(), this::stopRecording);
+        controls.put(viewBinding.btnExport.getId(), this::exportRecording);
+        bindOnClickListener(viewBinding.btnStartRecord, viewBinding.btnStopRecord, viewBinding.btnExport);
+
         setBottomInfo("Ready");
     }
 
-    private void initRecycler() {
-        messageList = new MessageListController(
-                requireContext(),
-                viewBinding.recyclerMessageNew,
-                R.layout.item_message_fragment
-        );
-    }
-
-    private void initControls() {
-        bindOnClickListener(viewBinding.btnStartRecord, viewBinding.btnStopRecord, viewBinding.btnExport);
-    }
-
-    private void initCharts() {
-        chartRegistry
-                .register(
-                        CHART_OHM,
-                        viewBinding.chartOhm,
-                        new RealtimeLineChart.Config.Builder()
-                                .label("阻抗 (Ω)")
-                                .color(Color.RED)
-                                .maxPoints(MAX_POINTS)
-                                .visibleWindowSeconds(60f)
-                                .build()
-                )
-                .register(
-                        CHART_US,
-                        viewBinding.chartUs,
-                        new RealtimeLineChart.Config.Builder()
-                                .label("电导 (uS)")
-                                .color(Color.BLUE)
-                                .maxPoints(MAX_POINTS)
-                                .visibleWindowSeconds(60f)
-                                .build()
-                );
-
-        chartBinder = new SampleChartBinder(chartRegistry)
-                .bind(EisSample.METRIC_OHM, CHART_OHM)
-                .bind(EisSample.METRIC_US, CHART_US);
-    }
-
-    private void initRecorder() {
-        sampleRecorder = new SampleRecorder(new SampleRecorder.Callback() {
-            @Override
-            public void onRecordStateChanged(boolean recording) {
-                updateRecordStateView(recording);
-                logWarn("MessageNew record state: " + (recording ? "ON" : "OFF"));
-            }
-
-            @Override
-            public void onRecordExported(@NonNull String path) {
-                showExportResult(path);
-            }
-
-            @Override
-            public void onRecordError(@NonNull String message) {
-                logError(message);
-                setBottomInfo(message);
-            }
-        });
-    }
-
-    private void initPipeline() {
-        messagePipeline = new MessagePipelineController(
-                requireContext(),
-                messageList,
-                sampleRegistry,
-                this::consumeSampleWhenRecording,
-                this::logWarn
-        );
-    }
-
-    // ------------------- 临时工具 -------------------
-    private void updateCurrentModule(DeviceModule module) {
-        this.module = module;
-    }
-
-    private void recordSample(BluetoothSample sample) {
-        if (sampleRecorder == null || !sampleRecorder.isRecording()) return;
-
-        if (!(sample instanceof EisSample)) {
-            logWarn("MessageNew skip record, unsupported sample type: " + sample.type());
-            return;
-        }
-
-        sampleRecorder.appendLine(EisJsonLineBuilder.build(module, (EisSample) sample));
-    }
-
-    private void updateRecordStateView(boolean recording) {
-        viewBinding.tvRecordState.setText(recording ? "Record: ON" : "Record: OFF");
-        setBottomInfo(recording ? "Recording started" : "Recording stopped");
-    }
-
+    @SuppressLint("SetTextI18n")
     private void startRecording() {
-        resetChartsForNewSession();
-        sampleRecorder.start(requireContext(), "message_new");
-        toastShort("MessageNew record: ON");
+        for (com.hc.mixthebluetooth.activity.tool.chart.RealtimeLineChart c : charts.values())
+            c.reset();
+        recorder.start(requireContext(), "message_new");
+        viewBinding.tvRecordState.setText("Record: ON");
+        setBottomInfo("Recording started");
     }
 
+    @SuppressLint("SetTextI18n")
     private void stopRecording() {
-        sampleRecorder.stop();
-        toastShort("MessageNew record: OFF");
-        logWarn("MessageNew samples: " + sampleRecorder.getSampleCount());
+        recorder.stop();
+        viewBinding.tvRecordState.setText("Record: OFF");
+        setBottomInfo("Samples: " + recorder.getSampleCount());
     }
 
     private void exportRecording() {
-        sampleRecorder.exportPath();
+        String path = recorder.exportPath();
+        toastShort(path.isEmpty() ? "Export: (empty)" : "Export: " + path);
+        setBottomInfo(path);
     }
 
-    private void showExportResult(@Nullable String path) {
-        String msg = path == null || path.isEmpty() ? "Export: (empty)" : ("Export: " + path);
-        toastShort(msg);
-        logWarn("MessageNew export result: " + path);
-        setBottomInfo(msg);
-    }
-
-    private void consumeSampleWhenRecording(BluetoothSample sample) {
-        if (sampleRecorder == null || !sampleRecorder.isRecording()) {
-            logWarn("MessageNew sample ignored because recording is OFF: " + sample.raw());
-            return;
-        }
-        appendSampleToChart(sample);
-        recordSample(sample);
-    }
-
-    private void appendSampleToChart(BluetoothSample sample) {
-        if (chartBinder == null) return;
-        chartBinder.append(sample);
-    }
-
-
-    // ------------------- 回调实现 -------------------
     @Override
     protected void onBtConnected(DeviceModule m) {
-        updateCurrentModule(m);
-        logWarn("MessageNew got module: " + m.getName() + " / " + m.getMac());
     }
 
     @Override
     protected void onBtData(BTPackage.BTData data) {
-        updateCurrentModule(data.module);
+        String text = decode(data.bytes, FragmentParameter.getInstance().getCodeFormat(requireContext()));
+        if (text == null || text.isEmpty()) return;
 
-        if (messagePipeline != null) {
-            messagePipeline.onBtData(data.module, data.bytes);
+        messageList.add(new FragmentMessageItem(text, Analysis.getTime(), false, data.module, false));
+        adapter.notifyItemInserted(messageList.size() - 1);
+        viewBinding.recyclerMessageNew.smoothScrollToPosition(messageList.size() - 1);
+
+        BluetoothSample sample = null;
+        for (BluetoothSampleParser p : parsers) {
+            sample = p.parse(text);
+            if (sample != null) break;
+        }
+
+        if (sample != null) {
+            for (SampleConsumer c : consumers) c.consume(sample);
         }
     }
 
     @Override
     protected void onClickView(View v) {
-        if (isCheck(viewBinding.btnStartRecord)) {
-            logWarn("MessageNew click: START");
-            setBottomInfo("Start clicked");
-            startRecording();
-            return;
-        }
-
-        if (isCheck(viewBinding.btnStopRecord)) {
-            logWarn("MessageNew click: STOP");
-            setBottomInfo("Stop clicked");
-            stopRecording();
-            return;
-        }
-
-        if (isCheck(viewBinding.btnExport)) {
-            logWarn("MessageNew click: EXPORT");
-            setBottomInfo("Export clicked");
-            exportRecording();
-        }
+        Runnable r = controls.get(v.getId());
+        if (r != null) r.run();
     }
 
     @Override
@@ -229,21 +123,22 @@ public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
         return FragmentMessageNewBinding.inflate(getLayoutInflater());
     }
 
-    private void resetChartsForNewSession() {
-        chartRegistry.resetAll();
-        logWarn("MessageNew charts reset");
+    private void setBottomInfo(@Nullable String text) {
+        if (viewBinding != null) viewBinding.tvBottomInfo.setText(text == null ? "" : text);
     }
 
-    private void setBottomInfo(String text) {
-        if (viewBinding == null) return;
-        viewBinding.tvBottomInfo.setText(text == null ? "" : text);
+    @Nullable
+    private String decode(@Nullable byte[] bytes, @Nullable String code) {
+        if (bytes == null || bytes.length == 0) return null;
+        String text = Analysis.getByteToString(bytes.clone(), code != null ? code : "UTF-8", false, false);
+        if (text == null) return null;
+        text = text.replace("\u0000", "").trim();
+        return text.isEmpty() ? null : text;
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (sampleRecorder != null) {
-            sampleRecorder.release();
-        }
+        if (recorder != null) recorder.release();
     }
 }

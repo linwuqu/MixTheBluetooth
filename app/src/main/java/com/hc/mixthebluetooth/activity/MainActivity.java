@@ -203,19 +203,27 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     //设置点击事件
     private void setRecyclerListener() {
         mainRecyclerAdapter.setOnItemClickListener((position, view) -> {
-            log("viewId:"+view.getId()+" item_main_icon:"+R.id.item_main_icon);
+            log("选蓝牙-点击位置: " + position);
             if (view.getId() == R.id.item_main_icon){
+                log("选蓝牙-点击收藏图标");
                 setCollectWindow(position);//收藏窗口
             }else {
-                if (mFilterModuleArray.get(position).getIBeacon() != null){
+                DeviceModule module = mFilterModuleArray.get(position);
+                log("选蓝牙-准备连接设备: " + module.getName() + ", mac: " + module.getMac() + ", isBLE: " + module.isBLE());
+                if (module.getIBeacon() != null){
+                    log("选蓝牙-设备iBeacon不为空，直接返回");
                     toastShort("此设备目前状态不可连接");
                     return;
                 }
+                log("选蓝牙-调用setDevelopmentMode");
                 mHoldBluetooth.setDevelopmentMode(MainActivity.this);//设置是否进入开发模式
-                mHoldBluetooth.connect(mFilterModuleArray.get(position));
+                log("选蓝牙-调用connect");
+                mHoldBluetooth.connect(module);
+                log("选蓝牙-准备跳转CommunicationActivity");
                 Intent intent = new Intent(MainActivity.this, CommunicationActivity.class);
-                intent.putExtra("device_name", mFilterModuleArray.get(position).getName());
+                intent.putExtra("device_name", module.getName());
                 startActivity(intent);
+                log("选蓝牙-跳转完成");
             }
         });
     }
