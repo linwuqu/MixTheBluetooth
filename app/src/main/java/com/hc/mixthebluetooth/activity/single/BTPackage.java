@@ -5,7 +5,7 @@ import androidx.annotation.NonNull;
 import com.hc.bluetoothlibrary.DeviceModule;
 
 /**
- * Typed payloads sent through {@link StaticConstants#CH_BT_DATA}.
+ * Typed payloads sent through Bluetooth event channels.
  * <p>
  * Old code used one channel with several unrelated payload shapes:
  * DeviceModule, Object[]{DeviceModule, byte[]}, Integer, and log objects.
@@ -59,6 +59,43 @@ public abstract class BTPackage {
 
         public Log(@NonNull String message) {
             this.message = message;
+        }
+    }
+
+    public static final class BTPost extends BTPackage {
+        @NonNull
+        public final DeviceModule module;
+
+        @NonNull
+        public final byte[] bytes;
+
+        public BTPost(@NonNull DeviceModule module, @NonNull byte[] bytes) {
+            this.module = module;
+            this.bytes = bytes;
+        }
+    }
+
+    public static final class ConnectState extends BTPackage {
+        @NonNull
+        public final String state;
+
+        public ConnectState(@NonNull String state) {
+            this.state = state;
+        }
+    }
+
+    public static final class SentBytes extends BTPackage {
+        public final int count;
+
+        public SentBytes(int count) {
+            this.count = count;
+        }
+    }
+
+    public static final class StopLoopSend extends BTPackage {
+        public static final StopLoopSend INSTANCE = new StopLoopSend();
+
+        private StopLoopSend() {
         }
     }
 }

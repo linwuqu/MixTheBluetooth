@@ -17,7 +17,13 @@ public final class StaticConstants {
     private StaticConstants() {
     }
 
-    // Activity -> Fragment: Bluetooth data and device state.
+    // Unified Message: Fragment/Controller -> Activity.
+    public static final String CMD_BT_POST = "CMD_BT_POST";
+
+    // Unified Message: Activity -> Fragment/Controller.
+    public static final String CH_BT_EVENT = "CH_BT_EVENT";
+
+    // Legacy Activity -> Fragment channels. New UnifiedMessage code should use CH_BT_EVENT.
     public static final String CH_BT_DATA = "CH_BT_DATA";
 
     // Activity -> Fragment: recording state and export result.
@@ -41,7 +47,7 @@ public final class StaticConstants {
     // Cross-fragment event currently used by FragmentCustom and its children.
     public static final String EV_CUSTOM_NEWLINE = "EV_CUSTOM_NEWLINE";
 
-    // Fragment -> Activity commands.
+    // Legacy Fragment -> Activity command. New UnifiedMessage code should use CMD_BT_POST.
     public static final String CMD_SEND_BT_DATA = "CMD_SEND_BT_DATA";
     public static final String CMD_MSG_NEW_CONTROL = "CMD_MSG_NEW_CONTROL";
     public static final String CMD_MSG_NEW_START_RECORD = "CMD_MSG_NEW_START_RECORD";
