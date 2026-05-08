@@ -17,17 +17,26 @@ import java.util.List;
 
 public class MessageListController {
 
-    private final Context context;
     private final RecyclerView recyclerView;
-    private final List<FragmentMessageItem> dataList = new ArrayList<>();
+    private final List<FragmentMessageItem> dataList;
     private final FragmentMessAdapter adapter;
 
     public MessageListController(@NonNull Context context, @NonNull RecyclerView recyclerView, int itemLayout) {
-        this.context = context;
+        this(context, recyclerView, itemLayout, new ArrayList<>(), new LinearLayoutManager(context));
+    }
+
+    public MessageListController(
+            @NonNull Context context,
+            @NonNull RecyclerView recyclerView,
+            int itemLayout,
+            @NonNull List<FragmentMessageItem> dataList,
+            @NonNull RecyclerView.LayoutManager layoutManager
+    ) {
         this.recyclerView = recyclerView;
+        this.dataList = dataList;
         this.adapter = new FragmentMessAdapter(context, dataList, itemLayout);
 
-        recyclerView.setLayoutManager(new LinearLayoutManager(context));
+        recyclerView.setLayoutManager(layoutManager);
         recyclerView.setAdapter(adapter);
     }
 
@@ -40,6 +49,38 @@ public class MessageListController {
     public void addOutgoingText(@NonNull String text, @Nullable DeviceModule module) {
         dataList.add(MessageItemTools.outgoingText(text, null, module, true));
         adapter.notifyItemInserted(dataList.size() - 1);
+        scrollToBottom();
+    }
+
+    public void appendIncomingText(
+            @NonNull String text,
+            boolean endsWithLineBreak,
+            @Nullable String time,
+            @Nullable DeviceModule module,
+            boolean showData
+    ) {
+        MessageItemTools.appendIncoming(dataList, text, endsWithLineBreak, time, module, showData);
+    }
+
+    public void appendOrMergeIncomingText(
+            @NonNull String text,
+            boolean endsWithLineBreak,
+            @Nullable String time,
+            @Nullable DeviceModule module,
+            boolean showData
+    ) {
+        MessageItemTools.appendOrMergeIncoming(dataList, text, endsWithLineBreak, time, module, showData);
+    }
+
+    public void addOutgoingItem(@NonNull FragmentMessageItem item) {
+        dataList.add(item);
+        adapter.notifyItemInserted(dataList.size() - 1);
+        scrollToBottom();
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    public void notifyDataSetChangedAndScrollToBottom() {
+        adapter.notifyDataSetChanged();
         scrollToBottom();
     }
 

@@ -4,7 +4,7 @@
 
 **Goal:** Make the Bluetooth page and fragment code easier to read by extracting stable reusable pieces while keeping the current new event-channel flow as the only target path.
 
-**Architecture:** Keep `CommunicationActivity` as the screen shell, keep `BTFragment` as the fragment event router, and move reusable parsing/list/chart/command behavior into small tool classes. Refactor one behavior boundary at a time and compile after each task so the app never drifts far from a runnable state.
+**Architecture:** Keep `CommunicationActivity` as the screen shell and keep `BTFragment` as the fragment event router. Reusable tool behavior is split by responsibility: chart tools, message pipeline tools, sample tools, and device/protocol schemas. Refactor one behavior boundary at a time and compile after each task so the app never drifts far from a runnable state.
 
 **Tech Stack:** Android Java, ViewBinding, existing event bus from `BaseActivity`/`BaseFragment`, MPAndroidChart, Gradle 6.5 with JDK 17.
 
@@ -14,24 +14,44 @@
 
 Current stable pieces:
 
-- `app/src/main/java/com/hc/mixthebluetooth/entity/StaticConstants.java`: channel and command names.
-- `app/src/main/java/com/hc/mixthebluetooth/entity/BTPackage.java`: typed Bluetooth payloads.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/single/StaticConstants.java`: channel and command names.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/single/BTPackage.java`: typed Bluetooth payloads.
 - `app/src/main/java/com/hc/mixthebluetooth/fragment/BTFragment.java`: shared channel subscription and typed callback routing.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothPayloadDecoder.java`: byte-to-text decoding policy.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/MessageItemTools.java`: `FragmentMessageItem` construction and merge rules.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/MessageListController.java`: RecyclerView adapter wrapper for simple message pages.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/LineBuffer.java`: split incomplete Bluetooth text chunks into complete lines.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/EisParser.java`: parse `ohm,uS` sample lines.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/RealtimeLineChart.java`: one real-time chart.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/ChartRegistry.java`: multiple chart registry.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/Analysis.java`: legacy conversion, formatting, and file helpers that still need gradual cleanup.
+
+Chart tools:
+
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/chart/ChartRegistry.java`: multiple chart registry.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/chart/RealtimeLineChart.java`: one real-time chart.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/chart/SampleChartBinder.java`: maps sample metric keys to registered charts.
+
+Message tools:
+
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/message/BluetoothPayloadDecoder.java`: byte-to-text decoding policy.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/message/MessageItemTools.java`: `FragmentMessageItem` construction and merge rules.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/message/MessageListController.java`: RecyclerView adapter wrapper for simple message pages.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/message/MessagePipelineController.java`: text receive pipeline for sample-aware message pages.
+
+Sample tools:
+
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSample.java`: common interface for parsed device samples.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSampleParser.java`: one parser per device/protocol format.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSampleRegistry.java`: ordered parser registry, similar in spirit to `ChartRegistry`.
+- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/SampleRecorder.java`: sample recording and export lifecycle.
+
+Schemas:
+
+- `app/src/main/java/com/hc/mixthebluetooth/schema/eis/EisSample.java`: EIS sample shape.
+- `app/src/main/java/com/hc/mixthebluetooth/schema/eis/EisParser.java`: parse EIS text into `EisSample`.
+- `app/src/main/java/com/hc/mixthebluetooth/schema/eis/EisJsonLineBuilder.java`: export EIS samples as JSONL.
+- `app/src/main/java/com/hc/mixthebluetooth/schema/cgm/`: reserved package for old CGM/CA/EIS/RI protocol extraction after `FragmentMessage` is stabilized.
+
+Removed historical pieces:
+
+- `LineBuffer`: no production usage remains. Reintroduce line buffering only if a concrete Bluetooth packet-splitting bug appears.
 
 Planned new pieces:
 
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/IncomingMessageProcessor.java`: pure helper that decodes incoming bytes and decides whether to append or merge a message item.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSample.java`: common interface for parsed device samples.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSampleParser.java`: one parser per device/protocol format.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSampleRegistry.java`: ordered parser registry, similar in spirit to `ChartRegistry`.
-- `app/src/main/java/com/hc/mixthebluetooth/activity/tool/SampleChartBinder.java`: maps sample metric keys to registered charts.
 - `app/src/main/java/com/hc/mixthebluetooth/activity/communication/FragmentEventPublisher.java`: activity-side wrapper for `sendDataToFragment(...)`.
 - `app/src/main/java/com/hc/mixthebluetooth/activity/communication/CommunicationPages.java`: ViewPager and tab page setup.
 - `app/src/main/java/com/hc/mixthebluetooth/activity/communication/CommunicationPopupMenu.java`: title menu actions.
@@ -86,7 +106,7 @@ Manual app check:
 ## Task 2: Make Incoming Message Processing Reusable
 
 **Files:**
-- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/IncomingMessageProcessor.java`
+- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/message/IncomingMessageProcessor.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentMessage.java`
 
 Reason: `FragmentMessage.addListData(...)` still mixes byte decoding, newline policy, cache playback, measurement parsing, and RecyclerView item mutation. First extract the simplest safe slice: decode plus append/merge decision.
@@ -96,7 +116,7 @@ Reason: `FragmentMessage.addListData(...)` still mixes byte decoding, newline po
 Create:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.message;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -172,12 +192,12 @@ Expected: `BUILD SUCCESSFUL`.
 ## Task 3: Introduce Registered Bluetooth Samples
 
 **Files:**
-- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSample.java`
-- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSampleParser.java`
-- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/BluetoothSampleRegistry.java`
-- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/SampleChartBinder.java`
-- Modify: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/EisSample.java`
-- Modify: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/EisParser.java`
+- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSample.java`
+- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSampleParser.java`
+- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/sample/BluetoothSampleRegistry.java`
+- Create: `app/src/main/java/com/hc/mixthebluetooth/activity/tool/chart/SampleChartBinder.java`
+- Modify: `app/src/main/java/com/hc/mixthebluetooth/schema/eis/EisSample.java`
+- Modify: `app/src/main/java/com/hc/mixthebluetooth/schema/eis/EisParser.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentMessage.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentMessageNew.java`
 
@@ -188,7 +208,7 @@ Reason: `EisSample` should not be the common model for every Bluetooth device. D
 Create:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.sample;
 
 import androidx.annotation.NonNull;
 
@@ -211,7 +231,7 @@ public interface BluetoothSample {
 Create:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.sample;
 
 import androidx.annotation.Nullable;
 
@@ -226,9 +246,11 @@ public interface BluetoothSampleParser {
 Replace `EisSample` with:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.schema.eis;
 
 import androidx.annotation.NonNull;
+
+import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSample;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -306,7 +328,7 @@ Existing code may still call `EisParser.parseLine(line)` during the migration.
 Create:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.sample;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -340,9 +362,11 @@ public final class BluetoothSampleRegistry {
 Create:
 
 ```java
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.activity.tool.chart;
 
 import androidx.annotation.NonNull;
+
+import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSample;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -452,8 +476,8 @@ package com.hc.mixthebluetooth.activity.communication;
 import androidx.annotation.Nullable;
 
 import com.hc.bluetoothlibrary.DeviceModule;
-import com.hc.mixthebluetooth.entity.BTPackage;
-import com.hc.mixthebluetooth.entity.StaticConstants;
+import com.hc.mixthebluetooth.activity.single.BTPackage;
+import com.hc.mixthebluetooth.activity.single.StaticConstants;
 
 public final class FragmentEventPublisher {
 
@@ -541,7 +565,7 @@ public final class CommunicationPages {
     public static final int PAGE_MESSAGE_NEW = 1;
     public static final int PAGE_CUSTOM = 2;
     public static final int PAGE_ION_ANALYSIS = 3;
-    public static final int PAGE_THREE = 4;
+    public static final int PAGE_SETTING = 4;
     public static final int PAGE_LOG = 5;
 }
 ```
@@ -555,7 +579,7 @@ public ViewPagerManage setup(ViewPager viewPager, boolean showLogPage) {
     manage.addFragment(new FragmentMessageNew());
     manage.addFragment(new FragmentCustom());
     manage.addFragment(new FragmentIonAnalysis());
-    manage.addFragment(new FragmentThree());
+    manage.addFragment(new FragmentSetting());
     if (showLogPage) {
         manage.addFragment(new FragmentLog());
     }
@@ -577,7 +601,7 @@ Run:
 $env:JAVA_HOME='E:\AndroidStudio\jbr'; .\gradlew.bat :app:compileDebugJavaWithJavac
 ```
 
-Manual check: Message, New, Custom, Ion Analysis, Three, and Log if visible.
+Manual check: Message, New, Custom, Ion Analysis, Setting, and Log if visible.
 
 ---
 
@@ -633,7 +657,7 @@ Manual check: menu opens, disconnected operations still toast, MTU text still re
 **Files:**
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentCustom.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentIonAnalysis.java`
-- Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentThree.java`
+- Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/FragmentSetting.java`
 
 Reason: after the common tools are stable, migrate page by page. Do not preserve old channel compatibility unless a page still cannot compile without it.
 
@@ -684,7 +708,7 @@ $env:JAVA_HOME='E:\AndroidStudio\jbr'; .\gradlew.bat :app:compileDebugJavaWithJa
 ## Task 8: Remove Dead Compatibility Names
 
 **Files:**
-- Modify: `app/src/main/java/com/hc/mixthebluetooth/entity/StaticConstants.java`
+- Modify: `app/src/main/java/com/hc/mixthebluetooth/activity/single/StaticConstants.java`
 - Search all Java files under: `app/src/main/java`
 
 Reason: after all target fragments use the new channel path, deprecated aliases become noise.

@@ -1,5 +1,7 @@
 # FragmentMessage Pipeline Migration Implementation Plan
 
+> **Superseded:** This plan is no longer the source of truth. It only wrapped legacy behavior behind a boundary, which is too conservative for the approved direction. Use `docs/superpowers/plans/2026-05-04-fragment-message-profile-unification.md` instead.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Refactor `FragmentMessage` so it uses the same readable host shape as `FragmentMessageNew`: list setup, pipeline setup, controls setup, and `onBtData -> pipeline`, while preserving old send, cache, status, and chart behavior.
