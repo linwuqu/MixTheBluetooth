@@ -28,84 +28,112 @@ import com.hc.mixthebluetooth.activity.tool.sample.BluetoothSampleRegistry;
 import com.hc.mixthebluetooth.activity.tool.sample.SampleConsumerRegistry;
 import com.hc.mixthebluetooth.activity.tool.sample.SampleRecorder;
 import com.hc.mixthebluetooth.databinding.FragmentMessageBinding;
-import com.hc.mixthebluetooth.schema.cgm.CgmProfile;
+import com.hc.mixthebluetooth.schema.eis.EisProfile;
 import com.hc.mixthebluetooth.storage.Storage;
 
 /**
  * FragmentMessage — 蓝牙消息界面的主控制器（老板角色）
-
+ * <p>
  * 整体架构（策略模式 + 依赖注入）：
-
- *   FragmentMessage（老板）负责创建所有子模块，并按顺序初始化它们。
- *   具体每个设备（CGM）有哪些按钮、按下去发什么命令、收到数据后怎么展示，
- *   全部由 CgmProfile（设备档案）来描述，FragmentMessage 本身不写设备相关的具体逻辑。
-
+ * <p>
+ * FragmentMessage（老板）负责创建所有子模块，并按顺序初始化它们。
+ * 具体每个设备（CGM）有哪些按钮、按下去发什么命令、收到数据后怎么展示，
+ * 全部由 DeviceProfile（设备档案）来描述，FragmentMessage 本身不写设备相关的具体逻辑。
+ * <p>
  * 初始化顺序（不可随意调换，因为后面依赖前面）：
- *   initRuntime()       — 创建运行时中介（发蓝牙、Toast、日志的统一入口）
- *   initOptions()       — 加载用户的发送设置（HEX/字符串、换行符等）
- *   initProfile()       — 创建 CGM 设备档案，注册解析器
- *   initMessageList()   — 初始化消息列表 RecyclerView
- *   initCharts()        — 初始化实时折线图，注册到图表仓库
- *   initRecorder()      — 初始化录波器（写 JSONL 文件）
- *   initPipeline()      — 初始化数据处理流水线（发送路径 + 接收路径的核心枢纽）
- *   initControls()       — 绑定按钮 → 命令的映射关系
-
+ * initRuntime()       — 创建运行时中介（发蓝牙、Toast、日志的统一入口）
+ * initOptions()       — 加载用户的发送设置（HEX/字符串、换行符等）
+ * initProfile()       — 创建设备档案，注册解析器
+ * initMessageList()   — 初始化消息列表 RecyclerView
+ * initCharts()        — 初始化实时折线图，注册到图表仓库
+ * initRecorder()      — 初始化录波器（写 JSONL 文件）
+ * initPipeline()      — 初始化数据处理流水线（发送路径 + 接收路径的核心枢纽）
+ * initControls()       — 绑定按钮 → 命令的映射关系
+ * <p>
  * 完整数据流：
-
- *   【发送路径】用户点按钮 → ControlRegistry.dispatch() → MessageSender.send() → runtime.sendBtData()
- *              → sendDataToActivity(CMD_SEND_BT_DATA) → Activity 实际发送蓝牙数据
-
- *   【接收路径】蓝牙收到数据 → Activity 发布到 LiveEventBus → FM.onBtData()
- *              → MessagePipelineController.onBtData()
- *              → BluetoothPayloadDecoder 解码 → 文本行
- *              → BluetoothSampleRegistry.parse() → BluetoothSample 对象
- *              → SampleConsumerRegistry.consume() 广播给所有消费者
- *              → 各个 Consumer 分别：更新 UI / 写缓存文件 / 录波 / 推图表
+ * <p>
+ * 【发送路径】用户点按钮 → ControlRegistry.dispatch() → MessageSender.send() → runtime.sendBtData()
+ * → sendDataToActivity(CMD_SEND_BT_DATA) → Activity 实际发送蓝牙数据
+ * <p>
+ * 【接收路径】蓝牙收到数据 → Activity 发布到 LiveEventBus → FM.onBtData()
+ * → MessagePipelineController.onBtData()
+ * → BluetoothPayloadDecoder 解码 → 文本行
+ * → BluetoothSampleRegistry.parse() → BluetoothSample 对象
+ * → SampleConsumerRegistry.consume() 广播给所有消费者
+ * → 各个 Consumer 分别：更新 UI / 写缓存文件 / 录波 / 推图表
  */
 public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
-    /** 收到这么多字节后自动清空消息列表（防止内存泄漏） */
+    /**
+     * 收到这么多字节后自动清空消息列表（防止内存泄漏）
+     */
     private static final int AUTO_CLEAR_READ_BYTES = 400000;
 
     // ── 子模块声明（按初始化顺序排列）───────────────────────────────
 
-    /** 运行时中介：封装 Fragment 的三个基础能力（发蓝牙/Toast/日志），供子模块使用 */
+    /**
+     * 运行时中介：封装 Fragment 的三个基础能力（发蓝牙/Toast/日志），供子模块使用
+     */
     private FragmentRuntime runtime;
 
-    /** 用户设置的发送选项（HEX/字符串、换行、编码格式等） */
+    /**
+     * 用户设置的发送选项（HEX/字符串、换行、编码格式等）
+     */
     private MessageOptions options;
 
-    /** 发送选项的持久化存取器 */
+    /**
+     * 发送选项的持久化存取器
+     */
     private MessageOptionStore optionStore;
 
-    /** 设备档案：描述当前设备（CGM）的解析器、图表、消费者、按钮配置 */
+    /**
+     * 设备档案：描述当前设备（CGM）的解析器、图表、消费者、按钮配置
+     */
     private DeviceProfile<FragmentMessageBinding> profile;
 
-    /** 消息列表：管理 RecyclerView 的数据源，负责追加显示和自动滚动 */
+    /**
+     * 消息列表：管理 RecyclerView 的数据源，负责追加显示和自动滚动
+     */
     private MessageListController messageList;
 
-    /** 图表仓库：管理多个实时折线图，按 key 推送数据或重置 */
+    /**
+     * 图表仓库：管理多个实时折线图，按 key 推送数据或重置
+     */
     private ChartRegistry chartRegistry;
 
-    /** 解析器仓库：按顺序遍历已注册的解析器，第一个能解析的赢 */
+    /**
+     * 解析器仓库：按顺序遍历已注册的解析器，第一个能解析的赢
+     */
     private BluetoothSampleRegistry sampleRegistry;
 
-    /** 消费者仓库（广播模式）：把一个样本分发给所有已注册的消费者 */
+    /**
+     * 消费者仓库（广播模式）：把一个样本分发给所有已注册的消费者
+     */
     private SampleConsumerRegistry sampleConsumers;
 
-    /** 录波器：将血糖样本以 JSONL 格式写入文件，支持开始/停止/导出 */
+    /**
+     * 录波器：将血糖样本以 JSONL 格式写入文件，支持开始/停止/导出
+     */
     private SampleRecorder recorder;
 
-    /** 接收流水线：收到蓝牙字节 → 解码 → 解析 → 广播给消费者 */
+    /**
+     * 接收流水线：收到蓝牙字节 → 解码 → 解析 → 广播给消费者
+     */
     private MessagePipelineController pipeline;
 
-    /** 发送器：接收命令字符串 → 编码 → 包装 → 交给 runtime 发送，并在消息列表显示 */
+    /**
+     * 发送器：接收命令字符串 → 编码 → 包装 → 交给 runtime 发送，并在消息列表显示
+     */
     private MessageSender sender;
 
-    /** 按钮调度器：存储 viewId → ControlAction 的映射，按下按钮时查表执行 */
+    /**
+     * 按钮调度器：存储 viewId → ControlAction 的映射，按下按钮时查表执行
+     */
     private ControlRegistry controls;
 
-    /** 累计收发字节数（显示在界面上） */
+    /**
+     * 累计收发字节数（显示在界面上）
+     */
     private int readBytes;
     private int sentBytes;
 
@@ -143,17 +171,17 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 创建运行时中介 FragmentRuntime。
-
+     * <p>
      * 为什么要单独抽象一个 Runtime？
      * Fragment 有三个基础能力：sendDataToActivity()、toastShort()、logWarn()。
      * 如果直接把 Fragment 引用传给子模块（MessageSender、MessagePipelineController 等），
      * 会导致 Fragment 被长期持有，生命周期复杂，容易内存泄漏。
-
+     * <p>
      * 所以把三个能力"提取"成三个 Lambda，传给 Runtime：
-     *   - commandSink → sendDataToActivity()：发蓝牙数据
-     *   - notifier   → toastShort()：弹 Toast
-     *   - logger     → logWarn()：打日志
-
+     * - commandSink → sendDataToActivity()：发蓝牙数据
+     * - notifier   → toastShort()：弹 Toast
+     * - logger     → logWarn()：打日志
+     * <p>
      * 子模块只持有 Runtime，不知道 Fragment 存在，实现了解耦。
      */
     private void initRuntime(Context context) {
@@ -183,16 +211,16 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 创建 CGM 设备档案，并将解析器注册到 sampleRegistry。
-
+     * <p>
      * 策略模式的体现：
-     *   profile = new CgmProfile()  → 换设备只需要换成对应的 Profile 实现
-     *   其他所有代码（initPipeline、initControls 等）保持不变
-
+     * profile = new CgmProfile()  → 换设备只需要换成对应的 Profile 实现
+     * 其他所有代码（initPipeline、initControls 等）保持不变
+     * <p>
      * registerSamples() 由 Profile 自己调用，把自己特有的解析器注册进去。
      * 这样 Fragment 不需要知道"CGM 用什么解析器"，Profile 自己知道。
      */
     private void initProfile() {
-        profile = new CgmProfile();
+        profile = new EisProfile();
         sampleRegistry = new BluetoothSampleRegistry();
         sampleConsumers = new SampleConsumerRegistry();
         profile.registerSamples(sampleRegistry); // 把 CgmParser 注册进去
@@ -217,15 +245,11 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 初始化实时折线图，注册到图表仓库。
-
-     * 先 new 一个空的 ChartRegistry（此时还没有图表），
-     * 然后调用 profile.registerCharts()，让 CgmProfile 把自己的图表注册进来。
-     * 这样 Fragment 不需要写"CGM 有几个图表、分别绑定什么 metric"，
-     * 由 CgmProfile 来描述，Fragment 只负责"提供一个仓库"给它注册。
-
+     * <p>
+     * 初始化实时折线图，注册到图表仓库。
+     * 然后调用 profile.registerCharts()，让 DeviceProfile 把自己的图表注册进来。
      * 注册结果：
-     *   "cgm_primary"  → 绑定血糖主值（红色折线）
-     *   "cgm_current"  → 绑定实时血糖值（蓝色折线）
+     * EisProfile:  "eis"  → 绑定阻抗值
      */
     private void initCharts() {
         chartRegistry = new ChartRegistry();
@@ -236,15 +260,15 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 初始化录波器。
-
+     * <p>
      * 录波器的作用：将每次收到的血糖样本，以 JSON 行格式写入文件，
      * 方便后期导出和分析（每行一条 JSON，类似日志文件的格式）。
-
+     * <p>
      * 回调说明：
-     *   onRecordStateChanged  → 录波开始/停止时，更新界面文字
-     *   onRecordExported      → 导出完成时，Toast 显示文件路径
-     *   onRecordError         → 写文件出错时，显示错误信息
-
+     * onRecordStateChanged  → 录波开始/停止时，更新界面文字
+     * onRecordExported      → 导出完成时，Toast 显示文件路径
+     * onRecordError         → 写文件出错时，显示错误信息
+     * <p>
      * 录波是在后台线程（单线程 ExecutorService）执行的，不阻塞主线程。
      */
     private void initRecorder() {
@@ -273,15 +297,15 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 初始化接收流水线。
-     *
+     * <p>
      * 这是整个 Fragment 最核心的初始化：把之前创建的所有子模块组装在一起。
-     *
+     * <p>
      * 步骤：
-     *   ① new MessageSender() — sender 依赖 runtime、messageList、options
-     *   ② new ProfileContext() — 把所有基础工具打包成一个上下文
-     *   ③ profile.registerConsumers() — 让 CgmProfile 把所有消费者注册到 sampleConsumers
-     *   ④ new MessagePipelineController() — 把流水线所需的依赖全部注入
-     *
+     * ① new MessageSender() — sender 依赖 runtime、messageList、options
+     * ② new ProfileContext() — 把所有基础工具打包成一个上下文
+     * ③ profile.registerConsumers() — 让 DeviceProfile 把消费者注册进来
+     * ④ new MessagePipelineController() — 把流水线所需的依赖全部注入
+     * <p>
      * 注意：ProfileContext 被创建了两次（initPipeline 和 initControls），
      * 这是因为 initPipeline 需要 sender（所以 sender 要先 new 出来），
      * 而 initControls 也需要 sender，所以两个初始化阶段都要有 context。
@@ -301,9 +325,8 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
                 rolePolicy     // 用户角色策略
         );
 
-        // 让 CgmProfile 把所有消费者注册进来
-        // 注册后 sampleConsumers 包含：5 个消费者（CgmStatusConsumer / CgmCurrentValueConsumer /
-        // CgmFileConsumer / CgmRecorderConsumer / SampleChartBinder）
+        // 让 DeviceProfile 把消费者注册进来
+        // 注册后 sampleConsumers 包含：SampleChartBinder + EisRecorderConsumer
         profile.registerConsumers(sampleConsumers, profileContext);
 
         // 创建流水线核心
@@ -324,25 +347,21 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 初始化按钮调度器，绑定按钮 ID → 命令/动作。
-
+     * <p>
      * 这里有两层绑定：
-
+     * <p>
      * 第一层 — profile.registerControls()：
-     *   由 CgmProfile 描述"CGM 设备有哪几个按钮、按下去发什么命令"。
-     *   CgmProfile 会调用：
-     *     controls.bind(btnStartMeasure, () -> sender.send(CgmCommandSet.startNow()))
-     *     controls.bind(btnReadCache,    () -> sender.send(CgmCommandSet.readCache()))
-     *     controls.bind(btnDeleteCache,  () -> sender.send(CgmCommandSet.deleteCache()))
-     *     controls.bind(btnParams,       () -> CgmParameterDialog.show(...))
-
-     * 第二层 — FM 直接绑定：
-     *   这几个按钮不是 CGM 设备专用的，是所有设备共用的界面按钮（录波、导出等），
-     *   所以直接在 FM 里绑定，不走 Profile。
-     *     btnStartRecord → startRecording()
-     *     btnStopRecord  → stopRecording()
-     *     btnExport      → exportRecording()
-     *     btnOptions     → refreshOptions()
-
+     * 由 DeviceProfile 描述"设备有哪几个按钮、按下去发什么命令"。
+     * EisProfile 暂无专用按钮。
+     * <p>
+     * 第一层 — Profile 注册：
+     * 这几个按钮不是 CGM 设备专用的，是所有设备共用的界面按钮（录波、导出等），
+     * 所以直接在 FM 里绑定，不走 Profile。
+     * btnStartRecord → startRecording()
+     * btnStopRecord  → stopRecording()
+     * btnExport      → exportRecording()
+     * btnOptions     → refreshOptions()
+     * <p>
      * 最终，所有按钮都会通过 bindOnClickListener() 注册到 Android 的点击监听器，
      * 点击时统一走到 onClickView() → controls.dispatch(view) → 找到对应的动作执行。
      */
@@ -358,7 +377,7 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
                 rolePolicy
         );
 
-        // 第一层：让 CgmProfile 绑定 CGM 设备专用的按钮
+        // 第一层：让 DeviceProfile 绑定设备专用的按钮
         profile.registerControls(controls, profileContext);
 
         // 第二层：FM 直接绑定共用的界面按钮（录波、导出、设置）
@@ -439,14 +458,18 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
         runtime.setConnected(true);
     }
 
-    /** 蓝牙断开连接。清除设备模块，sender 将无法发送数据。 */
+    /**
+     * 蓝牙断开连接。清除设备模块，sender 将无法发送数据。
+     */
     @Override
     protected void onBtDisconnected() {
         runtime.setModule(null);
         runtime.setConnected(false);
     }
 
-    /** 连接状态文字变化时（如"已连接"），同步更新 runtime 的连接状态。 */
+    /**
+     * 连接状态文字变化时（如"已连接"），同步更新 runtime 的连接状态。
+     */
     @Override
     protected void onConnectStateChanged(String state) {
         runtime.setConnected("已连接".equals(state));
@@ -454,19 +477,19 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 收到蓝牙数据（核心接收路径入口）。
-     *
+     * <p>
      * 完整链路：
-     *   onBtData(data.module, data.bytes)
-     *     → pipeline.onBtData(module, bytes)            // 交给流水线
-     *         → BluetoothPayloadDecoder.decodeResult()   // 字节 → 文本行
-     *         → messageList.appendIncomingText()        // 消息列表追加显示
-     *         → sampleRegistry.parse(line)              // 文本 → BluetoothSample
-     *         → sampleConsumers.consume(sample)         // 广播给所有消费者
-     *             ├→ CgmStatusConsumer        更新 tvStatus
-     *             ├→ CgmCurrentValueConsumer   更新 tvCurrentValue
-     *             ├→ CgmFileConsumer           缓存数据写文件
-     *             ├→ CgmRecorderConsumer       录波写 JSONL
-     *             └→ SampleChartBinder         指标推图表
+     * onBtData(data.module, data.bytes)
+     * → pipeline.onBtData(module, bytes)            // 交给流水线
+     * → BluetoothPayloadDecoder.decodeResult()   // 字节 → 文本行
+     * → messageList.appendIncomingText()        // 消息列表追加显示
+     * → sampleRegistry.parse(line)              // 文本 → BluetoothSample
+     * → sampleConsumers.consume(sample)         // 广播给所有消费者
+     * ├→ CgmStatusConsumer        更新 tvStatus
+     * ├→ CgmCurrentValueConsumer   更新 tvCurrentValue
+     * ├→ CgmFileConsumer           缓存数据写文件
+     * ├→ CgmRecorderConsumer       录波写 JSONL
+     * └→ SampleChartBinder         指标推图表
      */
     @Override
     protected void onBtData(BTPackage.BTData data) {
@@ -481,14 +504,18 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
         }
     }
 
-    /** 发送字节数变化，更新界面显示。 */
+    /**
+     * 发送字节数变化，更新界面显示。
+     */
     @Override
     protected void onSentBytesChanged(int number) {
         sentBytes += number;
         updateByteCounters();
     }
 
-    /** 收到停止循环发送的命令。 */
+    /**
+     * 收到停止循环发送的命令。
+     */
     @Override
     protected void onStopLoopSend() {
         HoldBluetooth.getInstance().stopSend(runtime.module(), null);
@@ -498,15 +525,15 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     /**
      * 所有按钮的点击统一入口。
-     *
+     * <p>
      * Android 点击事件 → onClickView(view)
-     *   → controls.dispatch(view)：用按钮的 viewId 查 Map，找对应的动作执行
-     *       如果找到（CGM 专用按钮 / 共用界面按钮）：执行绑定的动作，返回 true
-     *       如果没找到：打印警告日志
-     *
+     * → controls.dispatch(view)：用按钮的 viewId 查 Map，找对应的动作执行
+     * 如果找到（CGM 专用按钮 / 共用界面按钮）：执行绑定的动作，返回 true
+     * 如果没找到：打印警告日志
+     * <p>
      * 这样设计的好处：
-     *   新增设备类型时，不需要改动 FM 的 onClickView()，
-     *   只需要在对应 Profile 的 registerControls() 里 bind 即可。
+     * 新增设备类型时，不需要改动 FM 的 onClickView()，
+     * 只需要在对应 Profile 的 registerControls() 里 bind 即可。
      */
     @Override
     protected void onClickView(View view) {
@@ -523,14 +550,18 @@ public class FragmentMessage extends BTFragment<FragmentMessageBinding> {
 
     // ── 辅助方法 ────────────────────────────────────────────────
 
-    /** 在界面底部显示文本信息（如"Ready"、"Options refreshed"）。 */
+    /**
+     * 在界面底部显示文本信息（如"Ready"、"Options refreshed"）。
+     */
     private void setBottomInfo(@Nullable String text) {
         if (viewBinding != null) {
             viewBinding.tvBottomInfo.setText(text == null ? "" : text);
         }
     }
 
-    /** 更新收发字节计数器的显示。 */
+    /**
+     * 更新收发字节计数器的显示。
+     */
     private void updateByteCounters() {
         if (viewBinding != null) {
             viewBinding.tvByteCounters.setText("Read: " + readBytes + " B    Sent: " + sentBytes + " B");

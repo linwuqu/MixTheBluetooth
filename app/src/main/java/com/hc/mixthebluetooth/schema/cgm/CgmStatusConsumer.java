@@ -9,20 +9,22 @@ import com.hc.mixthebluetooth.activity.tool.sample.SampleConsumer;
 
 /**
  * CgmStatusConsumer — CGM 状态显示消费者
- *
+ * <p>
  * 作用：
- *   收到 CgmSample 后，更新界面上的 tvStatus 文本框。
- *   用于显示设备当前的测量状态或事件名称。
- *
+ * 收到 CgmSample 后，更新界面上的 tvStatus 文本框。
+ * 用于显示设备当前的测量状态或事件名称。
+ * <p>
  * 显示规则：
- *   - 有 status 字段（CgmSample.status 非 null、非空）→ 显示 status 文字
- *     例如 RI 命令响应：CgmSample { status="RI:ok" } → tvStatus 显示 "RI:ok"
- *   - 没有 status 字段 → 显示 event 名称
- *     例如 EIS 数据：CgmSample { event="eis" } → tvStatus 显示 "eis"
+ * - 有 status 字段（CgmSample.status 非 null、非空）→ 显示 status 文字
+ * 例如 RI 命令响应：CgmSample { status="RI:ok" } → tvStatus 显示 "RI:ok"
+ * - 没有 status 字段 → 显示 event 名称
+ * 例如 EIS 数据：CgmSample { event="eis" } → tvStatus 显示 "eis"
  */
 public final class CgmStatusConsumer implements SampleConsumer {
 
-    /** 界面上的状态文字 TextView */
+    /**
+     * 界面上的状态文字 TextView
+     */
     private final TextView statusView;
 
     public CgmStatusConsumer(@NonNull TextView statusView) {

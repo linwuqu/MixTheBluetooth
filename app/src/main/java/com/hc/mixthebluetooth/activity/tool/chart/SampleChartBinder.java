@@ -10,46 +10,46 @@ import java.util.Map;
 
 /**
  * SampleChartBinder — 指标到图表的绑定器（也是一个消费者）
- *
+ * <p>
  * 作用：
- *   当流水线广播一个 BluetoothSample 时，SampleChartBinder 负责：
- *     ① 从 sample.metrics() 里取出数值
- *     ② 根据绑定关系，把数值推给对应的图表
- *
- *   例如 CgmProfile 里注册：
- *     new SampleChartBinder(charts, recorder::isRecording)
- *         .bind("primary", "cgm_primary")   // 主血糖值 → 红色图表
- *         .bind("current", "cgm_current")   // 实时血糖值 → 蓝色图表
- *
- *   收到 CgmSample(current, metrics={"primary":99.3, "current":99.3}) 时：
- *     → 取出 metrics.get("primary") = 99.3 → charts.append("cgm_primary", 99.3)
- *     → 取出 metrics.get("current") = 99.3 → charts.append("cgm_current", 99.3)
- *     → 两个图表同时收到数据，更新折线
- *
+ * 当流水线广播一个 BluetoothSample 时，SampleChartBinder 负责：
+ * ① 从 sample.metrics() 里取出数值
+ * ② 根据绑定关系，把数值推给对应的图表
+ * <p>
+ * 例如 CgmProfile 里注册：
+ * new SampleChartBinder(charts, recorder::isRecording)
+ * .bind("primary", "cgm_primary")   // 主血糖值 → 红色图表
+ * .bind("current", "cgm_current")   // 实时血糖值 → 蓝色图表
+ * <p>
+ * 收到 CgmSample(current, metrics={"primary":99.3, "current":99.3}) 时：
+ * → 取出 metrics.get("primary") = 99.3 → charts.append("cgm_primary", 99.3)
+ * → 取出 metrics.get("current") = 99.3 → charts.append("cgm_current", 99.3)
+ * → 两个图表同时收到数据，更新折线
+ * <p>
  * 门控机制（Gate）：
- *   构造函数接受一个 Gate 参数：
- *     new SampleChartBinder(charts, gate)
- *       gate.enabled() == true  → 正常推数据到图表
- *       gate.enabled() == false → 静默忽略，什么都不做
- *
- *   CgmProfile 里传入的是 recorder::isRecording：
- *     → 开始录波后，recorder.isRecording() == true → gate 打开 → 图表更新
- *     → 没有录波时，gate 关闭 → 不推图表（节省资源）
- *
+ * 构造函数接受一个 Gate 参数：
+ * new SampleChartBinder(charts, gate)
+ * gate.enabled() == true  → 正常推数据到图表
+ * gate.enabled() == false → 静默忽略，什么都不做
+ * <p>
+ * CgmProfile 里传入的是 recorder::isRecording：
+ * → 开始录波后，recorder.isRecording() == true → gate 打开 → 图表更新
+ * → 没有录波时，gate 关闭 → 不推图表（节省资源）
+ * <p>
  * 为什么叫 Binder？
- *   因为它是"绑定"关系：metric key（比如 "primary"）和 chart key（比如 "cgm_primary"）
- *   的对应关系是在这里配置的。绑定了之后，数据流就自动从 sample.metrics() 流向对应图表。
- *
+ * 因为它是"绑定"关系：metric key（比如 "primary"）和 chart key（比如 "cgm_primary"）
+ * 的对应关系是在这里配置的。绑定了之后，数据流就自动从 sample.metrics() 流向对应图表。
+ * <p>
  * 为什么它也实现了 SampleConsumer？
- *   因为它需要被 SampleConsumerRegistry 统一管理（register → consume），
- *   这样流水线广播时，它和其他消费者（更新 UI / 写文件）一样被统一调用。
+ * 因为它需要被 SampleConsumerRegistry 统一管理（register → consume），
+ * 这样流水线广播时，它和其他消费者（更新 UI / 写文件）一样被统一调用。
  */
 public final class SampleChartBinder implements SampleConsumer {
 
     /**
      * Gate — 门控接口。
      * 当 gate.enabled() == true 时才推送数据；否则静默忽略。
-     *
+     * <p>
      * 用途：实现"录波时才更新图表"的需求。
      * 如果不用 Gate，那么即使没有在录波，每收到一个数据都会重绘图表，浪费资源。
      */
@@ -57,10 +57,14 @@ public final class SampleChartBinder implements SampleConsumer {
         boolean enabled();
     }
 
-    /** 图表仓库：推送数据时从这里找到对应的图表 */
+    /**
+     * 图表仓库：推送数据时从这里找到对应的图表
+     */
     private final ChartRegistry chartRegistry;
 
-    /** 门控：只有在 gate.enabled() == true 时才推送 */
+    /**
+     * 门控：只有在 gate.enabled() == true 时才推送
+     */
     private final Gate gate;
 
     /**
@@ -80,7 +84,7 @@ public final class SampleChartBinder implements SampleConsumer {
      * 构造：指定门控。
      *
      * @param chartRegistry 图表仓库
-     * @param gate         门控（传入 recorder::isRecording 实现录波门控）
+     * @param gate          门控（传入 recorder::isRecording 实现录波门控）
      */
     public SampleChartBinder(@NonNull ChartRegistry chartRegistry, @NonNull Gate gate) {
         this.chartRegistry = chartRegistry;
@@ -91,7 +95,7 @@ public final class SampleChartBinder implements SampleConsumer {
      * 绑定一个 metric key → chart key 的对应关系。
      *
      * @param metricKey sample.metrics() 里的 key（如 "primary" 或 "current"）
-     * @param chartKey ChartRegistry 里注册的 chart key（如 "cgm_primary"）
+     * @param chartKey  ChartRegistry 里注册的 chart key（如 "cgm_primary"）
      * @return this，支持链式调用
      */
     @NonNull
@@ -112,11 +116,11 @@ public final class SampleChartBinder implements SampleConsumer {
 
     /**
      * 把 sample.metrics() 里的数值推给对应的图表。
-     *
+     * <p>
      * 遍历所有绑定关系：
-     *   ① 从 sample.metrics() 取 metricKey 对应的值
-     *   ② 如果值存在，调用 chartRegistry.append(chartKey, value)
-     *   ③ 图表收到值后，内部计算时间戳，追加数据点，重绘
+     * ① 从 sample.metrics() 取 metricKey 对应的值
+     * ② 如果值存在，调用 chartRegistry.append(chartKey, value)
+     * ③ 图表收到值后，内部计算时间戳，追加数据点，重绘
      */
     public void append(@NonNull BluetoothSample sample) {
         Map<String, Float> metrics = sample.metrics();
