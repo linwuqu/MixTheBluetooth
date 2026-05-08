@@ -11,6 +11,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+/**
+ * @deprecated Layout-specific profiles are replaced by {@link Profiles#eis()}.
+ */
+@Deprecated
 public final class EisProfileNew implements DeviceProfile<FragmentMessageNewBinding> {
     public static final String CHART_EIS_OHM = "ohm";
     public static final String CHART_EIS_US = "us";

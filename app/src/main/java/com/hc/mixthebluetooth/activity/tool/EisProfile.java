@@ -14,6 +14,10 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * @deprecated Use {@link Profiles#eis()} with UnifiedMessageFragment.
+ */
+@Deprecated
 public final class EisProfile implements DeviceProfile<FragmentMessageBinding> {
     public static final String CHART_EIS_OHM = "ohm";
 

@@ -28,6 +28,10 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+/**
+ * @deprecated The message tab now uses {@link UnifiedMessageFragment}.
+ */
+@Deprecated
 public class FragmentMessageNew extends BTFragment<FragmentMessageNewBinding> {
 
     private final HashMap<Integer, Runnable> controls = new HashMap<>();
