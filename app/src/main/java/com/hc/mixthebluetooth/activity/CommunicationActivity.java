@@ -196,7 +196,10 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void initSubscription() {
-        subscription(StaticConstants.CMD_SEND_BT_DATA);
+        subscription(
+                StaticConstants.CMD_SEND_BT_DATA,
+                StaticConstants.CMD_BT_POST
+        );
     }
 
 
@@ -205,6 +208,8 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     protected void update(@NonNull String sign, Object data) {
         if (sign.equals(StaticConstants.CMD_SEND_BT_DATA)) {
             onSendBtDataCommand(data);
+        } else if (sign.equals(StaticConstants.CMD_BT_POST)) {
+            onBtPostCommand(data);
         } else {
             logWarn("Unknown activity command: " + sign);
         }
@@ -229,6 +234,16 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         }
 
         mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+    }
+
+    private void onBtPostCommand(Object data) {
+        if (!(data instanceof BTPackage.BTPost)) {
+            logWarn("Ignore BT post command, payload is not BTPost: " + data);
+            return;
+        }
+
+        BTPackage.BTPost post = (BTPackage.BTPost) data;
+        mHoldBluetooth.sendData(post.module, post.bytes.clone());
     }
 
     // ----------------- Page Navigation -----------------
@@ -379,6 +394,10 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 StaticConstants.CH_BT_DATA,
                 new BTPackage.BTData(module, data)
         );
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
+                new BTPackage.BTData(module, data)
+        );
     }
 
     private void publishBtConnected(DeviceModule module) {
@@ -386,11 +405,19 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
                 StaticConstants.CH_BT_DATA,
                 new BTPackage.Connected(module)
         );
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
+                new BTPackage.Connected(module)
+        );
     }
 
     private void publishBtDisconnected() {
         sendDataToFragment(
                 StaticConstants.CH_BT_DATA,
+                BTPackage.Disconnected.INSTANCE
+        );
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
                 BTPackage.Disconnected.INSTANCE
         );
     }
@@ -404,6 +431,10 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     private void publishConnectState(String state) {
         sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, state);
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
+                new BTPackage.ConnectState(state)
+        );
     }
 
     private void publishSpeedVisible(boolean visible) {
@@ -416,10 +447,18 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     private void publishSentBytes(int number) {
         sendDataToFragment(StaticConstants.CH_SENT_BYTES, number);
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
+                new BTPackage.SentBytes(number)
+        );
     }
 
     private void publishStopLoopSend() {
         sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
+        sendDataToFragment(
+                StaticConstants.CH_BT_EVENT,
+                BTPackage.StopLoopSend.INSTANCE
+        );
     }
 
     private void publishFragmentHide() {
