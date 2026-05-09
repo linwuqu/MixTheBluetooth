@@ -70,7 +70,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
     private TextView tv_sweat_flow_speed_label;
     private TextView tv_sweat_flow_speed_unit;
     private TextView tv_sweat_flow_speed_value;
-    
+
     // EIS 阻抗总结数据的 TextViews
     private TextView tvEisFluctuation;
     private TextView tvEisMax, tvEisMin;
@@ -131,12 +131,12 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
     @Override
     protected void updateState(String sign, Object o) {
-        if (module == null &&  StaticConstants.FRAGMENT_STATE_DATA.equals(sign)) {
+        if (module == null && StaticConstants.FRAGMENT_STATE_DATA.equals(sign)) {
             module = (DeviceModule) o;
         }
         if (o instanceof Object[] && StaticConstants.FRAGMENT_STATE_DATA.equals(sign) && viewBinding.customFragmentShowReadCheck.isChecked()) {
             Object[] objects = (Object[]) o;
-            if (objects.length<2) return;
+            if (objects.length < 2) return;
             byte[] data = ((byte[]) objects[1]).clone();
             addListData(data);
             mAdapter.notifyDataSetChanged();
@@ -158,7 +158,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
     }
 
     private void initFragment() {
-        mFragmentManage = new BaseFragmentManage(R.id.ion_fragment,getActivity());
+        mFragmentManage = new BaseFragmentManage(R.id.ion_fragment, getActivity());
     }
 
     private void initView(View view) {
@@ -178,7 +178,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         tv_sweat_flow_speed_label = view.findViewById(R.id.tv_sweat_flow_speed_label);
         tv_sweat_flow_speed_unit = view.findViewById(R.id.tv_sweat_flow_speed_unit);
         tv_sweat_flow_speed_value = view.findViewById(R.id.tv_sweat_flow_speed_value);
-        
+
         // 查找 EIS 阻抗总结数据的 TextViews
         tvEisFluctuation = view.findViewById(R.id.tv_eis_fluctuation);
         tvEisMax = view.findViewById(R.id.tv_eis_max);
@@ -202,7 +202,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         // 设置图表初始数据
         startTime = System.currentTimeMillis();
         updateCharts();
-        
+
         // 启动模拟数据
         startSimulation();
         //使用真实数据
@@ -217,7 +217,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         potassiumMarkerView.setChartView(potassiumChart);
         potassiumChart.setMarkerView(potassiumMarkerView);
     }
-    
+
     @Override
     public void onDestroyView() {
         super.onDestroyView();
@@ -235,36 +235,35 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
     /**
      * 根据数据末尾是否换行，来判定数据添加到{@link #mDataList}的上一个元素或重新创建一个元素
+     *
      * @param data 接收到的数据
      */
     private void addListData(byte[] data) {
 
-        if(!ModuleParameters.isCheckNewline()){//不检查换行符
-            mDataList.add(new FragmentMessageItem(Analysis.getByteToString(data,mFragmentParameter.getCodeFormat(getContext()),
-                    viewBinding.customFragmentReadCheck.isChecked(), false),  null, false, module, false));
+        if (!ModuleParameters.isCheckNewline()) {//不检查换行符
+            mDataList.add(new FragmentMessageItem(Analysis.getByteToString(data, mFragmentParameter.getCodeFormat(getContext()), viewBinding.customFragmentReadCheck.isChecked(), false), null, false, module, false));
             return;
         }
 
-        boolean newline = data[data.length-1] == 10 && data[data.length-2] == 13;
-        String dataString = Analysis.getByteToString(data,mFragmentParameter.getCodeFormat(getContext()),
-                viewBinding.customFragmentReadCheck.isChecked(), newline);
-        if (mDataList.size()>0 && mDataList.get(mDataList.size()-1).isAddible()){//数组里最后一个元素没有换行符可以添加数据
+        boolean newline = data[data.length - 1] == 10 && data[data.length - 2] == 13;
+        String dataString = Analysis.getByteToString(data, mFragmentParameter.getCodeFormat(getContext()), viewBinding.customFragmentReadCheck.isChecked(), newline);
+        if (mDataList.size() > 0 && mDataList.get(mDataList.size() - 1).isAddible()) {//数组里最后一个元素没有换行符可以添加数据
             //log("数据合并一次: "+mDataList.get(mDataList.size()-1).isAddible());
-            mDataList.get(mDataList.size()-1).addData(dataString,null);
-            mDataList.get(mDataList.size()-1).setDataEndNewline(newline);
-        }else {//数组最后一个元素有换行符且已处理，创建一个新的元素加载数据并添加至数组最后
+            mDataList.get(mDataList.size() - 1).addData(dataString, null);
+            mDataList.get(mDataList.size() - 1).setDataEndNewline(newline);
+        } else {//数组最后一个元素有换行符且已处理，创建一个新的元素加载数据并添加至数组最后
             //log("创建一个新的Item存储: newline is "+newline);
-            mDataList.add(new FragmentMessageItem(dataString,  null, false, module, false));
-            mDataList.get(mDataList.size()-1).setDataEndNewline(newline);
+            mDataList.add(new FragmentMessageItem(dataString, null, false, module, false));
+            mDataList.get(mDataList.size() - 1).setDataEndNewline(newline);
         }
     }
+
     private void initData() {
-        View[] viewArray = {viewBinding.customFragmentPullImage,viewBinding.customFragmentShowReadCheck,viewBinding.customFragmentShowReadText,
-                viewBinding.customFragmentGroup,viewBinding.customFragmentDirection,viewBinding.customFragmentReadCheck,viewBinding.customFragmentReadHex,
-                viewBinding.customFragmentNewlineCheck,viewBinding.customFragmentNewlineText,viewBinding.customFragmentEmpty};
+        View[] viewArray = {viewBinding.customFragmentPullImage, viewBinding.customFragmentShowReadCheck, viewBinding.customFragmentShowReadText, viewBinding.customFragmentGroup, viewBinding.customFragmentDirection, viewBinding.customFragmentReadCheck, viewBinding.customFragmentReadHex, viewBinding.customFragmentNewlineCheck, viewBinding.customFragmentNewlineText, viewBinding.customFragmentEmpty};
         bindOnClickListener(viewArray);
         subscription(StaticConstants.FRAGMENT_STATE_DATA);
     }
+
     private void setupChart(LineChart chart) {
         // 启用图表交互
         chart.setTouchEnabled(true);
@@ -310,7 +309,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
         // Remove any existing limit lines - we are not using them for ranges now
         leftAxis.removeAllLimitLines();
-        
+
         // Set Y-axis range
         if (chart == sodiumChart) { // 这个图表现在用于OCP
             leftAxis.setAxisMinimum(-200f);
@@ -386,7 +385,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         potassiumChart.notifyDataSetChanged();
         potassiumChart.invalidate();
     }
-    
+
     /**
      * 启动模拟数据生成
      */
@@ -394,10 +393,10 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         if (isSimulationRunning) {
             return;
         }
-        
+
         resetChartData(); // 清空现有数据
         isSimulationRunning = true;
-        
+
         // 重置初始值
         currentOpenCircuitPotential = 0.1f;
         currentEisImpedance = 1000f;
@@ -411,10 +410,10 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
                 if (!isSimulationRunning) {
                     return;
                 }
-                
+
                 // 计算经过的时间（秒）
                 float timeInSeconds = (System.currentTimeMillis() - startTime) / 1000f;
-                
+
                 // 生成一组5个数据点
                 // 为五种类型的数据生成新的随机值
                 float newOpenCircuitPotential = generateNextValue(currentOpenCircuitPotential, -200f, 400f, 10f);
@@ -438,19 +437,19 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
                 // 计算并更新显示值（使用最后一组数据的值）
                 updateDisplayValue(currentIonConcentration, currentIonConcentration, currentSweatFlowSpeed, currentSweatFlowRate);
-                
+
                 // 更新图表
                 updateCharts();
-                
+
                 // 每1秒生成一组新的数据点
                 simulationHandler.postDelayed(this, 1000);
             }
         };
-        
+
         // 立即开始执行
         simulationHandler.post(simulationRunnable);
     }
-    
+
     /**
      * 停止模拟数据生成
      */
@@ -460,25 +459,26 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
             simulationHandler.removeCallbacks(simulationRunnable);
         }
     }
-    
+
     /**
      * 生成下一个随机值，基于当前值和允许的波动范围
      */
     private float generateNextValue(float currentValue, float min, float max, float maxChange) {
         // 生成-1到1之间的随机值，然后乘以最大变化量
         float change = (random.nextFloat() * 2 - 1) * maxChange;
-        
+
         // 计算新值
         float newValue = currentValue + change;
-        
+
         // 确保新值在规定范围内
         newValue = Math.max(min, Math.min(max, newValue));
-        
+
         return newValue;
     }
 
     /**
      * 接收蓝牙数据并更新图表
+     *
      * @param data 通过蓝牙接收的数据
      */
     public void processBluetoothData(byte[] data) {
@@ -510,7 +510,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
             // 更新显示值 (只更新浓度、流速和流量)
             updateDisplayValue(ionConcentration, ionConcentration, sweatFlowSpeed, sweatFlowRate);
-            
+
             // 更新图表下方的最大值和最小值
             updateSummaryData();
 
@@ -565,10 +565,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         if (offset < 0 || offset + 4 > bytes.length) {
             throw new IllegalArgumentException("Invalid offset or data length for float conversion.");
         }
-        int bits = bytes[offset] & 0xFF |
-                (bytes[offset + 1] & 0xFF) << 8 |
-                (bytes[offset + 2] & 0xFF) << 16 |
-                (bytes[offset + 3] & 0xFF) << 24;
+        int bits = bytes[offset] & 0xFF | (bytes[offset + 1] & 0xFF) << 8 | (bytes[offset + 2] & 0xFF) << 16 | (bytes[offset + 3] & 0xFF) << 24;
         return Float.intBitsToFloat(bits);
     }
 
@@ -613,10 +610,11 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
 
     /**
      * 根据钠离子和钾离子的浓度计算并更新显示值
-     * @param sodiumValue 钠离子浓度
+     *
+     * @param sodiumValue    钠离子浓度
      * @param potassiumValue 钾离子浓度
      * @param sweatFlowSpeed 汗液流速 (mm/s)
-     * @param sweatFlowRate 汗液流量 (uL)
+     * @param sweatFlowRate  汗液流量 (uL)
      */
     private void updateDisplayValue(float sodiumValue, float potassiumValue, float sweatFlowSpeed, float sweatFlowRate) {
         // 更新汗液流量显示（uL）
@@ -635,7 +633,7 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         // 更新汗液流速显示 (mm/s)
         // 使用接收到的sweatFlowSpeed值
         if (tv_sweat_flow_speed_value != null) {
-             tv_sweat_flow_speed_value.setText(String.format(Locale.getDefault(), "%.2f", sweatFlowSpeed));
+            tv_sweat_flow_speed_value.setText(String.format(Locale.getDefault(), "%.2f", sweatFlowSpeed));
         }
     }
 
@@ -674,37 +672,37 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
                 tvSodiumMin.setText(String.format(Locale.getDefault(), "%.2f", minOcp));
             }
             if (tvSodiumFluctuation != null) {
-                 float fluctuation = maxOcp - minOcp;
-                 tvSodiumFluctuation.setText(String.format(Locale.getDefault(), "%.2f", fluctuation));
+                float fluctuation = maxOcp - minOcp;
+                tvSodiumFluctuation.setText(String.format(Locale.getDefault(), "%.2f", fluctuation));
             }
             if (tvSodiumMaxTime != null && maxOcpEntry != null) {
-                 long maxTimeMillis = startTime + (long)(maxOcpEntry.getX() * 1000);
-                 tvSodiumMaxTime.setText(timeFormat.format(new Date(maxTimeMillis)));
+                long maxTimeMillis = startTime + (long) (maxOcpEntry.getX() * 1000);
+                tvSodiumMaxTime.setText(timeFormat.format(new Date(maxTimeMillis)));
             } else if (tvSodiumMaxTime != null) {
                 tvSodiumMaxTime.setText("--");
             }
             if (tvSodiumMinTime != null && minOcpEntry != null) {
-                 long minTimeMillis = startTime + (long)(minOcpEntry.getX() * 1000);
-                 tvSodiumMinTime.setText(timeFormat.format(new Date(minTimeMillis)));
+                long minTimeMillis = startTime + (long) (minOcpEntry.getX() * 1000);
+                tvSodiumMinTime.setText(timeFormat.format(new Date(minTimeMillis)));
             } else if (tvSodiumMinTime != null) {
-                 tvSodiumMinTime.setText("--");
+                tvSodiumMinTime.setText("--");
             }
 
-             // Highlight max and min entries on the chart
+            // Highlight max and min entries on the chart
             if (maxOcpEntry != null) {
                 sodiumChart.highlightValue(maxOcpEntry.getX(), maxOcpEntry.getY(), 0); // Highlight max
             }
             if (minOcpEntry != null) {
-                 sodiumChart.highlightValue(minOcpEntry.getX(), minOcpEntry.getY(), 0); // Highlight min
+                sodiumChart.highlightValue(minOcpEntry.getX(), minOcpEntry.getY(), 0); // Highlight min
             }
 
         } else {
-             // Handle case where there's no data yet for OCP
-             if (tvSodiumMax != null) tvSodiumMax.setText("--");
-             if (tvSodiumMin != null) tvSodiumMin.setText("--");
-             if (tvSodiumFluctuation != null) tvSodiumFluctuation.setText("--");
-             if (tvSodiumMaxTime != null) tvSodiumMaxTime.setText("--");
-             if (tvSodiumMinTime != null) tvSodiumMinTime.setText("--");
+            // Handle case where there's no data yet for OCP
+            if (tvSodiumMax != null) tvSodiumMax.setText("--");
+            if (tvSodiumMin != null) tvSodiumMin.setText("--");
+            if (tvSodiumFluctuation != null) tvSodiumFluctuation.setText("--");
+            if (tvSodiumMaxTime != null) tvSodiumMaxTime.setText("--");
+            if (tvSodiumMinTime != null) tvSodiumMinTime.setText("--");
         }
 
         // 找到最大和最小EIS阻抗
@@ -714,10 +712,10 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
         Entry minEisEntry = null;
 
         if (!potassiumEntries.isEmpty()) { // potassiumEntries现在用于存储EIS阻抗数据
-             maxEis = potassiumEntries.get(0).getY();
-             minEis = potassiumEntries.get(0).getY();
-             maxEisEntry = potassiumEntries.get(0);
-             minEisEntry = potassiumEntries.get(0);
+            maxEis = potassiumEntries.get(0).getY();
+            minEis = potassiumEntries.get(0).getY();
+            maxEisEntry = potassiumEntries.get(0);
+            minEisEntry = potassiumEntries.get(0);
 
             for (Entry entry : potassiumEntries) {
                 if (entry.getY() > maxEis) {
@@ -737,38 +735,38 @@ public class FragmentIonAnalysis extends BaseFragment<FragmentCustomBinding> {
             if (tvEisMin != null) {
                 tvEisMin.setText(String.format(Locale.getDefault(), "%.2f", minEis));
             }
-             if (tvEisFluctuation != null) {
-                 float fluctuation = maxEis - minEis;
-                 tvEisFluctuation.setText(String.format(Locale.getDefault(), "%.2f", fluctuation));
-             }
-             if (tvEisMaxTime != null && maxEisEntry != null) {
-                 long maxTimeMillis = startTime + (long)(maxEisEntry.getX() * 1000);
-                 tvEisMaxTime.setText(timeFormat.format(new Date(maxTimeMillis)));
-             } else if (tvEisMaxTime != null) {
-                 tvEisMaxTime.setText("--");
-             }
-             if (tvEisMinTime != null && minEisEntry != null) {
-                 long minTimeMillis = startTime + (long)(minEisEntry.getX() * 1000);
-                 tvEisMinTime.setText(timeFormat.format(new Date(minTimeMillis)));
-             } else if (tvEisMinTime != null) {
-                 tvEisMinTime.setText("--");
-             }
+            if (tvEisFluctuation != null) {
+                float fluctuation = maxEis - minEis;
+                tvEisFluctuation.setText(String.format(Locale.getDefault(), "%.2f", fluctuation));
+            }
+            if (tvEisMaxTime != null && maxEisEntry != null) {
+                long maxTimeMillis = startTime + (long) (maxEisEntry.getX() * 1000);
+                tvEisMaxTime.setText(timeFormat.format(new Date(maxTimeMillis)));
+            } else if (tvEisMaxTime != null) {
+                tvEisMaxTime.setText("--");
+            }
+            if (tvEisMinTime != null && minEisEntry != null) {
+                long minTimeMillis = startTime + (long) (minEisEntry.getX() * 1000);
+                tvEisMinTime.setText(timeFormat.format(new Date(minTimeMillis)));
+            } else if (tvEisMinTime != null) {
+                tvEisMinTime.setText("--");
+            }
 
             // Highlight max and min entries on the chart
-             if (maxEisEntry != null) {
-                 potassiumChart.highlightValue(maxEisEntry.getX(), maxEisEntry.getY(), 0); // Highlight max
-             }
-             if (minEisEntry != null) {
-                 potassiumChart.highlightValue(minEisEntry.getX(), minEisEntry.getY(), 0); // Highlight min
-             }
+            if (maxEisEntry != null) {
+                potassiumChart.highlightValue(maxEisEntry.getX(), maxEisEntry.getY(), 0); // Highlight max
+            }
+            if (minEisEntry != null) {
+                potassiumChart.highlightValue(minEisEntry.getX(), minEisEntry.getY(), 0); // Highlight min
+            }
 
         } else {
-             // Handle case where there's no data yet for EIS
-             if (tvEisMax != null) tvEisMax.setText("--");
-             if (tvEisMin != null) tvEisMin.setText("--");
-             if (tvEisFluctuation != null) tvEisFluctuation.setText("--");
-             if (tvEisMaxTime != null) tvEisMaxTime.setText("--");
-             if (tvEisMinTime != null) tvEisMinTime.setText("--");
+            // Handle case where there's no data yet for EIS
+            if (tvEisMax != null) tvEisMax.setText("--");
+            if (tvEisMin != null) tvEisMin.setText("--");
+            if (tvEisFluctuation != null) tvEisFluctuation.setText("--");
+            if (tvEisMaxTime != null) tvEisMaxTime.setText("--");
+            if (tvEisMinTime != null) tvEisMinTime.setText("--");
         }
     }
 

@@ -1,5 +1,6 @@
 package com.hc.mixthebluetooth.activity.tool.chart;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -38,8 +39,11 @@ public final class MetricWidgets {
     }
 
     public interface MetricWidget {
-        @NonNull View view();
+        @NonNull
+        View view();
+
         void onSample(@NonNull BluetoothSample sample);
+
         void reset();
     }
 
@@ -53,20 +57,30 @@ public final class MetricWidgets {
     }
 
     public static final class WidgetSpec {
-        @NonNull public final String id;
-        @NonNull public final WidgetKind kind;
-        @NonNull public final String title;
-        @NonNull public final String metricKey;
-        @NonNull public final String unit;
-        @NonNull public final Region region;
-        @NonNull public final WidgetStyle style;
+        @NonNull
+        public final String id;
+        @NonNull
+        public final WidgetKind kind;
+        @NonNull
+        public final String title;
+        @NonNull
+        public final String metricKey;
+        @NonNull
+        public final String unit;
+        @NonNull
+        public final Region region;
+        @NonNull
+        public final WidgetStyle style;
         public final int order;
         public final int color;
         public final int maxPoints;
         public final float visibleWindowSeconds;
-        @Nullable public final Float yMin;
-        @Nullable public final Float yMax;
-        @Nullable public final Float gaugeMax;
+        @Nullable
+        public final Float yMin;
+        @Nullable
+        public final Float yMax;
+        @Nullable
+        public final Float gaugeMax;
 
         private WidgetSpec(@NonNull Builder b) {
             id = b.id;
@@ -107,20 +121,30 @@ public final class MetricWidgets {
     }
 
     public static final class Builder {
-        @NonNull private final String id;
-        @NonNull private final WidgetKind kind;
-        @NonNull private String title = "";
-        @NonNull private String metricKey = "";
-        @NonNull private String unit = "";
-        @NonNull private Region region;
-        @NonNull private WidgetStyle style = WidgetStyle.CARD;
+        @NonNull
+        private final String id;
+        @NonNull
+        private final WidgetKind kind;
+        @NonNull
+        private String title = "";
+        @NonNull
+        private String metricKey = "";
+        @NonNull
+        private String unit = "";
+        @NonNull
+        private Region region;
+        @NonNull
+        private WidgetStyle style = WidgetStyle.CARD;
         private int order = 0;
         private int color = 0xFF4EE097;
         private int maxPoints = 500;
         private float visibleWindowSeconds = 60f;
-        @Nullable private Float yMin = null;
-        @Nullable private Float yMax = null;
-        @Nullable private Float gaugeMax = null;
+        @Nullable
+        private Float yMin = null;
+        @Nullable
+        private Float yMax = null;
+        @Nullable
+        private Float gaugeMax = null;
 
         private Builder(@NonNull String id, @NonNull WidgetKind kind) {
             this.id = id;
@@ -128,18 +152,77 @@ public final class MetricWidgets {
             this.region = kind == WidgetKind.GAUGE || kind == WidgetKind.VALUE ? Region.SUMMARY : Region.MAIN;
         }
 
-        @NonNull public Builder title(@NonNull String title) { this.title = title; return this; }
-        @NonNull public Builder metric(@NonNull String metricKey) { this.metricKey = metricKey; return this; }
-        @NonNull public Builder unit(@NonNull String unit) { this.unit = unit; return this; }
-        @NonNull public Builder region(@NonNull Region region) { this.region = region; return this; }
-        @NonNull public Builder style(@NonNull WidgetStyle style) { this.style = style; return this; }
-        @NonNull public Builder order(int order) { this.order = order; return this; }
-        @NonNull public Builder lineColor(int color) { this.color = color; return this; }
-        @NonNull public Builder maxPoints(int maxPoints) { this.maxPoints = maxPoints; return this; }
-        @NonNull public Builder visibleWindowSeconds(float seconds) { this.visibleWindowSeconds = seconds; return this; }
-        @NonNull public Builder yRange(float min, float max) { this.yMin = min; this.yMax = max; return this; }
-        @NonNull public Builder gaugeMax(float max) { this.gaugeMax = max; return this; }
-        @NonNull public WidgetSpec build() { return new WidgetSpec(this); }
+        @NonNull
+        public Builder title(@NonNull String title) {
+            this.title = title;
+            return this;
+        }
+
+        @NonNull
+        public Builder metric(@NonNull String metricKey) {
+            this.metricKey = metricKey;
+            return this;
+        }
+
+        @NonNull
+        public Builder unit(@NonNull String unit) {
+            this.unit = unit;
+            return this;
+        }
+
+        @NonNull
+        public Builder region(@NonNull Region region) {
+            this.region = region;
+            return this;
+        }
+
+        @NonNull
+        public Builder style(@NonNull WidgetStyle style) {
+            this.style = style;
+            return this;
+        }
+
+        @NonNull
+        public Builder order(int order) {
+            this.order = order;
+            return this;
+        }
+
+        @NonNull
+        public Builder lineColor(int color) {
+            this.color = color;
+            return this;
+        }
+
+        @NonNull
+        public Builder maxPoints(int maxPoints) {
+            this.maxPoints = maxPoints;
+            return this;
+        }
+
+        @NonNull
+        public Builder visibleWindowSeconds(float seconds) {
+            this.visibleWindowSeconds = seconds;
+            return this;
+        }
+
+        @NonNull
+        public Builder yRange(float min, float max) {
+            this.yMin = min;
+            this.yMax = max;
+            return this;
+        }
+
+        @NonNull
+        public Builder gaugeMax(float max) {
+            this.gaugeMax = max;
+            return this;
+        }
+
+        @NonNull
+        public WidgetSpec build() {
+            return new WidgetSpec(this);
+        }
     }
 
     private static final class LineMetricWidget implements MetricWidget {
@@ -228,6 +311,7 @@ public final class MetricWidgets {
         private final WidgetSpec spec;
         private final TextView value;
 
+        @SuppressLint("SetTextI18n")
         ValueMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
             this.spec = spec;
             root = card(context, LinearLayout.VERTICAL);
@@ -247,12 +331,14 @@ public final class MetricWidgets {
             return root;
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void onSample(@NonNull BluetoothSample sample) {
             Float v = sample.metrics().get(spec.metricKey);
             if (v != null) value.setText(format(v) + " " + spec.unit);
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void reset() {
             value.setText("-- " + spec.unit);
@@ -265,8 +351,10 @@ public final class MetricWidgets {
         private final TextView maxView;
         private final TextView minView;
         private final TextView ampView;
-        @Nullable private Float max = null;
-        @Nullable private Float min = null;
+        @Nullable
+        private Float max = null;
+        @Nullable
+        private Float min = null;
 
         StatsMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
             this.spec = spec;
@@ -290,6 +378,7 @@ public final class MetricWidgets {
             return root;
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void onSample(@NonNull BluetoothSample sample) {
             Float v = sample.metrics().get(spec.metricKey);
@@ -302,6 +391,7 @@ public final class MetricWidgets {
             ampView.setText("Amp: " + format(amp) + " " + spec.unit);
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void reset() {
             max = null;

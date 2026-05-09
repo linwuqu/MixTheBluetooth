@@ -105,11 +105,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             }
             handleConnectStateClick();
         };
-        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.communication_name))
-                .setLeftText("Biosensors System", 18)
-                .setRightText(CONNECTING)
-                .setRightClickListener(listener)
-                .builer();
+        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.communication_name)).setLeftText("Biosensors System", 18).setRightText(CONNECTING).setRightClickListener(listener).builer();
 
         mTitle.updateLoadingState(true);
     }
@@ -183,21 +179,11 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void initTabs() {
-        bindClickListener(
-                viewBinding.tabMessage,
-                viewBinding.tabMessageNew,
-                viewBinding.tabCustom,
-                viewBinding.tabIonAnalysis,
-                viewBinding.tabSetting,
-                viewBinding.tabLog
-        );
+        bindClickListener(viewBinding.tabMessage, viewBinding.tabMessageNew, viewBinding.tabCustom, viewBinding.tabIonAnalysis, viewBinding.tabSetting, viewBinding.tabLog);
     }
 
     private void initSubscription() {
-        subscription(
-                StaticConstants.CMD_SEND_BT_DATA,
-                StaticConstants.CMD_BT_POST
-        );
+        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_BT_POST);
     }
 
 
@@ -382,51 +368,27 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     // ----------------- Fragment Events -----------------
     private void publishBtData(DeviceModule module, byte[] data) {
-        sendDataToFragment(
-                StaticConstants.CH_BT_DATA,
-                new BTPackage.BTData(module, data)
-        );
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                new BTPackage.BTData(module, data)
-        );
+        sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.BTData(module, data));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.BTData(module, data));
     }
 
     private void publishBtConnected(DeviceModule module) {
-        sendDataToFragment(
-                StaticConstants.CH_BT_DATA,
-                new BTPackage.Connected(module)
-        );
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                new BTPackage.Connected(module)
-        );
+        sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.Connected(module));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.Connected(module));
     }
 
     private void publishBtDisconnected() {
-        sendDataToFragment(
-                StaticConstants.CH_BT_DATA,
-                BTPackage.Disconnected.INSTANCE
-        );
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                BTPackage.Disconnected.INSTANCE
-        );
+        sendDataToFragment(StaticConstants.CH_BT_DATA, BTPackage.Disconnected.INSTANCE);
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, BTPackage.Disconnected.INSTANCE);
     }
 
     private void publishLog(String className, String data, String level) {
-        sendDataToFragment(
-                StaticConstants.CH_LOG_MESSAGE,
-                new FragmentLogItem(className, data, level)
-        );
+        sendDataToFragment(StaticConstants.CH_LOG_MESSAGE, new FragmentLogItem(className, data, level));
     }
 
     private void publishConnectState(String state) {
         sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, state);
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                new BTPackage.ConnectState(state)
-        );
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.ConnectState(state));
     }
 
     private void publishSpeedVisible(boolean visible) {
@@ -439,18 +401,12 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
     private void publishSentBytes(int number) {
         sendDataToFragment(StaticConstants.CH_SENT_BYTES, number);
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                new BTPackage.SentBytes(number)
-        );
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.SentBytes(number));
     }
 
     private void publishStopLoopSend() {
         sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
-        sendDataToFragment(
-                StaticConstants.CH_BT_EVENT,
-                BTPackage.StopLoopSend.INSTANCE
-        );
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, BTPackage.StopLoopSend.INSTANCE);
     }
 
     private void publishFragmentHide() {
@@ -605,28 +561,14 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         }
 
         CommonDialog.Builder builder = new CommonDialog.Builder(CommunicationActivity.this);
-        builder.setView(R.layout.hint_set_mtu_vessel)
-                .fullWidth()
-                .loadAnimation()
-                .create()
-                .show();
+        builder.setView(R.layout.hint_set_mtu_vessel).fullWidth().loadAnimation().create().show();
 
         SetMtu setMtu = builder.getView(R.id.hint_set_mtu_vessel_view);
-        setMtu.setBuilder(builder)
-                .setCallback(mtu -> mHoldBluetooth.setMTU(module, mtu));
+        setMtu.setBuilder(builder).setCallback(mtu -> mHoldBluetooth.setMTU(module, mtu));
     }
 
     private void showPopupWindow(@NonNull CommonPopupWindow window) {
-        window.getBuilder()
-                .setPopupWindowsPosition(
-                        CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT,
-                        CommonPopupWindow.VerticalPosition.BELOW
-                )
-                .setExcursion(this, 0, 10)
-                .setAnim(R.style.pop_window_anim)
-                .setShadow(this, 0.9f)
-                .create()
-                .show();
+        window.getBuilder().setPopupWindowsPosition(CommonPopupWindow.HorizontalPosition.ALIGN_RIGHT, CommonPopupWindow.VerticalPosition.BELOW).setExcursion(this, 0, 10).setAnim(R.style.pop_window_anim).setShadow(this, 0.9f).create().show();
     }
 
 

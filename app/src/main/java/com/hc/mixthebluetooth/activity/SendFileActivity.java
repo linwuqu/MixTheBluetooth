@@ -36,7 +36,7 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
 
     private final List<Map<String, Object>> mList = new ArrayList<>();
 
-    private int mFileSizeMax,mFileSendSize;
+    private int mFileSizeMax, mFileSendSize;
 
     private byte[] mTargetFileData = null;
 
@@ -67,14 +67,13 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
     }
 
 
-    public void onClickView(View view){
+    public void onClickView(View view) {
 
-        if (isCheck(viewBinding.aFileCallback)){
-            updateRecycler(GetFilesUtils.getInstance()
-                    .getParentPath(viewBinding.aFilePath.getText().toString().trim()));
-        }else if (isCheck(viewBinding.aFileSelect)){
+        if (isCheck(viewBinding.aFileCallback)) {
+            updateRecycler(GetFilesUtils.getInstance().getParentPath(viewBinding.aFilePath.getText().toString().trim()));
+        } else if (isCheck(viewBinding.aFileSelect)) {
             selectFile();
-        }else if(isCheck(viewBinding.aFileSend)){
+        } else if (isCheck(viewBinding.aFileSend)) {
             sendFile();
         }
 
@@ -84,8 +83,8 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
     /**
      * 点击事件的响应
      */
-    private void onCheckedChanged(View view){
-        if (!viewBinding.aFileSend.getText().toString().trim().equals("发送文件")){
+    private void onCheckedChanged(View view) {
+        if (!viewBinding.aFileSend.getText().toString().trim().equals("发送文件")) {
             toastShort("正处于发送过程中，请勿切换速度");
             return;
         }
@@ -113,16 +112,15 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
     /**
      * 点击事件的响应
      */
-    private void setCustomVelocity(View view){
-        final CommonDialog dialog = new CommonDialog.Builder(view.getContext()).setCancelable(false)
-                .setView(R.layout.hint_velocity_set).fullWidth().fromBottom().create();
+    private void setCustomVelocity(View view) {
+        final CommonDialog dialog = new CommonDialog.Builder(view.getContext()).setCancelable(false).setView(R.layout.hint_velocity_set).fullWidth().fromBottom().create();
         TextView accomplish = dialog.findViewById(R.id.hint_velocity_accomplish);
         final NumPickView numPickView = dialog.findViewById(R.id.hint_velocity_pick);
-        numPickView.select(mSendFileVelocity-1);
+        numPickView.select(mSendFileVelocity - 1);
         accomplish.setOnClickListener(v -> {
-            String s = "速度五:自定义速度 "+numPickView.getPickNumber()+"k/s";
+            String s = "速度五:自定义速度 " + numPickView.getPickNumber() + "k/s";
             mSendFileVelocity = numPickView.getPickNumber();
-            HoldBluetooth.getInstance().setSendFileVelocity(mDeviceModule,5,mSendFileVelocity);
+            HoldBluetooth.getInstance().setSendFileVelocity(mDeviceModule, 5, mSendFileVelocity);
             viewBinding.aFileVelocity5.setText(s);
             dialog.dismiss();
         });
@@ -131,22 +129,22 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
 
     private void sendFile() {
 
-        if (mFileSizeMax == 0){
+        if (mFileSizeMax == 0) {
             toastShort("请先选择文件");
             return;
         }
 
-        if (mFileSizeMax == -1){
+        if (mFileSizeMax == -1) {
             toastShort("文件解析异常");
             return;
         }
 
-        if (mDeviceModule == null){
+        if (mDeviceModule == null) {
             toastShort("初始化失败");
             return;
         }
 
-        if (viewBinding.aFileSend.getText().toString().trim().equals("停止发送")){
+        if (viewBinding.aFileSend.getText().toString().trim().equals("停止发送")) {
             viewBinding.aFileSend.setText("发送文件");
             HoldBluetooth.getInstance().stopSend(mDeviceModule, () -> viewBinding.aFileSend.setText("发送文件"));
             return;
@@ -178,13 +176,13 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
             public void onFailed(boolean showAgain) {
                 toastShort("无法获取到手机文件");
             }
-        },PermissionUtil.STORAGE);
+        }, PermissionUtil.STORAGE);
     }
 
 
     private void updateRecycler(String fileName) {
         String baseFile = GetFilesUtils.getInstance().getBasePath();
-        if (baseFile.compareTo(fileName)>0){
+        if (baseFile.compareTo(fileName) > 0) {
             toastShort("已到根目录");
             return;
         }
@@ -197,9 +195,9 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
     }
 
     private void updateView() {
-        String data = mFileSendSize+"/"+mFileSizeMax;
+        String data = mFileSendSize + "/" + mFileSizeMax;
         viewBinding.aFileData.setText(data);
-        float progress = ((float) mFileSendSize/mFileSizeMax)*1000;
+        float progress = ((float) mFileSendSize / mFileSizeMax) * 1000;
         viewBinding.aFileProgress.setProgress((int) progress);
         if (progress == 1000) viewBinding.aFileSend.setText("发送文件");
     }
@@ -207,21 +205,22 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
 
     /**
      * 读取文件内容，并更新到Activity的View
+     *
      * @param position RecyclerView 列表上的文件位置
      */
-    private void readFile(int position){
+    private void readFile(int position) {
         Object object = mList.get(position).get(GetFilesUtils.FILE_INFO_PATH);
-        if(!(object instanceof File)){
+        if (!(object instanceof File)) {
             toastShort("无法识别此后缀的文件，请选择其他文件");
             return;
         }
-        File file = (File)mList.get(position).get(GetFilesUtils.FILE_INFO_PATH);
-        if (file.length()>50*1024*1024){
+        File file = (File) mList.get(position).get(GetFilesUtils.FILE_INFO_PATH);
+        if (file.length() > 50 * 1024 * 1024) {
             toastShort("暂不支持发送大于50M的文件");
             return;
         }
         Analysis.readFileDate(file, this, (readResults, fileDate) -> {
-            if (!readResults){
+            if (!readResults) {
                 mFileSizeMax = -1;
                 toastShort("读取此文件失败，请选择其他文件");
                 return;
@@ -231,7 +230,7 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
             mFileSizeMax = mTargetFileData.length;
             mFileSendSize = 0;
             viewBinding.aFileProgress.setProgress(0);
-            String fileSize = mFileSendSize+"/"+mFileSizeMax;
+            String fileSize = mFileSendSize + "/" + mFileSizeMax;
             viewBinding.aFileName.setText(file.getName());
             viewBinding.aFileData.setText(fileSize);
             viewBinding.aFileCallback.setVisibility(View.INVISIBLE);
@@ -243,24 +242,20 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
 
 
     private void initTitle() {
-        new DefaultNavigationBar
-                .Builder(this, findViewById(R.id.activity_send_file))
-                .setTitle("HC蓝牙助手("+HoldBluetooth.getInstance().getConnectedArray().get(0).getName()+")")
-                .hideLeftText()
-                .builer();
+        new DefaultNavigationBar.Builder(this, findViewById(R.id.activity_send_file)).setTitle("HC蓝牙助手(" + HoldBluetooth.getInstance().getConnectedArray().get(0).getName() + ")").hideLeftText().builer();
     }
 
     private void initRecycler() {
-        mAdapter = new FileRecyclerAdapter(this,mList,R.layout.item_file);
+        mAdapter = new FileRecyclerAdapter(this, mList, R.layout.item_file);
         viewBinding.aFileList.setLayoutManager(new LinearLayoutManager(this));
         viewBinding.aFileList.setAdapter(mAdapter);
 
         mAdapter.setOnItemClickListener((position, view) -> {
-            if (!(boolean)mList.get(position).get(GetFilesUtils.FILE_INFO_ISFOLDER)){
-                log("启用此方法时间: "+System.currentTimeMillis());
+            if (!(boolean) mList.get(position).get(GetFilesUtils.FILE_INFO_ISFOLDER)) {
+                log("启用此方法时间: " + System.currentTimeMillis());
                 readFile(position);
-                log("结束时间: "+System.currentTimeMillis());
-            }else {
+                log("结束时间: " + System.currentTimeMillis());
+            } else {
                 File fileName = (File) mList.get(position).get(GetFilesUtils.FILE_INFO_PATH);
                 updateRecycler(fileName.toString());
             }
@@ -284,16 +279,15 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
         mTimerTask = new TimerTask() {
             @Override
             public void run() {
-                if (mSendNumber == 0 && viewBinding.aFileVelocity.getText().toString().equals("0B/s")) return;
-                if (mSendNumber == 0 && (!mDeviceModule.isBLE()&& viewBinding.aFileVelocity5Check.isChecked()&&mFileSendSize != mFileSizeMax)) return;
-                final String velocity = Analysis.getSpeed(mSendNumber,!mDeviceModule.isBLE()&&viewBinding.aFileVelocity5Check.isChecked(),
-                        mFileSendSize==mFileSizeMax);
+                if (mSendNumber == 0 && viewBinding.aFileVelocity.getText().toString().equals("0B/s"))
+                    return;
+                if (mSendNumber == 0 && (!mDeviceModule.isBLE() && viewBinding.aFileVelocity5Check.isChecked() && mFileSendSize != mFileSizeMax))
+                    return;
+                final String velocity = Analysis.getSpeed(mSendNumber, !mDeviceModule.isBLE() && viewBinding.aFileVelocity5Check.isChecked(), mFileSendSize == mFileSizeMax);
 
                 //当选定自定义发送时，修正发送速率 根据MTU的值来动态修改
-                if (mDeviceModule.isBLE() && viewBinding.aFileVelocity5Check.isChecked()
-                        && VelocityCorrection.getVelocity(mSendNumber*5,mSendFileVelocity)) {
-                    ModuleParameters.setSendFileDelayedTime(VelocityCorrection.getDifferenceValue(
-                            mSendFileVelocity, ModuleParameters.getSendFileDelayedTime()));
+                if (mDeviceModule.isBLE() && viewBinding.aFileVelocity5Check.isChecked() && VelocityCorrection.getVelocity(mSendNumber * 5, mSendFileVelocity)) {
+                    ModuleParameters.setSendFileDelayedTime(VelocityCorrection.getDifferenceValue(mSendFileVelocity, ModuleParameters.getSendFileDelayedTime()));
                 }
                 mSendNumber = 0;
                 mUpdateViewHandler.post(() -> viewBinding.aFileVelocity.setText(velocity));
@@ -302,23 +296,20 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
 
         mTimer = new Timer();
 
-        mTimer.schedule(mTimerTask,200,200);
+        mTimer.schedule(mTimerTask, 200, 200);
     }
 
     @SuppressLint("SetTextI18n")
     private void initView() {
         viewBinding.aFileVelocity1Check.setChecked(true);
         subscription(StaticConstants.FRAGMENT_STATE_NUMBER);
-        if (!mDeviceModule.isBLE()){
+        if (!mDeviceModule.isBLE()) {
             viewBinding.aFileVelocitySet.setVisibility(View.GONE);
             viewBinding.aFileVelocity5.setText("速度五:设置当前波特率下最大发送速度（适用于1MB之上的文件）");
         }
         bindClickListener(this::setCustomVelocity, viewBinding.aFileVelocitySet);
-        bindClickListener(viewBinding.aFileCallback,viewBinding.aFileSelect,viewBinding.aFileSend);
-        bindClickListener(this::onCheckedChanged,viewBinding.aFileVelocity1,viewBinding.aFileVelocity2,
-                viewBinding.aFileVelocity3,viewBinding.aFileVelocity4,viewBinding.aFileVelocity5,
-                viewBinding.aFileVelocity1Check,viewBinding.aFileVelocity2Check,viewBinding.aFileVelocity3Check,
-                viewBinding.aFileVelocity4Check,viewBinding.aFileVelocity5Check);
+        bindClickListener(viewBinding.aFileCallback, viewBinding.aFileSelect, viewBinding.aFileSend);
+        bindClickListener(this::onCheckedChanged, viewBinding.aFileVelocity1, viewBinding.aFileVelocity2, viewBinding.aFileVelocity3, viewBinding.aFileVelocity4, viewBinding.aFileVelocity5, viewBinding.aFileVelocity1Check, viewBinding.aFileVelocity2Check, viewBinding.aFileVelocity3Check, viewBinding.aFileVelocity4Check, viewBinding.aFileVelocity5Check);
     }
 
 
@@ -327,7 +318,7 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
      */
     private void initModuleParameters() {
         mModuleParameters = ModuleParameters.getSendFileDelayedTime();
-        HoldBluetooth.getInstance().setSendFileVelocity(mDeviceModule,1);
+        HoldBluetooth.getInstance().setSendFileVelocity(mDeviceModule, 1);
     }
 
     private void resetCheck() {
@@ -341,7 +332,7 @@ public class SendFileActivity extends BaseActivity<ActivitySendFileBinding> {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        HoldBluetooth.getInstance().stopSend(mDeviceModule,null);
+        HoldBluetooth.getInstance().stopSend(mDeviceModule, null);
         ModuleParameters.setSendFile(false);
         ModuleParameters.setSendFileDelayedTime(mModuleParameters);
         if (mTimer != null) mTimer.cancel();

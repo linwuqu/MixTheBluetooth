@@ -101,7 +101,8 @@ public final class Profiles {
 
         public final float ohm;
         public final float us;
-        @NonNull public final String raw;
+        @NonNull
+        public final String raw;
 
         public EisSample(float ohm, float us, @NonNull String raw) {
             this.ohm = ohm;

@@ -78,12 +78,15 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
 
     interface HostView {
         ViewGroup region(@NonNull Region region);
+
         RecyclerView messageList();
+
         TextView bottomInfo();
     }
 
     interface BluetoothGateway {
         void postText(@NonNull DeviceModule module, @NonNull String text);
+
         void postBytes(@NonNull DeviceModule module, @NonNull byte[] bytes);
     }
 
@@ -151,11 +154,16 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
     }
 
     public static final class ActionSpec {
-        @NonNull public final String id;
-        @NonNull public final String label;
-        @NonNull public final Route route;
-        @Nullable public final TextSupplier textSupplier;
-        @Nullable public final BuiltIn builtIn;
+        @NonNull
+        public final String id;
+        @NonNull
+        public final String label;
+        @NonNull
+        public final Route route;
+        @Nullable
+        public final TextSupplier textSupplier;
+        @Nullable
+        public final BuiltIn builtIn;
 
         private ActionSpec(
                 @NonNull String id,
@@ -181,19 +189,26 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
     }
 
     public interface TextSupplier {
-        @NonNull String get();
+        @NonNull
+        String get();
     }
 
     public interface RecordFormatter {
-        @NonNull String format(@NonNull BluetoothSample sample);
+        @NonNull
+        String format(@NonNull BluetoothSample sample);
     }
 
     public static final class ProfileSpec {
-        @NonNull public final String id;
-        @NonNull public final List<BluetoothSampleParser> parsers;
-        @NonNull public final List<ActionSpec> actions;
-        @NonNull public final List<WidgetSpec> widgets;
-        @Nullable public final RecordFormatter recordFormatter;
+        @NonNull
+        public final String id;
+        @NonNull
+        public final List<BluetoothSampleParser> parsers;
+        @NonNull
+        public final List<ActionSpec> actions;
+        @NonNull
+        public final List<WidgetSpec> widgets;
+        @Nullable
+        public final RecordFormatter recordFormatter;
 
         private ProfileSpec(@NonNull Builder b) {
             this.id = b.id;
@@ -208,11 +223,13 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
 
         public static final class Builder {
-            @NonNull private final String id;
+            @NonNull
+            private final String id;
             private final List<BluetoothSampleParser> parsers = new ArrayList<>();
             private final List<ActionSpec> actions = new ArrayList<>();
             private final List<WidgetSpec> widgets = new ArrayList<>();
-            @Nullable private RecordFormatter recordFormatter;
+            @Nullable
+            private RecordFormatter recordFormatter;
 
             private Builder(@NonNull String id) {
                 this.id = id;

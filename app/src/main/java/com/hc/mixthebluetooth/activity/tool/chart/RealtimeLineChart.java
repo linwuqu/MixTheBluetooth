@@ -75,6 +75,7 @@ public class RealtimeLineChart {
         x.setDrawGridLines(false);
         x.setValueFormatter(new ValueFormatter() {
             private final SimpleDateFormat fmt = new SimpleDateFormat(config.xAxisTimeFormat, Locale.getDefault());
+
             @Override
             public String getFormattedValue(float value) {
                 long t = startTimeMs + (long) (value * 1000);
@@ -103,8 +104,10 @@ public class RealtimeLineChart {
         public final float visibleWindowSeconds;
         public final float lineWidth;
         public final String xAxisTimeFormat;
-        @Nullable public final Float yMin;
-        @Nullable public final Float yMax;
+        @Nullable
+        public final Float yMin;
+        @Nullable
+        public final Float yMax;
 
         private Config(Builder b) {
             this.label = b.label;
@@ -124,17 +127,50 @@ public class RealtimeLineChart {
             private float visibleWindowSeconds = 60f;
             private float lineWidth = 1.2f;
             private String xAxisTimeFormat = "HH:mm:ss";
-            @Nullable private Float yMin = null;
-            @Nullable private Float yMax = null;
+            @Nullable
+            private Float yMin = null;
+            @Nullable
+            private Float yMax = null;
 
-            public Builder label(String label) { this.label = label; return this; }
-            public Builder color(int color) { this.color = color; return this; }
-            public Builder maxPoints(int maxPoints) { this.maxPoints = maxPoints; return this; }
-            public Builder visibleWindowSeconds(float v) { this.visibleWindowSeconds = v; return this; }
-            public Builder lineWidth(float v) { this.lineWidth = v; return this; }
-            public Builder xAxisTimeFormat(String v) { this.xAxisTimeFormat = v; return this; }
-            public Builder yRange(float min, float max) { this.yMin = min; this.yMax = max; return this; }
-            public Config build() { return new Config(this); }
+            public Builder label(String label) {
+                this.label = label;
+                return this;
+            }
+
+            public Builder color(int color) {
+                this.color = color;
+                return this;
+            }
+
+            public Builder maxPoints(int maxPoints) {
+                this.maxPoints = maxPoints;
+                return this;
+            }
+
+            public Builder visibleWindowSeconds(float v) {
+                this.visibleWindowSeconds = v;
+                return this;
+            }
+
+            public Builder lineWidth(float v) {
+                this.lineWidth = v;
+                return this;
+            }
+
+            public Builder xAxisTimeFormat(String v) {
+                this.xAxisTimeFormat = v;
+                return this;
+            }
+
+            public Builder yRange(float min, float max) {
+                this.yMin = min;
+                this.yMax = max;
+                return this;
+            }
+
+            public Config build() {
+                return new Config(this);
+            }
         }
     }
 }

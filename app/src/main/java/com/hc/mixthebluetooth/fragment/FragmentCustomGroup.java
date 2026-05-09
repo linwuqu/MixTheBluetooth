@@ -43,28 +43,28 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
         mStorage = new Storage(context);
         mFragmentParameter = FragmentParameter.getInstance();
         setListener();
-        subscription(StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE,StaticConstants.FRAGMENT_CUSTOM_NEWLINE);
+        subscription(StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE, StaticConstants.FRAGMENT_CUSTOM_NEWLINE);
     }
 
     @Override
     protected void updateState(String sign, Object o) {
-        if (StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE.equals(sign)){
+        if (StaticConstants.FRAGMENT_STATE_SEND_SEND_TITLE.equals(sign)) {
             mTitle = (DefaultNavigationBar) o;
-        }else if (StaticConstants.FRAGMENT_CUSTOM_NEWLINE.equals(sign)){
+        } else if (StaticConstants.FRAGMENT_CUSTOM_NEWLINE.equals(sign)) {
             mIsSendNewline = (boolean) o;
         }
     }
 
     private void setListener() {
         View.OnClickListener listener = v -> {
-            if (v.getId() == R.id.custom_fragment_direction_hex){
+            if (v.getId() == R.id.custom_fragment_direction_hex) {
                 viewBinding.customFragmentDirectionHex.toggle();
                 return;
             }
             String data = mStorage.getDataString(String.valueOf(v.getId()));
             if (data != null) {
                 send(data.substring(data.indexOf(mSeparator) + mSeparator.length()));
-            }else {
+            } else {
                 Toast.makeText(getContext(), "此按钮还没有初始化", Toast.LENGTH_SHORT).show();
             }
         };
@@ -72,8 +72,8 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
             setButtonWindow(v);
             return false;
         };
-        setItemClickListener(viewBinding.customFragmentLinear,listener);
-        setItemClickLongListener(viewBinding.customFragmentLinear,longClickListener);
+        setItemClickListener(viewBinding.customFragmentLinear, listener);
+        setItemClickLongListener(viewBinding.customFragmentLinear, longClickListener);
         viewBinding.customFragmentDirectionHex.setOnClickListener(listener);
     }
 
@@ -81,20 +81,20 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
      * 设置子View的ClickListener
      */
     private void setItemClickListener(View view, View.OnClickListener listener) {
-        if(view instanceof ViewGroup){
+        if (view instanceof ViewGroup) {
             ViewGroup viewGroup = (ViewGroup) view;
             int childCount = viewGroup.getChildCount();
-            for (int i=0;i<childCount;i++){
+            for (int i = 0; i < childCount; i++) {
                 //不断的递归给里面所有的View设置OnClickListener
                 View childView = viewGroup.getChildAt(i);
-                setItemClickListener(childView,listener);
+                setItemClickListener(childView, listener);
             }
-        }else{
+        } else {
             String data = mStorage.getDataString(String.valueOf(view.getId()));
-            if (data == null){
-                ((Button)view).setText("长按设置");
-            }else {
-                ((Button)view).setText(data.substring(0,data.indexOf(mSeparator)));
+            if (data == null) {
+                ((Button) view).setText("长按设置");
+            } else {
+                ((Button) view).setText(data.substring(0, data.indexOf(mSeparator)));
             }
             view.setOnClickListener(listener);
         }
@@ -104,15 +104,15 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
      * 设置子View的ClickListener
      */
     private void setItemClickLongListener(View view, View.OnLongClickListener listener) {
-        if(view instanceof ViewGroup){
+        if (view instanceof ViewGroup) {
             ViewGroup viewGroup = (ViewGroup) view;
             int childCount = viewGroup.getChildCount();
-            for (int i=0;i<childCount;i++){
+            for (int i = 0; i < childCount; i++) {
                 //不断的递归给里面所有的View设置OnClickListener
                 View childView = viewGroup.getChildAt(i);
-                setItemClickLongListener(childView,listener);
+                setItemClickLongListener(childView, listener);
             }
-        }else{
+        } else {
             view.setOnLongClickListener(listener);
         }
     }
@@ -123,12 +123,12 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
         collectBuilder.setView(R.layout.hint_set_button_vessel).fullWidth().loadAnimation().create().show();
         SetButton setButton = collectBuilder.getView(R.id.hint_set_button_vessel_view);
         String data = mStorage.getDataString(String.valueOf(view.getId()));
-        String name = data != null?data.substring(0,data.indexOf(mSeparator)):"";
-        String content = data != null?data.substring(data.indexOf(mSeparator)+mSeparator.length()):"";
-        setButton.setEditText(name,content).setBuilder(collectBuilder).setCallback(new SetButton.OnCollectCallback() {
+        String name = data != null ? data.substring(0, data.indexOf(mSeparator)) : "";
+        String content = data != null ? data.substring(data.indexOf(mSeparator) + mSeparator.length()) : "";
+        setButton.setEditText(name, content).setBuilder(collectBuilder).setCallback(new SetButton.OnCollectCallback() {
             @Override
             public void callback(String name, String content) {
-                mStorage.saveData(String.valueOf(view.getId()),name+mSeparator+content);
+                mStorage.saveData(String.valueOf(view.getId()), name + mSeparator + content);
                 setListener();
             }
 
@@ -139,21 +139,20 @@ public class FragmentCustomGroup extends BaseFragment<FragmentCustomButtonGroupB
         });
     }
 
-    private void send(String data){
-        if (mTitle != null && !mTitle.getParams().mRightText.equals("已连接")){//代表当前没有连接上
+    private void send(String data) {
+        if (mTitle != null && !mTitle.getParams().mRightText.equals("已连接")) {//代表当前没有连接上
             toastShort("当前状态不能发送数据，请连接完再尝试发送数据");
             return;
         }
         boolean isHex = viewBinding.customFragmentDirectionHex.getState() == CustomButtonView.State.Open;
         byte[] bytes;
 
-        if (mIsSendNewline) data += isHex? "0D0A":"\r\n";
+        if (mIsSendNewline) data += isHex ? "0D0A" : "\r\n";
         if (isHex) data = Analysis.getFiltrationHexString(data);
-        log("过滤后的数据: "+data);
-        bytes = Analysis.getBytes(data,mFragmentParameter.getCodeFormat(getContext()),isHex);
+        log("过滤后的数据: " + data);
+        bytes = Analysis.getBytes(data, mFragmentParameter.getCodeFormat(getContext()), isHex);
 
-        sendDataToActivity(StaticConstants.CMD_SEND_BT_DATA,new FragmentMessageItem(false, bytes, null,
-                true, HoldBluetooth.getInstance().getConnectedArray().get(0), false));
+        sendDataToActivity(StaticConstants.CMD_SEND_BT_DATA, new FragmentMessageItem(false, bytes, null, true, HoldBluetooth.getInstance().getConnectedArray().get(0), false));
     }
 
 }

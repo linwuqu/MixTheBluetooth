@@ -37,10 +37,10 @@ import java.util.List;
 /*
   项目入口从这里开始,这里的initAll方法会逐个执行里面的方法
   **/
+
 /**
- * @author
- *  * data: 2020-07-21
- *  * version: V1.3
+ * @author * data: 2020-07-21
+ * * version: V1.3
  */
 public class MainActivity extends BaseActivity<ActivityMainBinding> {
 
@@ -58,8 +58,8 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     private int mStartDebug = 1;
 
     /*
-    * 这个项目中类的开始入口为这里initAll()方法中
-    * */
+     * 这个项目中类的开始入口为这里initAll()方法中
+     * */
     @Override
     public void initAll() {
 
@@ -88,47 +88,49 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     protected ActivityMainBinding getViewBinding() {
         return ActivityMainBinding.inflate(getLayoutInflater());
     }
+
     /*
-    * 连接蓝牙
-    * */
+     * 连接蓝牙
+     * */
     private void initHoldBluetooth() {
         mHoldBluetooth = HoldBluetooth.getInstance();
         final HoldBluetooth.UpdateList updateList = new HoldBluetooth.UpdateList() {
             @Override
-            public void update(boolean isStart,DeviceModule deviceModule) {
+            public void update(boolean isStart, DeviceModule deviceModule) {
 
-                if (isStart && deviceModule == null){//更新距离值
+                if (isStart && deviceModule == null) {//更新距离值
                     mainRecyclerAdapter.notifyDataSetChanged();
                     return;
                 }
-                if (isStart){
+                if (isStart) {
                     setMainBackIcon();
-                    if (deviceModule.isBLE()&&!deviceModule.getName().equals("N/A")){
+                    if (deviceModule.isBLE() && !deviceModule.getName().equals("N/A")) {
                         mModuleArray.add(deviceModule);
                     }
-                    addFilterList(deviceModule,true);
-                }else {
+                    addFilterList(deviceModule, true);
+                } else {
                     mTitle.updateLoadingState(false);
                 }
             }
+
             @Override
             public void updateMessyCode(boolean isStart, DeviceModule deviceModule) {
-                for(int i= 0; i<mModuleArray.size();i++){
-                    if (mModuleArray.get(i).getMac().equals(deviceModule.getMac())){
+                for (int i = 0; i < mModuleArray.size(); i++) {
+                    if (mModuleArray.get(i).getMac().equals(deviceModule.getMac())) {
                         mModuleArray.remove(mModuleArray.get(i));
-                        mModuleArray.add(i,deviceModule);
+                        mModuleArray.add(i, deviceModule);
                         upDateList();
                         break;
                     }
                 }
             }
         };
-        mHoldBluetooth.initHoldBluetooth(MainActivity.this,updateList);
+        mHoldBluetooth.initHoldBluetooth(MainActivity.this, updateList);
     }
 
     private void initView() {
         setMainBackIcon();
-        mainRecyclerAdapter = new MainRecyclerAdapter(this,mFilterModuleArray,R.layout.item_recycler_main);
+        mainRecyclerAdapter = new MainRecyclerAdapter(this, mFilterModuleArray, R.layout.item_recycler_main);
         viewBinding.mainRecycler.setLayoutManager(new LinearLayoutManager(this));
         viewBinding.mainRecycler.setAdapter(mainRecyclerAdapter);
     }
@@ -143,9 +145,9 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     }
 
     //刷新的具体实现
-        private void refresh(){
+    private void refresh() {
         popDialog();
-        if (mHoldBluetooth.scan(mStorage.getData(PopWindowMain.BLE_KEY))){
+        if (mHoldBluetooth.scan(mStorage.getData(PopWindowMain.BLE_KEY))) {
             mModuleArray.clear();
             mFilterModuleArray.clear();
             mTitle.updateLoadingState(true);
@@ -154,49 +156,42 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     }
 
     //根据条件过滤列表，并选择是否更新列表
-    private void addFilterList(DeviceModule deviceModule,boolean isRefresh){
-        if (mStorage.getData(PopWindowMain.NAME_KEY) && deviceModule.getName().equals("N/A")) return;
+    private void addFilterList(DeviceModule deviceModule, boolean isRefresh) {
+        if (mStorage.getData(PopWindowMain.NAME_KEY) && deviceModule.getName().equals("N/A"))
+            return;
 
         if (mStorage.getData(PopWindowMain.BLE_KEY) && !deviceModule.isBLE()) return;
 
-        if ((mStorage.getData(PopWindowMain.FILTER_KEY) || mStorage.getData(PopWindowMain.CUSTOM_KEY))
-         && !deviceModule.isHcModule(mStorage.getData(PopWindowMain.CUSTOM_KEY),mStorage.getDataString(PopWindowMain.DATA_KEY))){
+        if ((mStorage.getData(PopWindowMain.FILTER_KEY) || mStorage.getData(PopWindowMain.CUSTOM_KEY)) && !deviceModule.isHcModule(mStorage.getData(PopWindowMain.CUSTOM_KEY), mStorage.getDataString(PopWindowMain.DATA_KEY))) {
             return;
         }
         deviceModule.isCollectName(MainActivity.this);
-        if (deviceModule.isBLE()&&!deviceModule.getName().equals("N/A")){
+        if (deviceModule.isBLE() && !deviceModule.getName().equals("N/A")) {
             mFilterModuleArray.add(deviceModule);
         }
         if (isRefresh) mainRecyclerAdapter.notifyDataSetChanged();
     }
 
     //设置头部，app头部
-        private void setTitle() {
-        mTitle = new DefaultNavigationBar
-                .Builder(this, findViewById(R.id.main_name))
-                .setLeftText("Biosensors System", CommonPopupWindow.dip2px(this,18))
-                .hideLeftIcon()
-                .setRightIcon()
-                .setLeftClickListener(v -> {
-                    if (mStartDebug % 4 ==0) startActivity(DebugActivity.class);
-                    mStartDebug++;
-                })
-                .setRightClickListener(v -> {
-                    setPopWindow(v);
-                    mTitle.updateRightImage(true);
-                })
-                .builer();
+    private void setTitle() {
+        mTitle = new DefaultNavigationBar.Builder(this, findViewById(R.id.main_name)).setLeftText("Biosensors System", CommonPopupWindow.dip2px(this, 18)).hideLeftIcon().setRightIcon().setLeftClickListener(v -> {
+            if (mStartDebug % 4 == 0) startActivity(DebugActivity.class);
+            mStartDebug++;
+        }).setRightClickListener(v -> {
+            setPopWindow(v);
+            mTitle.updateRightImage(true);
+        }).builer();
     }
 
     //头部下拉窗口
-    private void setPopWindow(View v){
+    private void setPopWindow(View v) {
         new PopWindowMain(v, MainActivity.this, resetEngine -> {//弹出窗口销毁的回调
-           upDateList();
-           mTitle.updateRightImage(false);
-           if (resetEngine){//更换搜索引擎，重新搜索
-               mHoldBluetooth.stopScan();
-               refresh();
-           }
+            upDateList();
+            mTitle.updateRightImage(false);
+            if (resetEngine) {//更换搜索引擎，重新搜索
+                mHoldBluetooth.stopScan();
+                refresh();
+            }
         });
     }
 
@@ -204,13 +199,13 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     private void setRecyclerListener() {
         mainRecyclerAdapter.setOnItemClickListener((position, view) -> {
             log("选蓝牙-点击位置: " + position);
-            if (view.getId() == R.id.item_main_icon){
+            if (view.getId() == R.id.item_main_icon) {
                 log("选蓝牙-点击收藏图标");
                 setCollectWindow(position);//收藏窗口
-            }else {
+            } else {
                 DeviceModule module = mFilterModuleArray.get(position);
                 log("选蓝牙-准备连接设备: " + module.getName() + ", mac: " + module.getMac() + ", isBLE: " + module.isBLE());
-                if (module.getIBeacon() != null){
+                if (module.getIBeacon() != null) {
                     log("选蓝牙-设备iBeacon不为空，直接返回");
                     toastShort("此设备目前状态不可连接");
                     return;
@@ -238,30 +233,29 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     }
 
     //更新列表
-    private void upDateList(){
+    private void upDateList() {
         mFilterModuleArray.clear();
         for (DeviceModule deviceModule : mModuleArray) {
-            addFilterList(deviceModule,false);
+            addFilterList(deviceModule, false);
         }
         mainRecyclerAdapter.notifyDataSetChanged();
         setMainBackIcon();
     }
 
     //设置列表的背景图片是否显示
-    private void setMainBackIcon(){
-        if (mFilterModuleArray.size() == 0){
+    private void setMainBackIcon() {
+        if (mFilterModuleArray.size() == 0) {
             viewBinding.mainBackNot.setVisibility(View.VISIBLE);
-        }else {
+        } else {
             viewBinding.mainBackNot.setVisibility(View.GONE);
         }
     }
 
     //扫描弹出提醒框
-    private void popDialog(){
+    private void popDialog() {
         if (mStorage != null && mStorage.getFirstTime()) {
             CommonDialog.Builder hidBuilder = new CommonDialog.Builder(MainActivity.this);
-            CommonDialog dialog = hidBuilder.setView(R.layout.hint_hid_vessel)
-                    .loadAnimation().fullWidth().setCancelable(false).create();
+            CommonDialog dialog = hidBuilder.setView(R.layout.hint_hid_vessel).loadAnimation().fullWidth().setCancelable(false).create();
             HintHID hintHID = hidBuilder.getView(R.id.hint_hid_vessel_view);
             hintHID.setBuilder(hidBuilder);
             hintHID.setOnDismissListener(() -> {
@@ -275,49 +269,43 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     /**
      * 设置引导界面
      */
-    private void setGuide(){
-        NewbieGuide.with(this)
-                .setLabel("guide")
-                .anchor(getWindow().getDecorView())
-                .addGuidePage(GuidePage.newInstance()
-                .addHighLight(mTitle.getView(R.id.right_icon),
-                        new RelativeGuide(R.layout.guide_page_main, Gravity.START))
-                .setOnLayoutInflatedListener((view, controller) -> {
-                    String data = "点击此处，可切换为专门扫描BLE蓝牙设备模式👉";
-                    TextView textView = view.findViewById(R.id.guide_page_text);
-                    if (textView != null) textView.setText(data);
-                }))
-                .show();
+    private void setGuide() {
+        NewbieGuide.with(this).setLabel("guide").anchor(getWindow().getDecorView()).addGuidePage(GuidePage.newInstance().addHighLight(mTitle.getView(R.id.right_icon), new RelativeGuide(R.layout.guide_page_main, Gravity.START)).setOnLayoutInflatedListener((view, controller) -> {
+            String data = "点击此处，可切换为专门扫描BLE蓝牙设备模式👉";
+            TextView textView = view.findViewById(R.id.guide_page_text);
+            if (textView != null) textView.setText(data);
+        })).show();
     }
 
     //初始化位置权限
-    private void initPermission(){
+    private void initPermission() {
         PermissionUtil.requestEach(MainActivity.this, new PermissionUtil.OnPermissionListener() {
             @Override
             public void onSucceed() {
                 //授权成功后打开蓝牙
                 log("申请成功");
                 new Handler().postDelayed(() -> {
-                    if (mHoldBluetooth.bluetoothState()){
+                    if (mHoldBluetooth.bluetoothState()) {
                         if (Analysis.isOpenGPS(MainActivity.this)) {
                             refresh();
-                        }else {
+                        } else {
                             startLocation();
                         }
                     }
-                },1000);
+                }, 1000);
 
             }
+
             @Override
             public void onFailed(boolean showAgain) {
-                logError("失败: "+showAgain);
+                logError("失败: " + showAgain);
                 CommonDialog.Builder permissionBuilder = new CommonDialog.Builder(MainActivity.this);
                 permissionBuilder.setView(R.layout.hint_permission_vessel).fullWidth().setCancelable(false).loadAnimation().create().show();
                 PermissionHint permissionHint = permissionBuilder.getView(R.id.hint_permission_vessel_view);
                 permissionHint.setBuilder(permissionBuilder).setPermission(showAgain).setCallback(permission -> {
                     if (permission) {
                         initPermission();
-                    }else {
+                    } else {
                         finish();
                     }
                 });
@@ -326,15 +314,12 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     }
 
     //开启位置权限
-    private void startLocation(){
-        AlertDialog.Builder builder = new AlertDialog.Builder(this,android.R.style.Theme_DeviceDefault_Light_Dialog_Alert);
-        builder.setTitle("提示")
-                .setMessage("请前往打开手机的位置权限!")
-                .setCancelable(false)
-                .setPositiveButton("确定", (dialog, which) -> {
-                    Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                    startActivityForResult(intent, 10);
-                }).show();
+    private void startLocation() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert);
+        builder.setTitle("提示").setMessage("请前往打开手机的位置权限!").setCancelable(false).setPositiveButton("确定", (dialog, which) -> {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            startActivityForResult(intent, 10);
+        }).show();
     }
 
     @Override

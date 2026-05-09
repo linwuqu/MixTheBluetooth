@@ -28,11 +28,7 @@ public class FragmentLog extends BTFragment<FragmentLogBinding> {
     protected void initAllImpl(View view, Context context) {
         initRecycler();
 
-        onLogMessage(new FragmentLogItem(
-                "FragmentLog",
-                "Mock log from FragmentLog.initAllImpl",
-                "w"
-        ));
+        onLogMessage(new FragmentLogItem("FragmentLog", "Mock log from FragmentLog.initAllImpl", "w"));
     }
 
     private void initRecycler() {
