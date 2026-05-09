@@ -1,6 +1,8 @@
 package com.hc.mixthebluetooth.fragment;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Color;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -12,7 +14,6 @@ import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.github.mikephil.charting.charts.LineChart;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
@@ -23,8 +24,9 @@ import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
 import com.hc.mixthebluetooth.activity.tool.Profiles;
 import com.hc.mixthebluetooth.activity.tool.SampleRecorder;
-import com.hc.mixthebluetooth.activity.tool.SampleRecorderImpl;
-import com.hc.mixthebluetooth.activity.tool.chart.RealtimeLineChart;
+import com.hc.mixthebluetooth.activity.tool.chart.MetricWidgets;
+import com.hc.mixthebluetooth.activity.tool.chart.MetricWidgets.MetricWidget;
+import com.hc.mixthebluetooth.activity.tool.chart.MetricWidgets.WidgetSpec;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
@@ -33,7 +35,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
@@ -76,9 +77,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
     }
 
     interface HostView {
-        ViewGroup actionContainer();
-        ViewGroup chartContainer();
-        ViewGroup indicatorContainer();
+        ViewGroup region(@NonNull Region region);
         RecyclerView messageList();
         TextView bottomInfo();
     }
@@ -95,11 +94,25 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             this.binding = binding;
         }
 
-        @Override public ViewGroup actionContainer() { return binding.actionContainer; }
-        @Override public ViewGroup chartContainer() { return binding.chartContainer; }
-        @Override public ViewGroup indicatorContainer() { return binding.indicatorContainer; }
-        @Override public RecyclerView messageList() { return binding.recyclerMessage; }
-        @Override public TextView bottomInfo() { return binding.tvBottomInfo; }
+        @Override
+        public ViewGroup region(@NonNull Region region) {
+            if (region == Region.ACTION) return binding.actionRegion;
+            if (region == Region.SUMMARY) return binding.summaryRegion;
+            if (region == Region.MAIN) return binding.mainRegion;
+            if (region == Region.SECONDARY) return binding.secondaryRegion;
+            if (region == Region.DEBUG) return binding.debugRegion;
+            return binding.contentRoot;
+        }
+
+        @Override
+        public RecyclerView messageList() {
+            return binding.recyclerMessage;
+        }
+
+        @Override
+        public TextView bottomInfo() {
+            return binding.tvBottomInfo;
+        }
     }
 
     private final class FragmentGateway implements BluetoothGateway {
@@ -115,9 +128,17 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
     }
 
+    public enum Region {
+        ACTION,
+        SUMMARY,
+        MAIN,
+        SECONDARY,
+        DEBUG,
+        BOTTOM
+    }
+
     public enum Route {
         POST,
-        SUBSCRIBE,
         INNER
     }
 
@@ -126,11 +147,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         STOP_RECORD,
         EXPORT,
         CLEAR_MESSAGES,
-        RESET_CHARTS
-    }
-
-    public enum ChartType {
-        LINE
+        RESET_WIDGETS
     }
 
     public static final class ActionSpec {
@@ -163,42 +180,6 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
     }
 
-    public static final class ChartSpec {
-        @NonNull public final String id;
-        @NonNull public final String title;
-        @NonNull public final String metricKey;
-        @NonNull public final ChartType type;
-        public final int color;
-
-        private ChartSpec(@NonNull String id, @NonNull String title, @NonNull String metricKey, @NonNull ChartType type, int color) {
-            this.id = id;
-            this.title = title;
-            this.metricKey = metricKey;
-            this.type = type;
-            this.color = color;
-        }
-
-        public static ChartSpec line(@NonNull String id, @NonNull String title, @NonNull String metricKey, int color) {
-            return new ChartSpec(id, title, metricKey, ChartType.LINE, color);
-        }
-    }
-
-    public static final class IndicatorSpec {
-        @NonNull public final String id;
-        @NonNull public final String label;
-        @Nullable public final String metricKey;
-
-        private IndicatorSpec(@NonNull String id, @NonNull String label, @Nullable String metricKey) {
-            this.id = id;
-            this.label = label;
-            this.metricKey = metricKey;
-        }
-
-        public static IndicatorSpec metric(@NonNull String id, @NonNull String label, @NonNull String metricKey) {
-            return new IndicatorSpec(id, label, metricKey);
-        }
-    }
-
     public interface TextSupplier {
         @NonNull String get();
     }
@@ -211,16 +192,14 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         @NonNull public final String id;
         @NonNull public final List<BluetoothSampleParser> parsers;
         @NonNull public final List<ActionSpec> actions;
-        @NonNull public final List<ChartSpec> charts;
-        @NonNull public final List<IndicatorSpec> indicators;
+        @NonNull public final List<WidgetSpec> widgets;
         @Nullable public final RecordFormatter recordFormatter;
 
         private ProfileSpec(@NonNull Builder b) {
             this.id = b.id;
             this.parsers = new ArrayList<>(b.parsers);
             this.actions = new ArrayList<>(b.actions);
-            this.charts = new ArrayList<>(b.charts);
-            this.indicators = new ArrayList<>(b.indicators);
+            this.widgets = new ArrayList<>(b.widgets);
             this.recordFormatter = b.recordFormatter;
         }
 
@@ -232,8 +211,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             @NonNull private final String id;
             private final List<BluetoothSampleParser> parsers = new ArrayList<>();
             private final List<ActionSpec> actions = new ArrayList<>();
-            private final List<ChartSpec> charts = new ArrayList<>();
-            private final List<IndicatorSpec> indicators = new ArrayList<>();
+            private final List<WidgetSpec> widgets = new ArrayList<>();
             @Nullable private RecordFormatter recordFormatter;
 
             private Builder(@NonNull String id) {
@@ -250,13 +228,8 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
                 return this;
             }
 
-            public Builder chart(@NonNull ChartSpec chart) {
-                charts.add(chart);
-                return this;
-            }
-
-            public Builder indicator(@NonNull IndicatorSpec indicator) {
-                indicators.add(indicator);
+            public Builder widget(@NonNull WidgetSpec widget) {
+                widgets.add(widget);
                 return this;
             }
 
@@ -278,9 +251,9 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         private final ProfileSpec spec;
         private final HostView host;
         private final BluetoothGateway gateway;
-        private final SampleRecorder recorder = new SampleRecorderImpl();
+        private final SampleRecorder recorder = new SampleRecorder();
         private final ArrayList<FragmentMessageItem> messages = new ArrayList<>();
-        private final HashMap<String, RealtimeLineChart> charts = new HashMap<>();
+        private final ArrayList<MetricWidget> widgets = new ArrayList<>();
         private final HashMap<String, TextView> indicators = new HashMap<>();
 
         private FragmentMessAdapter adapter;
@@ -299,10 +272,9 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             adapter = new FragmentMessAdapter(context, messages, R.layout.item_message_fragment);
             host.messageList().setLayoutManager(new LinearLayoutManager(context));
             host.messageList().setAdapter(adapter);
-            createSystemIndicators();
-            createIndicators();
             createActions();
-            createCharts();
+            createSystemIndicators();
+            createWidgets();
             setBottomInfo("Ready");
         }
 
@@ -325,62 +297,57 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             recorder.release();
         }
 
+        private void createActions() {
+            for (ActionSpec action : spec.actions) {
+                Button button = new Button(context);
+                button.setAllCaps(false);
+                button.setText(action.label);
+                button.setOnClickListener(v -> handleAction(action));
+                host.region(Region.ACTION).addView(button, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                ));
+            }
+        }
+
         private void createSystemIndicators() {
             addIndicatorText("record_state", "Record: OFF");
             addIndicatorText("byte_counter", "Read: 0 B    Sent: 0 B");
         }
 
-        private void createIndicators() {
-            for (IndicatorSpec indicator : spec.indicators) {
-                TextView tv = addIndicatorText(indicator.id, indicator.label + ": --");
-                indicators.put(indicator.id, tv);
-            }
-        }
-
         private TextView addIndicatorText(@NonNull String id, @NonNull String text) {
             TextView tv = new TextView(context);
             tv.setText(text);
-            host.indicatorContainer().addView(tv);
+            tv.setTextColor(Color.rgb(96, 96, 96));
+            tv.setTextSize(15f);
             indicators.put(id, tv);
+            host.region(Region.DEBUG).addView(tv, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
             return tv;
         }
 
-        private void createActions() {
-            for (ActionSpec action : spec.actions) {
-                Button button = new Button(context);
-                button.setText(action.label);
-                button.setOnClickListener(v -> handleAction(action));
-                host.actionContainer().addView(button);
-            }
-        }
-
-        private void createCharts() {
-            for (ChartSpec chartSpec : spec.charts) {
-                LinearLayout box = new LinearLayout(context);
-                box.setOrientation(LinearLayout.VERTICAL);
-                box.setBackgroundResource(R.drawable.window_back);
-                LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(170)
-                );
-                boxParams.setMargins(0, dp(6), 0, dp(8));
-                host.chartContainer().addView(box, boxParams);
-
-                LineChart chartView = new LineChart(context);
-                box.addView(chartView, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                ));
-                RealtimeLineChart chart = new RealtimeLineChart(
-                        chartView,
-                        new RealtimeLineChart.Config.Builder()
-                                .label(chartSpec.title)
-                                .color(chartSpec.color)
-                                .maxPoints(500)
-                                .visibleWindowSeconds(60f)
-                                .build()
-                );
-                charts.put(chartSpec.metricKey, chart);
+        private void createWidgets() {
+            ArrayList<WidgetSpec> ordered = new ArrayList<>(spec.widgets);
+            ordered.sort((a, b) -> {
+                if (a.region != b.region) return a.region.ordinal() - b.region.ordinal();
+                return a.order - b.order;
+            });
+            for (WidgetSpec widgetSpec : ordered) {
+                MetricWidget widget = MetricWidgets.create(context, widgetSpec);
+                View view = widget.view();
+                if (widgetSpec.region == Region.SUMMARY) {
+                    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                            0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            1f
+                    );
+                    params.setMargins(dp(4), dp(4), dp(4), dp(6));
+                    view.setLayoutParams(params);
+                }
+                host.region(widgetSpec.region).addView(view);
+                widgets.add(widget);
             }
         }
 
@@ -394,9 +361,10 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             }
         }
 
+        @SuppressLint("NotifyDataSetChanged")
         private void runBuiltIn(@NonNull BuiltIn builtIn) {
             if (builtIn == BuiltIn.START_RECORD) {
-                resetCharts();
+                resetWidgets();
                 recorder.start(context, "unified_" + spec.id);
                 setRecordState(true);
                 setBottomInfo("Recording started");
@@ -411,8 +379,8 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
                 adapter.notifyDataSetChanged();
                 readBytes = 0;
                 updateByteCounter();
-            } else if (builtIn == BuiltIn.RESET_CHARTS) {
-                resetCharts();
+            } else if (builtIn == BuiltIn.RESET_WIDGETS) {
+                resetWidgets();
             }
         }
 
@@ -458,28 +426,17 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
 
         private void consume(@NonNull BluetoothSample sample) {
-            for (Map.Entry<String, Float> e : sample.metrics().entrySet()) {
-                RealtimeLineChart chart = charts.get(e.getKey());
-                if (chart != null && recorder.isRecording()) {
-                    chart.append(e.getValue());
-                }
-                for (IndicatorSpec indicator : spec.indicators) {
-                    if (e.getKey().equals(indicator.metricKey)) {
-                        TextView tv = indicators.get(indicator.id);
-                        if (tv != null) {
-                            tv.setText(indicator.label + ": " + e.getValue());
-                        }
-                    }
-                }
+            for (MetricWidget widget : widgets) {
+                widget.onSample(sample);
             }
             if (recorder.isRecording() && spec.recordFormatter != null) {
                 recorder.appendLine(spec.recordFormatter.format(sample));
             }
         }
 
-        private void resetCharts() {
-            for (RealtimeLineChart chart : charts.values()) {
-                chart.reset();
+        private void resetWidgets() {
+            for (MetricWidget widget : widgets) {
+                widget.reset();
             }
         }
 
@@ -490,6 +447,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             }
         }
 
+        @SuppressLint("SetTextI18n")
         private void updateByteCounter() {
             TextView tv = indicators.get("byte_counter");
             if (tv != null) {
@@ -502,7 +460,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
 
         private int dp(int value) {
-            return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
+            return Math.round(value * context.getResources().getDisplayMetrics().density);
         }
 
         @Nullable

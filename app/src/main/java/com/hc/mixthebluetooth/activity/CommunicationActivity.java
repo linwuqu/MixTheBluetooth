@@ -28,7 +28,6 @@ import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
 import com.hc.mixthebluetooth.fragment.FragmentCustom;
 import com.hc.mixthebluetooth.fragment.FragmentIonAnalysis;
 import com.hc.mixthebluetooth.fragment.FragmentLog;
-import com.hc.mixthebluetooth.fragment.FragmentMessage;
 import com.hc.mixthebluetooth.fragment.FragmentSetting;
 import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
@@ -41,12 +40,11 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     private static final String CONNECTING = "连接中";
     private static final String DISCONNECT = "断线了";
 
-    private static final int PAGE_MESSAGE = 0;
-    private static final int PAGE_MESSAGE_NEW = 1;
-    private static final int PAGE_CUSTOM = 2;
-    private static final int PAGE_ION_ANALYSIS = 3;
-    private static final int PAGE_SETTING = 4;
-    private static final int PAGE_LOG = 5;
+    private static final int PAGE_MESSAGE_NEW = 0;
+    private static final int PAGE_CUSTOM = 1;
+    private static final int PAGE_ION_ANALYSIS = 2;
+    private static final int PAGE_SETTING = 3;
+    private static final int PAGE_LOG = 4;
 
     private DefaultNavigationBar mTitle;
     private UnderlineTextView mUnderlineTV;
@@ -165,11 +163,11 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         showLogPage = shouldShowLogPage();
 
         viewPagerManage = new ViewPagerManage(viewBinding.communicationFragment);
-        viewPagerManage.addFragment(new FragmentMessage());
         viewPagerManage.addFragment(new UnifiedMessageFragment());
         viewPagerManage.addFragment(new FragmentCustom());
         viewPagerManage.addFragment(new FragmentIonAnalysis());
         viewPagerManage.addFragment(new FragmentSetting());
+        viewBinding.tabMessage.setVisibility(View.GONE);
 
         if (showLogPage) {
             viewPagerManage.addFragment(new FragmentLog());
@@ -251,9 +249,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     public void onClickView(View view) {
         publishFragmentHide();
 
-        if (isCheck(viewBinding.tabMessage)) {
-            showPage(PAGE_MESSAGE);
-        } else if (isCheck(viewBinding.tabMessageNew)) {
+        if (isCheck(viewBinding.tabMessage) || isCheck(viewBinding.tabMessageNew)) {
             showPage(PAGE_MESSAGE_NEW);
         } else if (isCheck(viewBinding.tabCustom)) {
             showPage(PAGE_CUSTOM);
@@ -278,10 +274,6 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         }
 
         switch (position) {
-            case PAGE_MESSAGE:
-                mUnderlineTV = viewBinding.tabMessage.setState(true);
-                break;
-
             case PAGE_MESSAGE_NEW:
                 mUnderlineTV = viewBinding.tabMessageNew.setState(true);
                 break;

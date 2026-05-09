@@ -129,15 +129,15 @@ public final class StaticConstants {
 
     /** @deprecated Use {@link #CMD_MSG_NEW_START_RECORD}. */
     @Deprecated
-    public static final String MESSAGE_NEW_CMD_START_RECORD = MessageNewCmd.START_RECORD;
+    public static final String MESSAGE_NEW_CMD_START_RECORD = CMD_MSG_NEW_START_RECORD;
 
     /** @deprecated Use {@link #CMD_MSG_NEW_STOP_RECORD}. */
     @Deprecated
-    public static final String MESSAGE_NEW_CMD_STOP_RECORD = MessageNewCmd.STOP_RECORD;
+    public static final String MESSAGE_NEW_CMD_STOP_RECORD = CMD_MSG_NEW_STOP_RECORD;
 
     /** @deprecated Use {@link #CMD_MSG_NEW_EXPORT}. */
     @Deprecated
-    public static final String MESSAGE_NEW_CMD_EXPORT = MessageNewCmd.EXPORT;
+    public static final String MESSAGE_NEW_CMD_EXPORT = CMD_MSG_NEW_EXPORT;
 
     /** @deprecated Use {@link #CH_REC_STATE}. */
     @Deprecated
