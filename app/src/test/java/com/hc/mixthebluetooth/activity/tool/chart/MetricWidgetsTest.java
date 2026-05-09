@@ -7,6 +7,9 @@ import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment.Region;
 
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class MetricWidgetsTest {
 
     @Test
@@ -14,7 +17,7 @@ public class MetricWidgetsTest {
         MetricWidgets.WidgetSpec spec = MetricWidgets.WidgetSpec.line("eis_ohm")
                 .title("EIS Ohm")
                 .metric("ohm")
-                .unit("Ω")
+                .unit("ohm")
                 .region(Region.MAIN)
                 .order(20)
                 .lineColor(0xFFFF0000)
@@ -25,7 +28,7 @@ public class MetricWidgetsTest {
         assertEquals(MetricWidgets.WidgetKind.LINE, spec.kind);
         assertEquals("EIS Ohm", spec.title);
         assertEquals("ohm", spec.metricKey);
-        assertEquals("Ω", spec.unit);
+        assertEquals("ohm", spec.unit);
         assertEquals(Region.MAIN, spec.region);
         assertEquals(20, spec.order);
         assertEquals(0xFFFF0000, spec.color);
@@ -36,7 +39,7 @@ public class MetricWidgetsTest {
     @Test
     public void gaugeWidgetSpecHasSummaryDefaults() {
         MetricWidgets.WidgetSpec spec = MetricWidgets.WidgetSpec.gauge("conductance")
-                .title("电导率")
+                .title("Conductance")
                 .metric("us")
                 .unit("uS")
                 .gaugeMax(10f)
@@ -48,5 +51,32 @@ public class MetricWidgetsTest {
         assertEquals(Float.valueOf(10f), spec.gaugeMax);
         assertNull(spec.yMin);
         assertNull(spec.yMax);
+    }
+
+    @Test
+    public void orderedForDisplaySortsByRegionThenOrderWithoutMutatingInput() {
+        MetricWidgets.WidgetSpec mainEarly = MetricWidgets.WidgetSpec.line("main_early")
+                .metric("ohm")
+                .region(Region.MAIN)
+                .order(10)
+                .build();
+        MetricWidgets.WidgetSpec summaryLate = MetricWidgets.WidgetSpec.value("summary_late")
+                .metric("ohm")
+                .region(Region.SUMMARY)
+                .order(20)
+                .build();
+        MetricWidgets.WidgetSpec summaryEarly = MetricWidgets.WidgetSpec.gauge("summary_early")
+                .metric("us")
+                .region(Region.SUMMARY)
+                .order(10)
+                .build();
+        List<MetricWidgets.WidgetSpec> original = Arrays.asList(mainEarly, summaryLate, summaryEarly);
+
+        List<MetricWidgets.WidgetSpec> ordered = MetricWidgets.orderedForDisplay(original);
+
+        assertEquals("summary_early", ordered.get(0).id);
+        assertEquals("summary_late", ordered.get(1).id);
+        assertEquals("main_early", ordered.get(2).id);
+        assertEquals("main_early", original.get(0).id);
     }
 }

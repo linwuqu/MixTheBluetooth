@@ -15,10 +15,21 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
+import com.github.mikephil.charting.data.Entry;
+import com.github.mikephil.charting.data.LineData;
+import com.github.mikephil.charting.data.LineDataSet;
+import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
 import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment.Region;
 
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 public final class MetricWidgets {
@@ -54,6 +65,17 @@ public final class MetricWidgets {
         if (spec.kind == WidgetKind.VALUE) return new ValueMetricWidget(context, spec);
         if (spec.kind == WidgetKind.STATS) return new StatsMetricWidget(context, spec);
         return new ValueMetricWidget(context, spec);
+    }
+
+    @NonNull
+    public static ArrayList<WidgetSpec> orderedForDisplay(@NonNull List<WidgetSpec> widgets) {
+        ArrayList<WidgetSpec> orderedWidgets = new ArrayList<>(widgets);
+        Collections.sort(orderedWidgets, (a, b) -> {
+            int regionCompare = Integer.compare(a.region.ordinal(), b.region.ordinal());
+            if (regionCompare != 0) return regionCompare;
+            return Integer.compare(a.order, b.order);
+        });
+        return orderedWidgets;
     }
 
     public static final class WidgetSpec {
@@ -228,7 +250,7 @@ public final class MetricWidgets {
     private static final class LineMetricWidget implements MetricWidget {
         private final LinearLayout root;
         private final WidgetSpec spec;
-        private final RealtimeLineChart chart;
+        private final LineChartRuntime chart;
 
         LineMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
             this.spec = spec;
@@ -239,13 +261,13 @@ public final class MetricWidgets {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     dp(context, 210)
             ));
-            RealtimeLineChart.Config.Builder builder = new RealtimeLineChart.Config.Builder()
+            LineChartRuntime.Config.Builder builder = new LineChartRuntime.Config.Builder()
                     .label(spec.title)
                     .color(spec.color)
                     .maxPoints(spec.maxPoints)
                     .visibleWindowSeconds(spec.visibleWindowSeconds);
             if (spec.yMin != null && spec.yMax != null) builder.yRange(spec.yMin, spec.yMax);
-            chart = new RealtimeLineChart(chartView, builder.build());
+            chart = new LineChartRuntime(chartView, builder.build());
         }
 
         @NonNull
@@ -263,6 +285,152 @@ public final class MetricWidgets {
         @Override
         public void reset() {
             chart.reset();
+        }
+    }
+
+    private static final class LineChartRuntime {
+        private final LineChart chart;
+        private final LineDataSet dataSet;
+        private final Config config;
+        private long startTimeMs;
+
+        LineChartRuntime(@NonNull LineChart chart, @NonNull Config config) {
+            this.chart = chart;
+            this.config = config;
+            this.startTimeMs = System.currentTimeMillis();
+            setupChartBase(chart);
+            this.dataSet = createSet(config.label, config.color);
+            chart.setData(new LineData(dataSet));
+        }
+
+        void append(float value) {
+            LineData data = chart.getData();
+            if (data == null) return;
+            float x = (System.currentTimeMillis() - startTimeMs) / 1000f;
+            data.addEntry(new Entry(x, value), 0);
+            if (dataSet.getEntryCount() > config.maxPoints) {
+                dataSet.removeFirst();
+            }
+            data.notifyDataChanged();
+            chart.notifyDataSetChanged();
+            chart.setVisibleXRangeMaximum(config.visibleWindowSeconds);
+            if (dataSet.getEntryCount() > 0) {
+                float lastX = dataSet.getEntryForIndex(dataSet.getEntryCount() - 1).getX();
+                chart.moveViewToX(lastX);
+            }
+            chart.invalidate();
+        }
+
+        void reset() {
+            startTimeMs = System.currentTimeMillis();
+            dataSet.clear();
+            LineData data = chart.getData();
+            if (data != null) data.notifyDataChanged();
+            chart.notifyDataSetChanged();
+            chart.invalidate();
+        }
+
+        private void setupChartBase(@NonNull LineChart chart) {
+            chart.getDescription().setEnabled(false);
+            chart.setTouchEnabled(true);
+            chart.setDragEnabled(true);
+            chart.setScaleEnabled(true);
+            chart.setPinchZoom(true);
+            chart.setDrawGridBackground(false);
+            chart.getAxisRight().setEnabled(false);
+            XAxis x = chart.getXAxis();
+            x.setPosition(XAxis.XAxisPosition.BOTTOM);
+            x.setGranularity(1f);
+            x.setDrawGridLines(false);
+            x.setValueFormatter(new ValueFormatter() {
+                private final SimpleDateFormat fmt = new SimpleDateFormat(config.xAxisTimeFormat, Locale.getDefault());
+
+                @Override
+                public String getFormattedValue(float value) {
+                    long t = startTimeMs + (long) (value * 1000);
+                    return fmt.format(new Date(t));
+                }
+            });
+            YAxis y = chart.getAxisLeft();
+            y.setDrawGridLines(false);
+            if (config.yMin != null) y.setAxisMinimum(config.yMin);
+            if (config.yMax != null) y.setAxisMaximum(config.yMax);
+        }
+
+        private LineDataSet createSet(String label, int color) {
+            LineDataSet set = new LineDataSet(new ArrayList<>(), label);
+            set.setLineWidth(config.lineWidth);
+            set.setColor(color);
+            set.setDrawCircles(false);
+            set.setDrawValues(false);
+            return set;
+        }
+
+        static final class Config {
+            final String label;
+            final int color;
+            final int maxPoints;
+            final float visibleWindowSeconds;
+            final float lineWidth;
+            final String xAxisTimeFormat;
+            @Nullable
+            final Float yMin;
+            @Nullable
+            final Float yMax;
+
+            private Config(Builder b) {
+                label = b.label;
+                color = b.color;
+                maxPoints = b.maxPoints;
+                visibleWindowSeconds = b.visibleWindowSeconds;
+                lineWidth = b.lineWidth;
+                xAxisTimeFormat = b.xAxisTimeFormat;
+                yMin = b.yMin;
+                yMax = b.yMax;
+            }
+
+            static final class Builder {
+                private String label = "data";
+                private int color = Color.BLUE;
+                private int maxPoints = 500;
+                private float visibleWindowSeconds = 60f;
+                private float lineWidth = 1.2f;
+                private String xAxisTimeFormat = "HH:mm:ss";
+                @Nullable
+                private Float yMin = null;
+                @Nullable
+                private Float yMax = null;
+
+                Builder label(String label) {
+                    this.label = label;
+                    return this;
+                }
+
+                Builder color(int color) {
+                    this.color = color;
+                    return this;
+                }
+
+                Builder maxPoints(int maxPoints) {
+                    this.maxPoints = maxPoints;
+                    return this;
+                }
+
+                Builder visibleWindowSeconds(float v) {
+                    this.visibleWindowSeconds = v;
+                    return this;
+                }
+
+                Builder yRange(float min, float max) {
+                    yMin = min;
+                    yMax = max;
+                    return this;
+                }
+
+                Config build() {
+                    return new Config(this);
+                }
+            }
         }
     }
 

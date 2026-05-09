@@ -86,8 +86,6 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
 
     interface BluetoothGateway {
         void postText(@NonNull DeviceModule module, @NonNull String text);
-
-        void postBytes(@NonNull DeviceModule module, @NonNull byte[] bytes);
     }
 
     private static final class BindingHost implements HostView {
@@ -125,10 +123,6 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             sendDataToActivity(StaticConstants.CMD_BT_POST, new BTPackage.BTPost(module, bytes));
         }
 
-        @Override
-        public void postBytes(@NonNull DeviceModule module, @NonNull byte[] bytes) {
-            sendDataToActivity(StaticConstants.CMD_BT_POST, new BTPackage.BTPost(module, bytes.clone()));
-        }
     }
 
     public enum Region {
@@ -136,8 +130,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         SUMMARY,
         MAIN,
         SECONDARY,
-        DEBUG,
-        BOTTOM
+        DEBUG
     }
 
     public enum Route {
@@ -277,6 +270,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         private DeviceModule module;
         private int readBytes;
         private int sentBytes;
+        private boolean widgetsActive;
 
         MessageController(@NonNull Context context, @NonNull ProfileSpec spec, @NonNull HostView host, @NonNull BluetoothGateway gateway) {
             this.context = context;
@@ -346,12 +340,8 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
 
         private void createWidgets() {
-            ArrayList<WidgetSpec> ordered = new ArrayList<>(spec.widgets);
-            ordered.sort((a, b) -> {
-                if (a.region != b.region) return a.region.ordinal() - b.region.ordinal();
-                return a.order - b.order;
-            });
-            for (WidgetSpec widgetSpec : ordered) {
+            ArrayList<WidgetSpec> orderedWidgets = MetricWidgets.orderedForDisplay(spec.widgets);
+            for (WidgetSpec widgetSpec : orderedWidgets) {
                 MetricWidget widget = MetricWidgets.create(context, widgetSpec);
                 View view = widget.view();
                 if (widgetSpec.region == Region.SUMMARY) {
@@ -382,10 +372,12 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         private void runBuiltIn(@NonNull BuiltIn builtIn) {
             if (builtIn == BuiltIn.START_RECORD) {
                 resetWidgets();
+                widgetsActive = true;
                 recorder.start(context, "unified_" + spec.id);
                 setRecordState(true);
                 setBottomInfo("Recording started");
             } else if (builtIn == BuiltIn.STOP_RECORD) {
+                widgetsActive = false;
                 recorder.stop();
                 setRecordState(false);
                 setBottomInfo("Samples: " + recorder.getSampleCount());
@@ -401,6 +393,7 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
             }
         }
 
+        @SuppressLint("NotifyDataSetChanged")
         private void onBtData(@NonNull BTPackage.BTData data) {
             module = data.module;
             readBytes += data.bytes.length;
@@ -443,8 +436,10 @@ public class UnifiedMessageFragment extends BTFragment<FragmentUnifiedMessageBin
         }
 
         private void consume(@NonNull BluetoothSample sample) {
-            for (MetricWidget widget : widgets) {
-                widget.onSample(sample);
+            if (widgetsActive) {
+                for (MetricWidget widget : widgets) {
+                    widget.onSample(sample);
+                }
             }
             if (recorder.isRecording() && spec.recordFormatter != null) {
                 recorder.appendLine(spec.recordFormatter.format(sample));
