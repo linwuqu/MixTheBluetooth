@@ -2,7 +2,6 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdk 33
-    buildToolsVersion "29.0.3"
     defaultConfig {
         applicationId "com.hc.mixthebluetooth"
         minSdkVersion 23
@@ -24,6 +23,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    namespace 'com.hc.mixthebluetooth'
 }
 
 dependencies {
