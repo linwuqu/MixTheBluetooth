@@ -2,13 +2,13 @@ package com.hc.mixthebluetooth.activity.single;
 
 /**
  * Central event-channel names used by Activity, Fragment, and services.
- *
+ * <p>
  * Naming rules:
  * CH_  means Activity -> Fragment state/data push.
  * CMD_ means Fragment -> Activity command.
  * EV_  means event style communication; use it when the direction is not
- *      a stable UI state push.
- *
+ * a stable UI state push.
+ * <p>
  * The deprecated constants at the bottom keep the old project working while
  * each Fragment is migrated one by one.
  */
@@ -59,31 +59,45 @@ public final class StaticConstants {
     // Compatibility aliases. Old code may keep using these during migration.
     // ---------------------------------------------------------------------
 
-    /** @deprecated Use {@link #CH_BT_DATA}. */
+    /**
+     * @deprecated Use {@link #CH_BT_DATA}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_DATA = CH_BT_DATA;
 
-    /** @deprecated Use {@link #CMD_SEND_BT_DATA}. */
+    /**
+     * @deprecated Use {@link #CMD_SEND_BT_DATA}.
+     */
     @Deprecated
     public static final String DATA_TO_MODULE = CMD_SEND_BT_DATA;
 
-    /** @deprecated Use {@link #CH_SET_CONNECT_STATE}. */
+    /**
+     * @deprecated Use {@link #CH_SET_CONNECT_STATE}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_CONNECT_STATE = CH_SET_CONNECT_STATE;
 
-    /** @deprecated Use {@link #CH_SET_NAV_TITLE}. */
+    /**
+     * @deprecated Use {@link #CH_SET_NAV_TITLE}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_SEND_SEND_TITLE = CH_SET_NAV_TITLE;
 
-    /** @deprecated Use {@link #CH_LOG_MESSAGE}. */
+    /**
+     * @deprecated Use {@link #CH_LOG_MESSAGE}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_LOG_MESSAGE = CH_LOG_MESSAGE;
 
-    /** @deprecated Use {@link #CH_VELOCITY}. */
+    /**
+     * @deprecated Use {@link #CH_VELOCITY}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_SERVICE_VELOCITY = CH_VELOCITY;
 
-    /** @deprecated Use {@link #CH_STOP_LOOP_SEND}. */
+    /**
+     * @deprecated Use {@link #CH_STOP_LOOP_SEND}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_STOP_LOOP_SEND = CH_STOP_LOOP_SEND;
 
@@ -103,51 +117,75 @@ public final class StaticConstants {
     @Deprecated
     public static final String FRAGMENT_STATE_2 = "FRAGMENT_STATE_2";
 
-    /** @deprecated Use {@link #CH_SENT_BYTES}. */
+    /**
+     * @deprecated Use {@link #CH_SENT_BYTES}.
+     */
     @Deprecated
     public static final String FRAGMENT_STATE_NUMBER = CH_SENT_BYTES;
 
-    /** @deprecated Use {@link #CH_FRAGMENT_HIDE}. */
+    /**
+     * @deprecated Use {@link #CH_FRAGMENT_HIDE}.
+     */
     @Deprecated
     public static final String FRAGMENT_THREE_HIDE = CH_FRAGMENT_HIDE;
 
-    /** @deprecated Use {@link #CH_FRAGMENT_UNHIDE}. */
+    /**
+     * @deprecated Use {@link #CH_FRAGMENT_UNHIDE}.
+     */
     @Deprecated
     public static final String FRAGMENT_UNHIDDEN = CH_FRAGMENT_UNHIDE;
 
-    /** @deprecated Use {@link #EV_CUSTOM_NEWLINE}. */
+    /**
+     * @deprecated Use {@link #EV_CUSTOM_NEWLINE}.
+     */
     @Deprecated
     public static final String FRAGMENT_CUSTOM_NEWLINE = EV_CUSTOM_NEWLINE;
 
-    /** @deprecated Use {@link #CH_FRAGMENT_HIDE}. */
+    /**
+     * @deprecated Use {@link #CH_FRAGMENT_HIDE}.
+     */
     @Deprecated
     public static final String FRAGMENT_CUSTOM_HIDE = CH_FRAGMENT_HIDE;
 
-    /** @deprecated Use {@link #CMD_MSG_NEW_CONTROL}. */
+    /**
+     * @deprecated Use {@link #CMD_MSG_NEW_CONTROL}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_CONTROL = CMD_MSG_NEW_CONTROL;
 
-    /** @deprecated Use {@link #CMD_MSG_NEW_START_RECORD}. */
+    /**
+     * @deprecated Use {@link #CMD_MSG_NEW_START_RECORD}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_CMD_START_RECORD = CMD_MSG_NEW_START_RECORD;
 
-    /** @deprecated Use {@link #CMD_MSG_NEW_STOP_RECORD}. */
+    /**
+     * @deprecated Use {@link #CMD_MSG_NEW_STOP_RECORD}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_CMD_STOP_RECORD = CMD_MSG_NEW_STOP_RECORD;
 
-    /** @deprecated Use {@link #CMD_MSG_NEW_EXPORT}. */
+    /**
+     * @deprecated Use {@link #CMD_MSG_NEW_EXPORT}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_CMD_EXPORT = CMD_MSG_NEW_EXPORT;
 
-    /** @deprecated Use {@link #CH_REC_STATE}. */
+    /**
+     * @deprecated Use {@link #CH_REC_STATE}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_RECORD_STATE = CH_REC_STATE;
 
-    /** @deprecated Use {@link #CH_REC_EXPORT_RESULT}. */
+    /**
+     * @deprecated Use {@link #CH_REC_EXPORT_RESULT}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_EXPORT_RESULT = CH_REC_EXPORT_RESULT;
 
-    /** @deprecated Use {@link #EV_REC_SAMPLE}. */
+    /**
+     * @deprecated Use {@link #EV_REC_SAMPLE}.
+     */
     @Deprecated
     public static final String MESSAGE_NEW_SAMPLE_JSONL = EV_REC_SAMPLE;
 }
