@@ -23,6 +23,8 @@ public class LoginActivity extends AppCompatActivity {
     private TextInputEditText usernameEdt;
     private TextInputEditText passwordEdt;
     private MaterialButton loginBtn;
+    private MaterialButton registerBtn;
+    private MaterialButton apiDebugBtn;
     private TextInputLayout tilUsername;
     private TextInputLayout tilPassword;
     //控制权限管理
@@ -43,6 +45,8 @@ public class LoginActivity extends AppCompatActivity {
         usernameEdt = findViewById(R.id.username);
         passwordEdt = findViewById(R.id.password);
         loginBtn = findViewById(R.id.loginBtn);
+        registerBtn = findViewById(R.id.registerBtn);
+        apiDebugBtn = findViewById(R.id.apiDebugBtn);
         tilUsername = findViewById(R.id.tilUsername);
         tilPassword = findViewById(R.id.tilPassword);
     }
@@ -64,6 +68,12 @@ public class LoginActivity extends AppCompatActivity {
                 tilPassword.setBoxStrokeColor(ContextCompat.getColor(this, R.color.gray));
             }
         });
+
+        registerBtn.setOnClickListener(v ->
+                startActivity(new Intent(LoginActivity.this, AccountRegisterActivity.class)));
+
+        apiDebugBtn.setOnClickListener(v ->
+                startActivity(new Intent(LoginActivity.this, ApiDebugActivity.class)));
     }
 
     private void setupInputValidation() {

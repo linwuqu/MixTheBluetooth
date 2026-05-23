@@ -12,10 +12,11 @@ import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
+import com.hc.mixthebluetooth.uni.Codec;
 import com.hc.mixthebluetooth.uni.Controller;
 import com.hc.mixthebluetooth.uni.Profiles;
 
-import java.nio.charset.StandardCharsets;
+import java.io.File;
 
 public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
@@ -30,7 +31,7 @@ public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
     protected void initAllImpl(View view, Context context) {
         controller = new Controller(
                 requireContext(),
-                Profiles.eis(),
+                Profiles.cgm(),
                 new BindingHost(viewBinding),
                 new FragmentGateway()
         );
@@ -88,11 +89,16 @@ public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
     private final class FragmentGateway implements Controller.Gateway {
         @Override
         public void postText(@NonNull DeviceModule module, @NonNull String text) {
-            byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = Codec.encodeText(requireContext(), text);
             sendDataToActivity(
                     StaticConstants.CMD_BT_POST,
                     new BTPackage.BTPost(module, bytes)
             );
+        }
+
+        @Override
+        public void onCacheFileReady(@NonNull File file) {
+            sendDataToActivity(StaticConstants.CMD_CGM_CACHE_READY, file.getAbsolutePath());
         }
     }
 }

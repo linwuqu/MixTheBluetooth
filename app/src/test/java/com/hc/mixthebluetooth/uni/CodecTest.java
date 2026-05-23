@@ -32,4 +32,11 @@ public class CodecTest {
 
         assertEquals("hello", Codec.decode(bytes, options));
     }
+
+    @Test
+    public void decodeRemovesNullsAndTrims() {
+        Codec.Options options = new Codec.Options("UTF-8", false, false);
+
+        assertEquals("hello", Codec.decode(new byte[]{' ', 'h', 'e', 'l', 'l', 'o', 0, ' '}, options));
+    }
 }

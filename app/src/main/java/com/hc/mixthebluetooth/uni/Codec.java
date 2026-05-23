@@ -1,8 +1,11 @@
 package com.hc.mixthebluetooth.uni;
 
+import android.content.Context;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.hc.mixthebluetooth.activity.single.FragmentParameter;
 import com.hc.mixthebluetooth.activity.tool.Analysis;
 
 public final class Codec {
@@ -20,6 +23,13 @@ public final class Codec {
             this.hex = hex;
             this.checkNewline = checkNewline;
         }
+    }
+
+    @NonNull
+    public static byte[] encodeText(@NonNull Context context, @NonNull String text) {
+        String charset = FragmentParameter.getInstance().getCodeFormat(context);
+        byte[] bytes = Analysis.getBytes(text, charset, false);
+        return bytes != null ? bytes : new byte[0];
     }
 
     @Nullable

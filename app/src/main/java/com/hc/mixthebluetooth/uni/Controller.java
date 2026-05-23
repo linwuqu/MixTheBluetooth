@@ -26,6 +26,7 @@ import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 import com.hc.mixthebluetooth.uni.Widgets.MetricWidget;
 import com.hc.mixthebluetooth.uni.Widgets.WidgetSpec;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +65,9 @@ public final class Controller {
 
     public interface Gateway {
         void postText(@NonNull DeviceModule module, @NonNull String text);
+
+        default void onCacheFileReady(@NonNull File file) {
+        }
     }
 
     public static final class ActionSpec {
@@ -111,6 +115,10 @@ public final class Controller {
         String format(@NonNull BluetoothSample sample);
     }
 
+    public interface RawLineConsumer {
+        void onLine(@NonNull Context context, @NonNull String line, @NonNull Gateway gateway);
+    }
+
     public static final class ProfileSpec {
         @NonNull
         public final String id;
@@ -122,6 +130,8 @@ public final class Controller {
         public final List<WidgetSpec> widgets;
         @Nullable
         public final RecordFormatter recordFormatter;
+        @Nullable
+        public final RawLineConsumer rawLineConsumer;
 
         private ProfileSpec(@NonNull Builder b) {
             this.id = b.id;
@@ -129,6 +139,7 @@ public final class Controller {
             this.actions = new ArrayList<>(b.actions);
             this.widgets = new ArrayList<>(b.widgets);
             this.recordFormatter = b.recordFormatter;
+            this.rawLineConsumer = b.rawLineConsumer;
         }
 
         public static Builder builder(@NonNull String id) {
@@ -143,6 +154,8 @@ public final class Controller {
             private final List<WidgetSpec> widgets = new ArrayList<>();
             @Nullable
             private RecordFormatter recordFormatter;
+            @Nullable
+            private RawLineConsumer rawLineConsumer;
 
             private Builder(@NonNull String id) {
                 this.id = id;
@@ -165,6 +178,11 @@ public final class Controller {
 
             public Builder recordJson(@NonNull RecordFormatter formatter) {
                 recordFormatter = formatter;
+                return this;
+            }
+
+            public Builder rawLineConsumer(@NonNull RawLineConsumer rawLineConsumer) {
+                this.rawLineConsumer = rawLineConsumer;
                 return this;
             }
 
@@ -331,6 +349,10 @@ public final class Controller {
         messages.add(item);
         adapter.notifyItemInserted(messages.size() - 1);
         host.messageList().smoothScrollToPosition(messages.size() - 1);
+
+        if (spec.rawLineConsumer != null) {
+            spec.rawLineConsumer.onLine(context, text, gateway);
+        }
 
         BluetoothSample sample = parse(text);
         if (sample != null) {

@@ -22,6 +22,8 @@ import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
+import com.hc.mixthebluetooth.api.ApiModels;
+import com.hc.mixthebluetooth.api.FileUploadUseCase;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
 import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
@@ -33,6 +35,7 @@ import com.hc.mixthebluetooth.fragment.UniFragment;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 
+import java.io.File;
 import java.util.List;
 
 public class CommunicationActivity extends BaseActivity<ActivityCommunicationBinding> {
@@ -183,7 +186,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void initSubscription() {
-        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_BT_POST);
+        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_BT_POST, StaticConstants.CMD_CGM_CACHE_READY);
     }
 
 
@@ -194,6 +197,8 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             onSendBtDataCommand(data);
         } else if (sign.equals(StaticConstants.CMD_BT_POST)) {
             onBtPostCommand(data);
+        } else if (sign.equals(StaticConstants.CMD_CGM_CACHE_READY)) {
+            onCgmCacheReady(data);
         } else {
             logWarn("Unknown activity command: " + sign);
         }
@@ -228,6 +233,26 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
         BTPackage.BTPost post = (BTPackage.BTPost) data;
         mHoldBluetooth.sendData(post.module, post.bytes.clone());
+    }
+
+    private void onCgmCacheReady(Object data) {
+        if (!(data instanceof String)) {
+            logWarn("Ignore CGM cache ready command, payload is not path: " + data);
+            return;
+        }
+
+        File file = new File((String) data);
+        new FileUploadUseCase(this).uploadRootFile(file, new FileUploadUseCase.ResultCallback() {
+            @Override
+            public void onSuccess(@NonNull ApiModels.FileUploadResp resp) {
+                toastShortAlive("缓存上传成功");
+            }
+
+            @Override
+            public void onError(@NonNull String message) {
+                toastShortAlive("缓存上传失败: " + message);
+            }
+        });
     }
 
     // ----------------- Page Navigation -----------------
