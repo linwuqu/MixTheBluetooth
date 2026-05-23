@@ -4,6 +4,8 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.hc.mixthebluetooth.auth.AuthSessionStore;
+
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -73,5 +75,24 @@ public final class ApiClient {
     @NonNull
     public FileApi fileApi() {
         return fileApi;
+    }
+
+    @NonNull
+    public static AuthApi createAuthApi(@NonNull String baseUrl, @NonNull OkHttpClient client) {
+        return createRetrofit(baseUrl, client).create(AuthApi.class);
+    }
+
+    @NonNull
+    public static FileApi createFileApi(@NonNull String baseUrl, @NonNull OkHttpClient client) {
+        return createRetrofit(baseUrl, client).create(FileApi.class);
+    }
+
+    @NonNull
+    private static Retrofit createRetrofit(@NonNull String baseUrl, @NonNull OkHttpClient client) {
+        return new Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
     }
 }

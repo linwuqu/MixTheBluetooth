@@ -29,7 +29,7 @@
             android:name=".activity.AccountRegisterActivity"
             android:exported="false" />
         <activity
-            android:name=".activity.ApiDebugActivity"
+            android:name=".debug.DiagnosticsActivity"
             android:exported="false" />
         <activity
             android:name=".activity.IntroActivity"

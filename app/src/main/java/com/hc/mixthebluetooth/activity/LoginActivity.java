@@ -16,7 +16,12 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.hc.basiclibrary.viewBasic.HomeApplication;
+import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
+import com.hc.mixthebluetooth.api.ApiEnvironment;
+import com.hc.mixthebluetooth.api.ApiModels.AccountInfo;
+import com.hc.mixthebluetooth.auth.AuthRepository;
+import com.hc.mixthebluetooth.debug.DiagnosticsActivity;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -29,6 +34,7 @@ public class LoginActivity extends AppCompatActivity {
     private TextInputLayout tilPassword;
     //控制权限管理
     private HomeApplication homeApplication;
+    private AuthRepository authRepository;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,6 +45,7 @@ public class LoginActivity extends AppCompatActivity {
         setupInputValidation();
         setVariable();
         homeApplication = (HomeApplication) getApplication();
+        authRepository = new AuthRepository(this);
     }
 
     private void initView() {
@@ -47,6 +54,9 @@ public class LoginActivity extends AppCompatActivity {
         loginBtn = findViewById(R.id.loginBtn);
         registerBtn = findViewById(R.id.registerBtn);
         apiDebugBtn = findViewById(R.id.apiDebugBtn);
+        if (!BuildConfig.DEBUG) {
+            apiDebugBtn.setVisibility(View.GONE);
+        }
         tilUsername = findViewById(R.id.tilUsername);
         tilPassword = findViewById(R.id.tilPassword);
     }
@@ -73,7 +83,7 @@ public class LoginActivity extends AppCompatActivity {
                 startActivity(new Intent(LoginActivity.this, AccountRegisterActivity.class)));
 
         apiDebugBtn.setOnClickListener(v ->
-                startActivity(new Intent(LoginActivity.this, ApiDebugActivity.class)));
+                startActivity(new Intent(LoginActivity.this, DiagnosticsActivity.class)));
     }
 
     private void setupInputValidation() {
@@ -132,21 +142,42 @@ public class LoginActivity extends AppCompatActivity {
                 return;
             }
 
-            if (username.equals("admin") && password.equals("1")) {
-                // 管理员登录成功
-                homeApplication.setLimits("admin");
-                homeApplication.setIsLogin("true");
-                navigateToMain();
-            } else if (username.equals("normal") && password.equals("1")) {
-                // 普通用户登录
-                homeApplication.setLimits("ordinary");
-                homeApplication.setIsLogin("true");
-                navigateToMain();
-            } else {
-                // 登录失败动画
-                Toast.makeText(LoginActivity.this, "Invalid username or password", Toast.LENGTH_SHORT).show();
-            }
+            loginBtn.setEnabled(false);
+            authRepository.login(username, password, new AuthRepository.ResultCallback() {
+                @Override
+                public void onSuccess(AccountInfo info) {
+                    loginBtn.setEnabled(true);
+                    homeApplication.setLimits("ordinary");
+                    homeApplication.setIsLogin("true");
+                    navigateToMain();
+                }
+
+                @Override
+                public void onError(String message) {
+                    loginBtn.setEnabled(true);
+                    if (ApiEnvironment.useMock() && tryLocalDebugLogin(username, password)) {
+                        return;
+                    }
+                    Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
+                }
+            });
         });
+    }
+
+    private boolean tryLocalDebugLogin(String username, String password) {
+        if (username.equals("admin") && password.equals("1")) {
+            homeApplication.setLimits("admin");
+            homeApplication.setIsLogin("true");
+            navigateToMain();
+            return true;
+        }
+        if (username.equals("normal") && password.equals("1")) {
+            homeApplication.setLimits("ordinary");
+            homeApplication.setIsLogin("true");
+            navigateToMain();
+            return true;
+        }
+        return false;
     }
 
     private void navigateToMain() {

@@ -67,12 +67,12 @@ public final class MockApi {
         return json;
     }
 
-    static final class FakeCall<T> implements Call<T> {
+    public static final class FakeCall<T> implements Call<T> {
         private final T body;
         private boolean executed;
         private boolean canceled;
 
-        FakeCall(T body) {
+        public FakeCall(T body) {
             this.body = body;
         }
 

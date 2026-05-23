@@ -7,23 +7,16 @@ import androidx.annotation.NonNull;
 import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.api.ApiClient;
 import com.hc.mixthebluetooth.api.ApiModels.AccountInfo;
-import com.hc.mixthebluetooth.api.ApiModels.AccountRegisterReq;
-import com.hc.mixthebluetooth.api.ApiModels.JsonData;
-import com.hc.mixthebluetooth.api.AuthSessionStore;
+import com.hc.mixthebluetooth.auth.AuthRepository;
 import com.hc.mixthebluetooth.databinding.ActivityAccountRegisterBinding;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-
 public class AccountRegisterActivity extends BaseActivity<ActivityAccountRegisterBinding> {
-    private AuthSessionStore sessionStore;
+    private AuthRepository authRepository;
 
     @Override
     public void initAll() {
-        sessionStore = new AuthSessionStore(this);
+        authRepository = new AuthRepository(this);
         new DefaultNavigationBar.Builder(this, findViewById(R.id.account_register_activity))
                 .setTitle("账号注册")
                 .hideLeftText()
@@ -57,25 +50,17 @@ public class AccountRegisterActivity extends BaseActivity<ActivityAccountRegiste
         viewBinding.registerSubmit.setEnabled(false);
         viewBinding.registerStatus.setText("注册中...");
 
-        AccountRegisterReq req = new AccountRegisterReq(username, password, phone, null);
-        ApiClient.get(this).authApi().register(req).enqueue(new Callback<JsonData<AccountInfo>>() {
+        authRepository.register(username, password, phone, new AuthRepository.ResultCallback() {
             @Override
-            public void onResponse(@NonNull Call<JsonData<AccountInfo>> call,
-                                   @NonNull Response<JsonData<AccountInfo>> response) {
+            public void onSuccess(@NonNull AccountInfo info) {
                 viewBinding.registerSubmit.setEnabled(true);
-                JsonData<AccountInfo> body = response.body();
-                if (response.isSuccessful() && body != null && body.success) {
-                    sessionStore.save(body.data);
-                    viewBinding.registerStatus.setText("注册成功");
-                } else {
-                    viewBinding.registerStatus.setText(body != null && body.msg != null ? body.msg : "注册失败");
-                }
+                viewBinding.registerStatus.setText("注册成功");
             }
 
             @Override
-            public void onFailure(@NonNull Call<JsonData<AccountInfo>> call, @NonNull Throwable t) {
+            public void onError(@NonNull String message) {
                 viewBinding.registerSubmit.setEnabled(true);
-                viewBinding.registerStatus.setText(t.getMessage() != null ? t.getMessage() : "网络错误");
+                viewBinding.registerStatus.setText(message);
             }
         });
     }

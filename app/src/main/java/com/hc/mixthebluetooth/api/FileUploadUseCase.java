@@ -30,6 +30,10 @@ public final class FileUploadUseCase {
         this.fileApi = ApiClient.get(context).fileApi();
     }
 
+    public FileUploadUseCase(@NonNull FileApi fileApi) {
+        this.fileApi = fileApi;
+    }
+
     public void uploadRootFile(@NonNull File file, @NonNull ResultCallback callback) {
         if (!file.exists() || !file.isFile()) {
             callback.onError("文件不存在: " + file.getAbsolutePath());

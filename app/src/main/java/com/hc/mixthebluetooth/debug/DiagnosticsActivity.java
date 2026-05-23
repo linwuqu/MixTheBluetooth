@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity;
+package com.hc.mixthebluetooth.debug;
 
 import android.view.View;
 
@@ -7,34 +7,26 @@ import androidx.annotation.NonNull;
 import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.api.ApiClient;
 import com.hc.mixthebluetooth.api.ApiEnvironment;
 import com.hc.mixthebluetooth.api.ApiModels.AccountInfo;
-import com.hc.mixthebluetooth.api.ApiModels.AccountLoginReq;
-import com.hc.mixthebluetooth.api.ApiModels.AccountRegisterReq;
 import com.hc.mixthebluetooth.api.ApiModels.FileUploadResp;
-import com.hc.mixthebluetooth.api.ApiModels.JsonData;
-import com.hc.mixthebluetooth.api.AuthSessionStore;
-import com.hc.mixthebluetooth.api.FileUploadUseCase;
+import com.hc.mixthebluetooth.auth.AuthRepository;
+import com.hc.mixthebluetooth.auth.AuthSessionStore;
+import com.hc.mixthebluetooth.cgm.CgmReplayUploadUseCase;
 import com.hc.mixthebluetooth.databinding.ActivityApiDebugBinding;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-
-public class ApiDebugActivity extends BaseActivity<ActivityApiDebugBinding> {
+public class DiagnosticsActivity extends BaseActivity<ActivityApiDebugBinding> {
     private AuthSessionStore sessionStore;
+    private AuthRepository authRepository;
 
     @Override
     public void initAll() {
         sessionStore = new AuthSessionStore(this);
+        authRepository = new AuthRepository(this);
         new DefaultNavigationBar.Builder(this, findViewById(R.id.api_debug_activity))
-                .setTitle("API 调试")
+                .setTitle("Diagnostics")
                 .hideLeftText()
                 .hideRightText()
                 .builer();
@@ -46,7 +38,7 @@ public class ApiDebugActivity extends BaseActivity<ActivityApiDebugBinding> {
         );
         renderEnv();
         renderDocs();
-        append("点击按钮可以直接走当前构建环境的 ApiClient。mock 构建不会访问网络。");
+        append("点击按钮会走正式 Repository/UseCase。mock 构建不会访问网络。");
     }
 
     @Override
@@ -91,58 +83,45 @@ public class ApiDebugActivity extends BaseActivity<ActivityApiDebugBinding> {
 
     private void register() {
         append("register -> request");
-        AccountRegisterReq req = new AccountRegisterReq("debug-user", "123456", "13800138000", null);
-        ApiClient.get(this).authApi().register(req).enqueue(accountCallback("register"));
+        authRepository.register("debug-user", "123456", "13800138000", accountCallback("register"));
     }
 
     private void login() {
         append("login -> request");
-        AccountLoginReq req = new AccountLoginReq("13800138000", "123456");
-        ApiClient.get(this).authApi().login(req).enqueue(accountCallback("login"));
+        authRepository.login("13800138000", "123456", accountCallback("login"));
     }
 
     private void detail() {
         append("detail -> request");
-        ApiClient.get(this).authApi().detail().enqueue(accountCallback("detail"));
+        authRepository.detail(accountCallback("detail"));
     }
 
-    private Callback<JsonData<AccountInfo>> accountCallback(String tag) {
-        return new Callback<JsonData<AccountInfo>>() {
+    private AuthRepository.ResultCallback accountCallback(String tag) {
+        return new AuthRepository.ResultCallback() {
             @Override
-            public void onResponse(@NonNull Call<JsonData<AccountInfo>> call,
-                                   @NonNull Response<JsonData<AccountInfo>> response) {
-                JsonData<AccountInfo> body = response.body();
-                if (response.isSuccessful() && body != null && body.success) {
-                    sessionStore.save(body.data);
-                    append(tag + " <- success " + describeAccount(body.data));
-                } else {
-                    append(tag + " <- failed " + (body != null && body.msg != null ? body.msg : response.code()));
-                }
+            public void onSuccess(@NonNull AccountInfo info) {
+                append(tag + " <- success " + describeAccount(info));
                 renderEnv();
             }
 
             @Override
-            public void onFailure(@NonNull Call<JsonData<AccountInfo>> call, @NonNull Throwable t) {
-                append(tag + " <- error " + (t.getMessage() != null ? t.getMessage() : "network error"));
+            public void onError(@NonNull String message) {
+                append(tag + " <- failed " + message);
+                renderEnv();
             }
         };
     }
 
     private void upload() {
-        File file;
-        try {
-            file = createDebugCacheFile();
-        } catch (IOException e) {
-            append("upload <- create file error " + e.getMessage());
-            return;
-        }
-
-        append("upload -> " + file.getAbsolutePath() + " (" + file.length() + " B)");
-        new FileUploadUseCase(this).uploadRootFile(file, new FileUploadUseCase.ResultCallback() {
+        append("replay fixture -> cgm/cgm_playback_sample.txt");
+        new CgmReplayUploadUseCase(this).replayAssetAndUpload(
+                "cgm/cgm_playback_sample.txt",
+                new CgmReplayUploadUseCase.ResultCallback() {
             @Override
-            public void onSuccess(@NonNull FileUploadResp resp) {
+            public void onSuccess(@NonNull File file, @NonNull FileUploadResp resp) {
                 append("upload <- success fileId=" + resp.fileId
                         + ", fileName=" + resp.fileName
+                        + ", local=" + file.getAbsolutePath()
                         + ", path=" + nullToDash(resp.path)
                         + ", url=" + nullToDash(resp.url));
             }
@@ -152,16 +131,6 @@ public class ApiDebugActivity extends BaseActivity<ActivityApiDebugBinding> {
                 append("upload <- failed " + message);
             }
         });
-    }
-
-    private File createDebugCacheFile() throws IOException {
-        File file = new File(getCacheDir(), "CGM_Cache_data.txt");
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(file), "UTF-8")) {
-            writer.write("Start Playback\n");
-            writer.write("EIS:1,1000,0.12\n");
-            writer.write("CA:1,0.08\n");
-        }
-        return file;
     }
 
     private void append(String line) {

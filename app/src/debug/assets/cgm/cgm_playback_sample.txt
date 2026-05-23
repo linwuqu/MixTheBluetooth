@@ -1,0 +1,5 @@
+Start Playback
+EIS:1,1000,0.12
+CA:1,0.08
+CA:2,0.09
+Playback all done

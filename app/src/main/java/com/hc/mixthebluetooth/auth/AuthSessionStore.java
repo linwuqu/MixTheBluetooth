@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.api;
+package com.hc.mixthebluetooth.auth;
 
 import android.content.Context;
 import android.content.SharedPreferences;
