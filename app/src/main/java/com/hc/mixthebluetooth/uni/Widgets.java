@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool.chart;
+package com.hc.mixthebluetooth.uni;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -23,7 +23,7 @@ import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
-import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment.Region;
+import com.hc.mixthebluetooth.uni.Controller.Region;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -32,8 +32,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public final class MetricWidgets {
-    private MetricWidgets() {
+public final class Widgets {
+    private Widgets() {
     }
 
     public enum WidgetKind {
@@ -632,3 +632,4 @@ public final class MetricWidgets {
         return String.format(Locale.getDefault(), "%.3f", value);
     }
 }
+

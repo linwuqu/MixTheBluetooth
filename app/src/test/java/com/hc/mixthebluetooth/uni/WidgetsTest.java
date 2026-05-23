@@ -1,20 +1,20 @@
-package com.hc.mixthebluetooth.activity.tool.chart;
+package com.hc.mixthebluetooth.uni;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-import com.hc.mixthebluetooth.fragment.UnifiedMessageFragment.Region;
+import com.hc.mixthebluetooth.uni.Controller.Region;
 
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 
-public class MetricWidgetsTest {
+public class WidgetsTest {
 
     @Test
     public void lineWidgetSpecKeepsMetricRegionAndOrder() {
-        MetricWidgets.WidgetSpec spec = MetricWidgets.WidgetSpec.line("eis_ohm")
+        Widgets.WidgetSpec spec = Widgets.WidgetSpec.line("eis_ohm")
                 .title("EIS Ohm")
                 .metric("ohm")
                 .unit("ohm")
@@ -25,7 +25,7 @@ public class MetricWidgetsTest {
                 .build();
 
         assertEquals("eis_ohm", spec.id);
-        assertEquals(MetricWidgets.WidgetKind.LINE, spec.kind);
+        assertEquals(Widgets.WidgetKind.LINE, spec.kind);
         assertEquals("EIS Ohm", spec.title);
         assertEquals("ohm", spec.metricKey);
         assertEquals("ohm", spec.unit);
@@ -38,14 +38,14 @@ public class MetricWidgetsTest {
 
     @Test
     public void gaugeWidgetSpecHasSummaryDefaults() {
-        MetricWidgets.WidgetSpec spec = MetricWidgets.WidgetSpec.gauge("conductance")
+        Widgets.WidgetSpec spec = Widgets.WidgetSpec.gauge("conductance")
                 .title("Conductance")
                 .metric("us")
                 .unit("uS")
                 .gaugeMax(10f)
                 .build();
 
-        assertEquals(MetricWidgets.WidgetKind.GAUGE, spec.kind);
+        assertEquals(Widgets.WidgetKind.GAUGE, spec.kind);
         assertEquals(Region.SUMMARY, spec.region);
         assertEquals(0, spec.order);
         assertEquals(Float.valueOf(10f), spec.gaugeMax);
@@ -55,24 +55,24 @@ public class MetricWidgetsTest {
 
     @Test
     public void orderedForDisplaySortsByRegionThenOrderWithoutMutatingInput() {
-        MetricWidgets.WidgetSpec mainEarly = MetricWidgets.WidgetSpec.line("main_early")
+        Widgets.WidgetSpec mainEarly = Widgets.WidgetSpec.line("main_early")
                 .metric("ohm")
                 .region(Region.MAIN)
                 .order(10)
                 .build();
-        MetricWidgets.WidgetSpec summaryLate = MetricWidgets.WidgetSpec.value("summary_late")
+        Widgets.WidgetSpec summaryLate = Widgets.WidgetSpec.value("summary_late")
                 .metric("ohm")
                 .region(Region.SUMMARY)
                 .order(20)
                 .build();
-        MetricWidgets.WidgetSpec summaryEarly = MetricWidgets.WidgetSpec.gauge("summary_early")
+        Widgets.WidgetSpec summaryEarly = Widgets.WidgetSpec.gauge("summary_early")
                 .metric("us")
                 .region(Region.SUMMARY)
                 .order(10)
                 .build();
-        List<MetricWidgets.WidgetSpec> original = Arrays.asList(mainEarly, summaryLate, summaryEarly);
+        List<Widgets.WidgetSpec> original = Arrays.asList(mainEarly, summaryLate, summaryEarly);
 
-        List<MetricWidgets.WidgetSpec> ordered = MetricWidgets.orderedForDisplay(original);
+        List<Widgets.WidgetSpec> ordered = Widgets.orderedForDisplay(original);
 
         assertEquals("summary_early", ordered.get(0).id);
         assertEquals("summary_late", ordered.get(1).id);
@@ -80,3 +80,4 @@ public class MetricWidgetsTest {
         assertEquals("main_early", original.get(0).id);
     }
 }
+

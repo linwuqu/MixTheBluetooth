@@ -67,9 +67,9 @@ public final class SampleRecorder {
 
     @NonNull
     private File createFile(@NonNull Context context, @NonNull String prefix) {
-        File dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (dir == null) dir = context.getExternalFilesDir(null);
-        if (dir == null) dir = context.getFilesDir();
+        File dir = new File(context.getFilesDir(), "records");
+        if (!dir.exists()) dir.mkdirs();
+
         String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         return new File(dir, prefix + "_" + ts + ".jsonl");
     }
