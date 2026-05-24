@@ -2,6 +2,7 @@ package com.hc.mixthebluetooth.impl.file;
 
 import androidx.annotation.NonNull;
 
+import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
@@ -10,7 +11,6 @@ import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.remote.ServerResponse;
 
 import java.io.File;
-import java.util.function.Consumer;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -27,9 +27,9 @@ public final class DefaultFileService implements FileService {
     }
 
     @Override
-    public void upload(File file, Consumer<CallResult<UploadedFile>> callback) {
+    public void upload(File file, ApiCallback<CallResult<UploadedFile>> callback) {
         if (file == null || !file.exists() || !file.isFile()) {
-            callback.accept(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "文件不存在", null));
+            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "文件不存在", null));
             return;
         }
 
@@ -45,13 +45,13 @@ public final class DefaultFileService implements FileService {
                     @Override
                     public void onResponse(@NonNull Call<ServerResponse<ServerModels.FileResp>> call,
                                            @NonNull Response<ServerResponse<ServerModels.FileResp>> response) {
-                        callback.accept(mapFileResponse(response.body()));
+                        callback.onResult(mapFileResponse(response.body()));
                     }
 
                     @Override
                     public void onFailure(@NonNull Call<ServerResponse<ServerModels.FileResp>> call,
                                           @NonNull Throwable t) {
-                        callback.accept(CallResult.error(CallResult.NETWORK, "网络错误", t));
+                        callback.onResult(CallResult.error(CallResult.NETWORK, "网络错误", t));
                     }
                 });
     }

@@ -12,6 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Supplies fixed replay lines for mock/debug verification when no Bluetooth board is connected.
+ */
 public final class DeviceReplaySample {
     public static final String DEFAULT_ASSET = "device/device_replay_sample.txt";
 

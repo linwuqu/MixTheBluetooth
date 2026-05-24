@@ -1,17 +1,17 @@
 package com.hc.mixthebluetooth.api.device;
 
+import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
 
 import java.io.File;
-import java.util.function.Consumer;
 
 public interface DeviceDataService {
-    void replaySample(Consumer<CallResult<File>> callback);
+    void replaySample(ApiCallback<CallResult<File>> callback);
 
-    void consumeLine(String line, Consumer<CallResult<File>> callback);
+    void consumeLine(String line, ApiCallback<CallResult<File>> callback);
 
     File lastDataFile();
 
-    void uploadLastDataFile(Consumer<CallResult<UploadedFile>> callback);
+    void uploadLastDataFile(ApiCallback<CallResult<UploadedFile>> callback);
 }

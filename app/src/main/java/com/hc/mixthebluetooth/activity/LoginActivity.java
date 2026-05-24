@@ -21,6 +21,8 @@ import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.debug.VerificationActivity;
 
+import java.util.Objects;
+
 public class LoginActivity extends AppCompatActivity {
 
     private TextInputEditText usernameEdt;
@@ -125,8 +127,8 @@ public class LoginActivity extends AppCompatActivity {
             Animation scaleAnimation = AnimationUtils.loadAnimation(this, R.anim.button_scale);
             loginBtn.startAnimation(scaleAnimation);
 
-            String username = usernameEdt.getText().toString().trim();
-            String password = passwordEdt.getText().toString().trim();
+            String username = Objects.requireNonNull(usernameEdt.getText()).toString().trim();
+            String password = Objects.requireNonNull(passwordEdt.getText()).toString().trim();
 
             if (username.isEmpty() || password.isEmpty()) {
                 if (username.isEmpty()) {

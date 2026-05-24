@@ -40,7 +40,7 @@ public final class DeviceDataRecorder {
 
     @NonNull
     public CallResult<File> consumeLine(@Nullable String line) {
-        if (line == null || line.length() == 0) {
+        if (line == null || line.isEmpty()) {
             return CallResult.pending(recording ? "recording" : "idle");
         }
         if (line.contains("Start Playback")) {

@@ -72,6 +72,7 @@ remote/ + local/
 com.hc.mixthebluetooth
 ├── api/                              // 对外能力接口：UI、Uni、Debug 只依赖这里
 │   ├── AppApi.java                    // app 内部能力门面：返回当前环境下的 service 实例
+│   ├── ApiCallback.java               // 兼容 minSdk 23 的异步回调接口，替代 java.util.function.Consumer
 │   ├── CallResult.java                // 一次 app 内部能力调用的统一结果，不等于服务端 JSON
 │   ├── auth/
 │   │   ├── AuthService.java            // 账号能力接口：注册、登录、详情、当前用户
@@ -224,7 +225,7 @@ cause    原始异常，可为空
 异步接口不再单独定义 `CallCallback` 文件，直接使用 Java 标准库：
 
 ```java
-Consumer<CallResult<T>>
+ApiCallback<CallResult<T>>
 ```
 
 这样 service 方法签名更少一层自定义类型。如果后续需要取消、进度、多次事件流，再单独引入更强的 callback 或 observable 机制。
@@ -235,11 +236,11 @@ Consumer<CallResult<T>>
 
 ```java
 public interface AuthService {
-    void register(String username, String password, String phone, Consumer<CallResult<AuthUser>> callback);
+    void register(String username, String password, String phone, ApiCallback<CallResult<AuthUser>> callback);
 
-    void login(String phoneOrAccount, String password, Consumer<CallResult<AuthUser>> callback);
+    void login(String phoneOrAccount, String password, ApiCallback<CallResult<AuthUser>> callback);
 
-    void detail(Consumer<CallResult<AuthUser>> callback);
+    void detail(ApiCallback<CallResult<AuthUser>> callback);
 
     AuthUser currentUser();
 
@@ -266,7 +267,7 @@ token 是透明字符串。客户端不解析、不假设 JWT。
 
 ```java
 public interface FileService {
-    void upload(File file, Consumer<CallResult<UploadedFile>> callback);
+    void upload(File file, ApiCallback<CallResult<UploadedFile>> callback);
 }
 ```
 
@@ -287,13 +288,13 @@ public final class UploadedFile {
 
 ```java
 public interface DeviceDataService {
-    void replaySample(Consumer<CallResult<File>> callback);
+    void replaySample(ApiCallback<CallResult<File>> callback);
 
-    void consumeLine(String line, Consumer<CallResult<File>> callback);
+    void consumeLine(String line, ApiCallback<CallResult<File>> callback);
 
     File lastDataFile();
 
-    void uploadLastDataFile(Consumer<CallResult<UploadedFile>> callback);
+    void uploadLastDataFile(ApiCallback<CallResult<UploadedFile>> callback);
 }
 ```
 

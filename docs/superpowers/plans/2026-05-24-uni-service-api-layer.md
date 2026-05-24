@@ -44,6 +44,7 @@ Create:
 
 ```text
 app/src/main/java/com/hc/mixthebluetooth/api/AppApi.java
+app/src/main/java/com/hc/mixthebluetooth/api/ApiCallback.java
 app/src/main/java/com/hc/mixthebluetooth/api/CallResult.java
 app/src/main/java/com/hc/mixthebluetooth/api/auth/AuthService.java
 app/src/main/java/com/hc/mixthebluetooth/api/auth/AuthUser.java
@@ -275,14 +276,12 @@ package com.hc.mixthebluetooth.api.auth;
 
 import com.hc.mixthebluetooth.api.CallResult;
 
-import java.util.function.Consumer;
-
 public interface AuthService {
-    void register(String username, String password, String phone, Consumer<CallResult<AuthUser>> callback);
+    void register(String username, String password, String phone, ApiCallback<CallResult<AuthUser>> callback);
 
-    void login(String phoneOrAccount, String password, Consumer<CallResult<AuthUser>> callback);
+    void login(String phoneOrAccount, String password, ApiCallback<CallResult<AuthUser>> callback);
 
-    void detail(Consumer<CallResult<AuthUser>> callback);
+    void detail(ApiCallback<CallResult<AuthUser>> callback);
 
     AuthUser currentUser();
 
@@ -316,10 +315,9 @@ package com.hc.mixthebluetooth.api.file;
 import com.hc.mixthebluetooth.api.CallResult;
 
 import java.io.File;
-import java.util.function.Consumer;
 
 public interface FileService {
-    void upload(File file, Consumer<CallResult<UploadedFile>> callback);
+    void upload(File file, ApiCallback<CallResult<UploadedFile>> callback);
 }
 ```
 
@@ -332,16 +330,15 @@ import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
 
 import java.io.File;
-import java.util.function.Consumer;
 
 public interface DeviceDataService {
-    void replaySample(Consumer<CallResult<File>> callback);
+    void replaySample(ApiCallback<CallResult<File>> callback);
 
-    void consumeLine(String line, Consumer<CallResult<File>> callback);
+    void consumeLine(String line, ApiCallback<CallResult<File>> callback);
 
     File lastDataFile();
 
-    void uploadLastDataFile(Consumer<CallResult<UploadedFile>> callback);
+    void uploadLastDataFile(ApiCallback<CallResult<UploadedFile>> callback);
 }
 ```
 

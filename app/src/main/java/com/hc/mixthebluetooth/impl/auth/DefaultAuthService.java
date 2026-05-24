@@ -3,6 +3,7 @@ package com.hc.mixthebluetooth.impl.auth;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
@@ -10,8 +11,6 @@ import com.hc.mixthebluetooth.local.SessionStore;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
 import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.remote.ServerResponse;
-
-import java.util.function.Consumer;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -27,19 +26,19 @@ public final class DefaultAuthService implements AuthService {
     }
 
     @Override
-    public void register(String username, String password, String phone, Consumer<CallResult<AuthUser>> callback) {
+    public void register(String username, String password, String phone, ApiCallback<CallResult<AuthUser>> callback) {
         endpoints.register(new ServerModels.RegisterReq(username, password, phone, null))
                 .enqueue(accountCallback(callback));
     }
 
     @Override
-    public void login(String phoneOrAccount, String password, Consumer<CallResult<AuthUser>> callback) {
+    public void login(String phoneOrAccount, String password, ApiCallback<CallResult<AuthUser>> callback) {
         endpoints.login(new ServerModels.LoginReq(phoneOrAccount, password))
                 .enqueue(accountCallback(callback));
     }
 
     @Override
-    public void detail(Consumer<CallResult<AuthUser>> callback) {
+    public void detail(ApiCallback<CallResult<AuthUser>> callback) {
         endpoints.detail().enqueue(accountCallback(callback));
     }
 
@@ -54,7 +53,7 @@ public final class DefaultAuthService implements AuthService {
     }
 
     private Callback<ServerResponse<ServerModels.AccountResp>> accountCallback(
-            @NonNull Consumer<CallResult<AuthUser>> callback) {
+            @NonNull ApiCallback<CallResult<AuthUser>> callback) {
         return new Callback<ServerResponse<ServerModels.AccountResp>>() {
             @Override
             public void onResponse(@NonNull Call<ServerResponse<ServerModels.AccountResp>> call,
@@ -63,13 +62,13 @@ public final class DefaultAuthService implements AuthService {
                 if (result.isOk()) {
                     sessionStore.save(result.data);
                 }
-                callback.accept(result);
+                callback.onResult(result);
             }
 
             @Override
             public void onFailure(@NonNull Call<ServerResponse<ServerModels.AccountResp>> call,
                                   @NonNull Throwable t) {
-                callback.accept(CallResult.error(CallResult.NETWORK, "网络错误", t));
+                callback.onResult(CallResult.error(CallResult.NETWORK, "网络错误", t));
             }
         };
     }
