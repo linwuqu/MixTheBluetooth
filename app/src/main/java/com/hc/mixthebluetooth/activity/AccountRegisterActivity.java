@@ -2,21 +2,15 @@ package com.hc.mixthebluetooth.activity;
 
 import android.view.View;
 
-import androidx.annotation.NonNull;
-
 import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.api.ApiModels.AccountInfo;
-import com.hc.mixthebluetooth.auth.AuthRepository;
+import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.databinding.ActivityAccountRegisterBinding;
 
 public class AccountRegisterActivity extends BaseActivity<ActivityAccountRegisterBinding> {
-    private AuthRepository authRepository;
-
     @Override
     public void initAll() {
-        authRepository = new AuthRepository(this);
         new DefaultNavigationBar.Builder(this, findViewById(R.id.account_register_activity))
                 .setTitle("账号注册")
                 .hideLeftText()
@@ -50,18 +44,9 @@ public class AccountRegisterActivity extends BaseActivity<ActivityAccountRegiste
         viewBinding.registerSubmit.setEnabled(false);
         viewBinding.registerStatus.setText("注册中...");
 
-        authRepository.register(username, password, phone, new AuthRepository.ResultCallback() {
-            @Override
-            public void onSuccess(@NonNull AccountInfo info) {
-                viewBinding.registerSubmit.setEnabled(true);
-                viewBinding.registerStatus.setText("注册成功");
-            }
-
-            @Override
-            public void onError(@NonNull String message) {
-                viewBinding.registerSubmit.setEnabled(true);
-                viewBinding.registerStatus.setText(message);
-            }
-        });
+        AppApi.auth().register(username, password, phone, result -> runOnUiThread(() -> {
+            viewBinding.registerSubmit.setEnabled(true);
+            viewBinding.registerStatus.setText(result.isOk() ? "注册成功" : result.message);
+        }));
     }
 }

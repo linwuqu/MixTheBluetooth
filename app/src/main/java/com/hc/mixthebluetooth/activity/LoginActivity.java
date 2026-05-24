@@ -18,10 +18,8 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.hc.basiclibrary.viewBasic.HomeApplication;
 import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.api.ApiEnvironment;
-import com.hc.mixthebluetooth.api.ApiModels.AccountInfo;
-import com.hc.mixthebluetooth.auth.AuthRepository;
-import com.hc.mixthebluetooth.debug.DiagnosticsActivity;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.debug.VerificationActivity;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -34,7 +32,6 @@ public class LoginActivity extends AppCompatActivity {
     private TextInputLayout tilPassword;
     //控制权限管理
     private HomeApplication homeApplication;
-    private AuthRepository authRepository;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,7 +42,6 @@ public class LoginActivity extends AppCompatActivity {
         setupInputValidation();
         setVariable();
         homeApplication = (HomeApplication) getApplication();
-        authRepository = new AuthRepository(this);
     }
 
     private void initView() {
@@ -83,7 +79,7 @@ public class LoginActivity extends AppCompatActivity {
                 startActivity(new Intent(LoginActivity.this, AccountRegisterActivity.class)));
 
         apiDebugBtn.setOnClickListener(v ->
-                startActivity(new Intent(LoginActivity.this, DiagnosticsActivity.class)));
+                startActivity(new Intent(LoginActivity.this, VerificationActivity.class)));
     }
 
     private void setupInputValidation() {
@@ -143,24 +139,23 @@ public class LoginActivity extends AppCompatActivity {
             }
 
             loginBtn.setEnabled(false);
-            authRepository.login(username, password, new AuthRepository.ResultCallback() {
-                @Override
-                public void onSuccess(AccountInfo info) {
-                    loginBtn.setEnabled(true);
+            AppApi.auth().login(username, password, result -> runOnUiThread(() -> {
+                loginBtn.setEnabled(true);
+                if (result.isOk()) {
+                    if (AppApi.env().useMock && tryLocalDebugLogin(username, password)) {
+                        return;
+                    }
                     homeApplication.setLimits("ordinary");
                     homeApplication.setIsLogin("true");
                     navigateToMain();
-                }
-
-                @Override
-                public void onError(String message) {
-                    loginBtn.setEnabled(true);
-                    if (ApiEnvironment.useMock() && tryLocalDebugLogin(username, password)) {
+                } else {
+                    if (AppApi.env().useMock && tryLocalDebugLogin(username, password)) {
                         return;
                     }
-                    Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
+                    loginBtn.setEnabled(true);
+                    Toast.makeText(LoginActivity.this, result.message, Toast.LENGTH_SHORT).show();
                 }
-            });
+            }));
         });
     }
 

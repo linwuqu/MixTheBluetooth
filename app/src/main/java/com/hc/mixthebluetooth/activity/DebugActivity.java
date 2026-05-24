@@ -12,7 +12,7 @@ import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
 import com.hc.mixthebluetooth.databinding.ActivityDebugBinding;
-import com.hc.mixthebluetooth.debug.DiagnosticsActivity;
+import com.hc.mixthebluetooth.debug.VerificationActivity;
 import com.hc.mixthebluetooth.storage.Storage;
 
 public class DebugActivity extends BaseActivity<ActivityDebugBinding> {
@@ -53,7 +53,7 @@ public class DebugActivity extends BaseActivity<ActivityDebugBinding> {
         if (isCheck(viewBinding.debugRead)) {
             viewBinding.bugLog.setText(Utility.load(this, "errNewLog"));
         } else if (isCheck(viewBinding.debugApi)) {
-            startActivity(new Intent(this, DiagnosticsActivity.class));
+            startActivity(new Intent(this, VerificationActivity.class));
         } else if (isCheck(viewBinding.debugDevelopmentMode)) {
             mStorage.saveData(HoldBluetooth.DEVELOPMENT_MODE_KEY, !viewBinding.debugDevelopmentMode.isChick());
             viewBinding.debugDevelopmentMode.toggle();

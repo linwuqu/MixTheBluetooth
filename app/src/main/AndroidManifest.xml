@@ -20,7 +20,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MixTheBluetooth"
-        android:name="com.hc.basiclibrary.viewBasic.HomeApplication"
+        android:name=".MixBluetoothApplication"
+        tools:replace="android:name"
         tools:ignore="GoogleAppIndexingWarning">
         <activity
             android:name=".activity.LoginActivity"
@@ -29,7 +30,7 @@
             android:name=".activity.AccountRegisterActivity"
             android:exported="false" />
         <activity
-            android:name=".debug.DiagnosticsActivity"
+            android:name=".debug.VerificationActivity"
             android:exported="false" />
         <activity
             android:name=".activity.IntroActivity"

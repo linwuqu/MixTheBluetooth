@@ -4,10 +4,10 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.uni.Commands;
 import com.hc.mixthebluetooth.uni.Controller;
 
-import java.io.File;
 import java.util.Date;
 
 public final class CgmProfile {
@@ -25,18 +25,13 @@ public final class CgmProfile {
     }
 
     private static final class CgmRawLineConsumer implements Controller.RawLineConsumer {
-        private CgmPlaybackRecorder recorder;
-
         @Override
         public void onLine(@NonNull Context context, @NonNull String line, @NonNull Controller.Gateway gateway) {
-            if (recorder == null) {
-                recorder = new CgmPlaybackRecorder(context);
-            }
-            CgmPlaybackRecorder.Result result = recorder.onLine(line);
-            File file = result.file();
-            if (result.isCompleted() && file != null) {
-                gateway.onCacheFileReady(file);
-            }
+            AppApi.deviceData().consumeLine(line, result -> {
+                if (result.isOk() && result.data != null) {
+                    gateway.onCacheFileReady(result.data);
+                }
+            });
         }
     }
 }

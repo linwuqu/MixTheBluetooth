@@ -22,8 +22,7 @@ import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
-import com.hc.mixthebluetooth.api.ApiModels;
-import com.hc.mixthebluetooth.api.FileUploadUseCase;
+import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
 import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
@@ -242,17 +241,13 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
         }
 
         File file = new File((String) data);
-        new FileUploadUseCase(this).uploadRootFile(file, new FileUploadUseCase.ResultCallback() {
-            @Override
-            public void onSuccess(@NonNull ApiModels.FileUploadResp resp) {
+        AppApi.file().upload(file, result -> runOnUiThread(() -> {
+            if (result.isOk()) {
                 toastShortAlive("缓存上传成功");
+            } else {
+                toastShortAlive("缓存上传失败: " + result.message);
             }
-
-            @Override
-            public void onError(@NonNull String message) {
-                toastShortAlive("缓存上传失败: " + message);
-            }
-        });
+        }));
     }
 
     // ----------------- Page Navigation -----------------
