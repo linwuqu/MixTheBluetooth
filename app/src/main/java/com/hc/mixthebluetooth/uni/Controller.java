@@ -290,16 +290,16 @@ public final class Controller {
         if (builtIn == BuiltIn.START_RECORD) {
             resetWidgets();
             widgetsActive = true;
-                output.start(context, "uni_" + spec.id);
+            output.start(context, "uni_" + spec.id);
             setRecordState(true);
             setBottomInfo("Recording started");
         } else if (builtIn == BuiltIn.STOP_RECORD) {
             widgetsActive = false;
-                output.stop();
-                setRecordState(false);
-                setBottomInfo("Samples: " + output.sampleCount());
-            } else if (builtIn == BuiltIn.EXPORT) {
-                setBottomInfo(output.exportPath());
+            output.stop();
+            setRecordState(false);
+            setBottomInfo("Samples: " + output.sampleCount());
+        } else if (builtIn == BuiltIn.EXPORT) {
+            setBottomInfo(output.exportPath());
         } else if (builtIn == BuiltIn.CLEAR_MESSAGES) {
             messages.clear();
             adapter.notifyDataSetChanged();
@@ -363,9 +363,9 @@ public final class Controller {
                 widget.onSample(sample);
             }
         }
-            if (output.isRecording() && spec.recordFormatter != null) {
-                output.appendJsonLine(spec.recordFormatter.format(sample));
-            }
+        if (output.isRecording() && spec.recordFormatter != null) {
+            output.appendJsonLine(spec.recordFormatter.format(sample));
+        }
     }
 
     private void resetWidgets() {
