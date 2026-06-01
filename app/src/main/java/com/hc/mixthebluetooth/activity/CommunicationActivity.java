@@ -22,7 +22,6 @@ import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
-import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.customView.UnderlineTextView;
 import com.hc.mixthebluetooth.customView.dialog.SetMtu;
 import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
@@ -34,7 +33,6 @@ import com.hc.mixthebluetooth.fragment.UniFragment;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentLogItem;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 
-import java.io.File;
 import java.util.List;
 
 public class CommunicationActivity extends BaseActivity<ActivityCommunicationBinding> {
@@ -185,7 +183,7 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
     }
 
     private void initSubscription() {
-        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_BT_POST, StaticConstants.CMD_CGM_CACHE_READY);
+        subscription(StaticConstants.CMD_SEND_BT_DATA, StaticConstants.CMD_BT_POST);
     }
 
 
@@ -196,8 +194,6 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
             onSendBtDataCommand(data);
         } else if (sign.equals(StaticConstants.CMD_BT_POST)) {
             onBtPostCommand(data);
-        } else if (sign.equals(StaticConstants.CMD_CGM_CACHE_READY)) {
-            onCgmCacheReady(data);
         } else {
             logWarn("Unknown activity command: " + sign);
         }
@@ -232,22 +228,6 @@ public class CommunicationActivity extends BaseActivity<ActivityCommunicationBin
 
         BTPackage.BTPost post = (BTPackage.BTPost) data;
         mHoldBluetooth.sendData(post.module, post.bytes.clone());
-    }
-
-    private void onCgmCacheReady(Object data) {
-        if (!(data instanceof String)) {
-            logWarn("Ignore CGM cache ready command, payload is not path: " + data);
-            return;
-        }
-
-        File file = new File((String) data);
-        AppApi.file().upload(file, result -> runOnUiThread(() -> {
-            if (result.isOk()) {
-                toastShortAlive("缓存上传成功");
-            } else {
-                toastShortAlive("缓存上传失败: " + result.message);
-            }
-        }));
     }
 
     // ----------------- Page Navigation -----------------

@@ -7,6 +7,7 @@ import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.local.SessionStore;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
 import com.hc.mixthebluetooth.remote.ServerModels;
@@ -17,6 +18,11 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public final class DefaultAuthService implements AuthService {
+    private static final String OWNER = "DefaultAuthService";
+    private static final String API_REGISTER = "POST /api/account/v1/register";
+    private static final String API_LOGIN = "POST /api/account/v1/login";
+    private static final String API_DETAIL = "GET /api/account/v1/detail";
+
     private final ServerEndpoints endpoints;
     private final SessionStore sessionStore;
 
@@ -27,19 +33,24 @@ public final class DefaultAuthService implements AuthService {
 
     @Override
     public void register(String username, String password, String phone, ApiCallback<CallResult<AuthUser>> callback) {
+        ApiTraceLogger.json(OWNER, API_REGISTER, "request",
+                ApiTraceLogger.maskedAuthBody(username, phone, password));
         endpoints.register(new ServerModels.RegisterReq(username, password, phone, null))
-                .enqueue(accountCallback(callback));
+                .enqueue(accountCallback(API_REGISTER, callback));
     }
 
     @Override
     public void login(String phoneOrAccount, String password, ApiCallback<CallResult<AuthUser>> callback) {
+        ApiTraceLogger.json(OWNER, API_LOGIN, "request",
+                ApiTraceLogger.maskedAuthBody(null, phoneOrAccount, password));
         endpoints.login(new ServerModels.LoginReq(phoneOrAccount, password))
-                .enqueue(accountCallback(callback));
+                .enqueue(accountCallback(API_LOGIN, callback));
     }
 
     @Override
     public void detail(ApiCallback<CallResult<AuthUser>> callback) {
-        endpoints.detail().enqueue(accountCallback(callback));
+        ApiTraceLogger.text(OWNER, API_DETAIL, "request", "{}");
+        endpoints.detail().enqueue(accountCallback(API_DETAIL, callback));
     }
 
     @Override
@@ -53,11 +64,13 @@ public final class DefaultAuthService implements AuthService {
     }
 
     private Callback<ServerResponse<ServerModels.AccountResp>> accountCallback(
+            @NonNull String api,
             @NonNull ApiCallback<CallResult<AuthUser>> callback) {
         return new Callback<ServerResponse<ServerModels.AccountResp>>() {
             @Override
             public void onResponse(@NonNull Call<ServerResponse<ServerModels.AccountResp>> call,
                                    @NonNull Response<ServerResponse<ServerModels.AccountResp>> response) {
+                ApiTraceLogger.json(OWNER, api, "response", response.body());
                 CallResult<AuthUser> result = mapAccountResponse(response.body());
                 if (result.isOk()) {
                     sessionStore.save(result.data);
@@ -68,9 +81,15 @@ public final class DefaultAuthService implements AuthService {
             @Override
             public void onFailure(@NonNull Call<ServerResponse<ServerModels.AccountResp>> call,
                                   @NonNull Throwable t) {
+                ApiTraceLogger.text(OWNER, api, "failure", failureText(t));
                 callback.onResult(CallResult.error(CallResult.NETWORK, "网络错误", t));
             }
         };
+    }
+
+    @NonNull
+    private static String failureText(@NonNull Throwable t) {
+        return t.getClass().getName() + ": " + t.getMessage();
     }
 
     @NonNull

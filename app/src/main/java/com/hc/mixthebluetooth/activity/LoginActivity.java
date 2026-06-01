@@ -19,11 +19,16 @@ import com.hc.basiclibrary.viewBasic.HomeApplication;
 import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.api.AppApi;
-import com.hc.mixthebluetooth.debug.VerificationActivity;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 
 import java.util.Objects;
 
 public class LoginActivity extends AppCompatActivity {
+    private static final String DEV_USERNAME = "bioai-dev-user";
+    private static final String DEV_PHONE = "18800000001";
+    private static final String DEV_PASSWORD = "123456";
+    private static final String API_REGISTER = "POST /api/account/v1/register";
+    private static final String API_LOGIN = "POST /api/account/v1/login";
 
     private TextInputEditText usernameEdt;
     private TextInputEditText passwordEdt;
@@ -54,6 +59,8 @@ public class LoginActivity extends AppCompatActivity {
         apiDebugBtn = findViewById(R.id.apiDebugBtn);
         if (!BuildConfig.DEBUG) {
             apiDebugBtn.setVisibility(View.GONE);
+        } else {
+            apiDebugBtn.setText("真实 HTTP 联调");
         }
         tilUsername = findViewById(R.id.tilUsername);
         tilPassword = findViewById(R.id.tilPassword);
@@ -80,8 +87,7 @@ public class LoginActivity extends AppCompatActivity {
         registerBtn.setOnClickListener(v ->
                 startActivity(new Intent(LoginActivity.this, AccountRegisterActivity.class)));
 
-        apiDebugBtn.setOnClickListener(v ->
-                startActivity(new Intent(LoginActivity.this, VerificationActivity.class)));
+        apiDebugBtn.setOnClickListener(v -> startDevRealHttpFlow());
     }
 
     private void setupInputValidation() {
@@ -140,41 +146,53 @@ public class LoginActivity extends AppCompatActivity {
                 return;
             }
 
-            loginBtn.setEnabled(false);
+            setFormEnabled(false);
             AppApi.auth().login(username, password, result -> runOnUiThread(() -> {
-                loginBtn.setEnabled(true);
+                setFormEnabled(true);
                 if (result.isOk()) {
-                    if (AppApi.env().useMock && tryLocalDebugLogin(username, password)) {
-                        return;
-                    }
                     homeApplication.setLimits("ordinary");
                     homeApplication.setIsLogin("true");
                     navigateToMain();
                 } else {
-                    if (AppApi.env().useMock && tryLocalDebugLogin(username, password)) {
-                        return;
-                    }
-                    loginBtn.setEnabled(true);
                     Toast.makeText(LoginActivity.this, result.message, Toast.LENGTH_SHORT).show();
                 }
             }));
         });
     }
 
-    private boolean tryLocalDebugLogin(String username, String password) {
-        if (username.equals("admin") && password.equals("1")) {
-            homeApplication.setLimits("admin");
-            homeApplication.setIsLogin("true");
-            navigateToMain();
-            return true;
-        }
-        if (username.equals("normal") && password.equals("1")) {
-            homeApplication.setLimits("ordinary");
-            homeApplication.setIsLogin("true");
-            navigateToMain();
-            return true;
-        }
-        return false;
+    private void startDevRealHttpFlow() {
+        usernameEdt.setText(DEV_PHONE);
+        passwordEdt.setText(DEV_PASSWORD);
+        setFormEnabled(false);
+
+        ApiTraceLogger.json("LoginActivity", API_REGISTER, "request",
+                ApiTraceLogger.maskedAuthBody(DEV_USERNAME, DEV_PHONE, DEV_PASSWORD));
+        AppApi.auth().register(DEV_USERNAME, DEV_PASSWORD, DEV_PHONE, registerResult -> {
+            ApiTraceLogger.json("LoginActivity", API_REGISTER, "result", registerResult);
+            loginDevAccount();
+        });
+    }
+
+    private void loginDevAccount() {
+        ApiTraceLogger.json("LoginActivity", API_LOGIN, "request",
+                ApiTraceLogger.maskedAuthBody(null, DEV_PHONE, DEV_PASSWORD));
+        AppApi.auth().login(DEV_PHONE, DEV_PASSWORD, loginResult -> runOnUiThread(() -> {
+            setFormEnabled(true);
+            ApiTraceLogger.json("LoginActivity", API_LOGIN, "result", loginResult);
+            if (loginResult.isOk()) {
+                homeApplication.setLimits("ordinary");
+                homeApplication.setIsLogin("true");
+                navigateToMain();
+            } else {
+                Toast.makeText(LoginActivity.this, loginResult.message, Toast.LENGTH_SHORT).show();
+            }
+        }));
+    }
+
+    private void setFormEnabled(boolean enabled) {
+        loginBtn.setEnabled(enabled);
+        registerBtn.setEnabled(enabled);
+        apiDebugBtn.setEnabled(enabled);
     }
 
     private void navigateToMain() {

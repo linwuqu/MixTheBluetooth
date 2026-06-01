@@ -8,7 +8,7 @@ android {
         targetSdkVersion 28
         versionCode 1
         versionName "1.4.2"
-        def envName = project.hasProperty("apiEnv") ? project.property("apiEnv").toString() : "mock"
+        def envName = project.hasProperty("apiEnv") ? project.property("apiEnv").toString() : "dev"
         def envFile = rootProject.file("app/config/env.${envName}.properties")
         def envProps = new Properties()
         if (envFile.exists()) {
@@ -16,7 +16,6 @@ android {
         }
         buildConfigField "String", "API_ENV", "\"${envProps.getProperty("API_ENV", envName)}\""
         buildConfigField "String", "API_BASE_URL", "\"${envProps.getProperty("API_BASE_URL", "http://10.0.2.2:8080/")}\""
-        buildConfigField "boolean", "USE_MOCK_API", envProps.getProperty("USE_MOCK_API", "true")
         buildFeatures {
             viewBinding true
         }

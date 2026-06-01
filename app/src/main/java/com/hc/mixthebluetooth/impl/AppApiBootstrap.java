@@ -8,12 +8,13 @@ import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.impl.auth.DefaultAuthService;
+import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
 import com.hc.mixthebluetooth.impl.device.DefaultDeviceDataService;
 import com.hc.mixthebluetooth.impl.file.DefaultFileService;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.local.DeviceDataRecorder;
 import com.hc.mixthebluetooth.local.DeviceReplaySample;
 import com.hc.mixthebluetooth.local.SessionStore;
-import com.hc.mixthebluetooth.remote.MockServer;
 import com.hc.mixthebluetooth.remote.ServerClient;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
 
@@ -30,14 +31,10 @@ public final class AppApiBootstrap {
         EnvConfig env = EnvConfig.fromBuildConfig();
         SessionStore sessionStore = new SessionStore(app);
 
-        ServerEndpoints endpoints;
-        if (env.useMock) {
-            endpoints = new MockServer();
-            env = env.withRemote("MockServer(static Call responses)", false);
-        } else {
-            endpoints = ServerClient.create(env.baseUrl, sessionStore);
-            env = env.withRemote("RetrofitServer(" + env.baseUrl + ")", true);
-        }
+        ServerEndpoints endpoints = ServerClient.create(env.baseUrl, sessionStore, env.debug);
+        env = env.withRemote("RetrofitServer(" + env.baseUrl + ")", true);
+        ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
+                "env=" + env.env + "\nbaseUrl=" + env.baseUrl + "\nremote=" + env.remoteName);
 
         FileService fileService = new DefaultFileService(endpoints);
         DeviceDataService deviceDataService = new DefaultDeviceDataService(
@@ -47,7 +44,7 @@ public final class AppApiBootstrap {
         );
         AuthService authService = new DefaultAuthService(endpoints, sessionStore);
 
-        AppApi.install(authService, fileService, deviceDataService, env);
+        AppApi.install(authService, fileService, deviceDataService, new DefaultCgmService(endpoints), env);
         initialized = true;
     }
 

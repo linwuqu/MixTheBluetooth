@@ -21,8 +21,15 @@ public final class ServerClient {
 
     @NonNull
     public static ServerEndpoints create(@NonNull String baseUrl, @NonNull TokenProvider tokenProvider) {
+        return create(baseUrl, tokenProvider, false);
+    }
+
+    @NonNull
+    public static ServerEndpoints create(@NonNull String baseUrl,
+                                         @NonNull TokenProvider tokenProvider,
+                                         boolean bodyLogging) {
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
-        logging.setLevel(HttpLoggingInterceptor.Level.BASIC);
+        logging.setLevel(bodyLogging ? HttpLoggingInterceptor.Level.BODY : HttpLoggingInterceptor.Level.BASIC);
 
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)

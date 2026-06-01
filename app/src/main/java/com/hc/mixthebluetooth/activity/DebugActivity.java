@@ -1,18 +1,15 @@
 package com.hc.mixthebluetooth.activity;
 
 
-import android.content.Intent;
 import android.view.View;
 
 
 import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.basiclibrary.viewBasic.tool.Utility;
-import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
 import com.hc.mixthebluetooth.databinding.ActivityDebugBinding;
-import com.hc.mixthebluetooth.debug.VerificationActivity;
 import com.hc.mixthebluetooth.storage.Storage;
 
 public class DebugActivity extends BaseActivity<ActivityDebugBinding> {
@@ -36,10 +33,8 @@ public class DebugActivity extends BaseActivity<ActivityDebugBinding> {
     }
 
     private void initView() {
-        bindClickListener(viewBinding.debugRead, viewBinding.debugApi, viewBinding.debugDevelopmentMode);
-        if (!BuildConfig.DEBUG) {
-            viewBinding.debugApi.setVisibility(View.GONE);
-        }
+        bindClickListener(viewBinding.debugRead, viewBinding.debugDevelopmentMode);
+        viewBinding.debugApi.setVisibility(View.GONE);
         if (mStorage == null) mStorage = new Storage(this);
         if (mStorage.getData(HoldBluetooth.DEVELOPMENT_MODE_KEY)) {
             viewBinding.debugDevelopmentMode.staysOn();
@@ -52,8 +47,6 @@ public class DebugActivity extends BaseActivity<ActivityDebugBinding> {
     public void onClickView(View v) {
         if (isCheck(viewBinding.debugRead)) {
             viewBinding.bugLog.setText(Utility.load(this, "errNewLog"));
-        } else if (isCheck(viewBinding.debugApi)) {
-            startActivity(new Intent(this, VerificationActivity.class));
         } else if (isCheck(viewBinding.debugDevelopmentMode)) {
             mStorage.saveData(HoldBluetooth.DEVELOPMENT_MODE_KEY, !viewBinding.debugDevelopmentMode.isChick());
             viewBinding.debugDevelopmentMode.toggle();

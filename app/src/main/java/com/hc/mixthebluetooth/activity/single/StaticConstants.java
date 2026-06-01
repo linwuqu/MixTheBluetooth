@@ -19,7 +19,6 @@ public final class StaticConstants {
 
     // Unified Message: Fragment/Controller -> Activity.
     public static final String CMD_BT_POST = "CMD_BT_POST";
-    public static final String CMD_CGM_CACHE_READY = "CMD_CGM_CACHE_READY";
 
     // Unified Message: Activity -> Fragment/Controller.
     public static final String CH_BT_EVENT = "CH_BT_EVENT";

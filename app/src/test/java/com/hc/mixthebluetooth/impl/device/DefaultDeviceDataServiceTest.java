@@ -5,11 +5,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
-import com.hc.mixthebluetooth.impl.file.DefaultFileService;
 import com.hc.mixthebluetooth.local.DeviceDataRecorder;
 import com.hc.mixthebluetooth.local.DeviceReplaySample;
-import com.hc.mixthebluetooth.remote.MockServer;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -66,15 +65,25 @@ public class DefaultDeviceDataServiceTest {
 
         assertTrue(replay.get().isOk());
         assertTrue(upload.get().isOk());
-        assertEquals("CGM_Cache_data.txt", upload.get().data.fileName);
+        assertEquals("2026-05-24CGM_Cache_data.txt", upload.get().data.fileName);
     }
 
     private DefaultDeviceDataService serviceWithSample(java.util.List<String> lines) {
         return new DefaultDeviceDataService(
                 new DeviceDataRecorder(temporaryFolder.getRoot(), () -> "2026-05-24"),
                 new DeviceReplaySample(lines),
-                new DefaultFileService(new MockServer())
+                fakeFileService()
         );
+    }
+
+    private static FileService fakeFileService() {
+        return (file, callback) -> {
+            UploadedFile uploadedFile = new UploadedFile();
+            uploadedFile.fileId = 1L;
+            uploadedFile.fileName = file.getName();
+            uploadedFile.path = "/test/" + file.getName();
+            callback.onResult(CallResult.ok(uploadedFile));
+        };
     }
 
     private static java.util.List<String> sampleLines() {

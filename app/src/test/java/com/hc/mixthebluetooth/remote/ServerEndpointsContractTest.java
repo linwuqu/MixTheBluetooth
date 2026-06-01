@@ -97,6 +97,62 @@ public class ServerEndpointsContractTest {
         }
     }
 
+    @Test
+    public void testUploadEndpointUsesMultipartFileOnly() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"code\":200,\"success\":true,\"msg\":\"success\",\"data\":{\"jobId\":456}}"));
+            server.start();
+
+            File file = temporaryFolder.newFile("cgm-cache.txt");
+            Files.write(file.toPath(), "raw txt payload".getBytes(StandardCharsets.UTF_8));
+
+            ServerEndpoints endpoints = ServerClient.create(
+                    server.url("/").toString(),
+                    () -> null,
+                    true
+            );
+
+            endpoints.testUpload(MultipartBody.Part.createFormData(
+                    "file",
+                    file.getName(),
+                    RequestBody.create(file, MediaType.parse("text/plain"))
+            )).execute();
+
+            RecordedRequest upload = server.takeRequest();
+            assertEquals("POST", upload.getMethod());
+            assertEquals("/api/test/v1/upload", upload.getPath());
+            assertTrue(upload.getHeader("Content-Type").contains("multipart/form-data"));
+
+            String body = upload.getBody().readUtf8();
+            assertTrue(body.contains("cgm-cache.txt"));
+            assertTrue(body.contains("raw txt payload"));
+        }
+    }
+
+    @Test
+    public void cgmEndpointUsesFixedJobPathWithoutQuery() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(CgmJobRespParsingTest.SAMPLE_JSON));
+            server.start();
+
+            ServerEndpoints endpoints = ServerClient.create(
+                    server.url("/").toString(),
+                    () -> null,
+                    true
+            );
+
+            endpoints.cgmJob(456L).execute();
+
+            RecordedRequest request = server.takeRequest();
+            assertEquals("GET", request.getMethod());
+            assertEquals("/api/cgm/v1/jobs/456", request.getPath());
+        }
+    }
+
     private static RequestBody text(String value) {
         return RequestBody.create(value, MediaType.parse("text/plain"));
     }

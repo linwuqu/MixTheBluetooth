@@ -23,6 +23,7 @@ import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
+import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.uni.Widgets.MetricWidget;
 import com.hc.mixthebluetooth.uni.Widgets.WidgetSpec;
 
@@ -241,6 +242,13 @@ public final class Controller {
 
     public void release() {
         output.release();
+    }
+
+    public void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+        for (MetricWidget widget : widgets) {
+            widget.onCgmResult(result);
+        }
+        setBottomInfo("CGM points: " + result.pointCount + "  jobId: " + result.jobId);
     }
 
     private void createActions() {

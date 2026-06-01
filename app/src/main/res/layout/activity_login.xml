@@ -71,7 +71,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="text"
-                    android:text="admin"
+                    android:text="18800000001"
                     android:maxLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -101,7 +101,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:inputType="textPassword"
-                    android:text="1"
+                    android:text="123456"
                     android:maxLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -134,7 +134,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="4dp"
-                android:text="API 调试"
+                android:text="真实 HTTP 联调"
                 app:layout_constraintTop_toBottomOf="@id/registerBtn" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>

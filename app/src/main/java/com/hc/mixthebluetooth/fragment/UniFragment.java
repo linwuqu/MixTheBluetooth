@@ -1,9 +1,11 @@
 package com.hc.mixthebluetooth.fragment;
 
 import android.content.Context;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -11,6 +13,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
+import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
 import com.hc.mixthebluetooth.uni.Codec;
 import com.hc.mixthebluetooth.uni.Controller;
@@ -98,7 +101,21 @@ public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
         @Override
         public void onCacheFileReady(@NonNull File file) {
-            sendDataToActivity(StaticConstants.CMD_CGM_CACHE_READY, file.getAbsolutePath());
+            Log.d("UniFragment", "CGM cache file ready: " + file.getAbsolutePath());
+            AppApi.cgm().uploadAndPoll(file, result -> {
+                if (!isAdded()) {
+                    return;
+                }
+                requireActivity().runOnUiThread(() -> {
+                    if (result.isOk() && result.data != null) {
+                        controller.onCgmResult(result.data);
+                        Toast.makeText(requireContext(), "CGM 数据已生成", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Log.w("UniFragment", "CGM flow failed: " + result.message);
+                        Toast.makeText(requireContext(), "CGM 失败: " + result.message, Toast.LENGTH_LONG).show();
+                    }
+                });
+            });
         }
     }
 }

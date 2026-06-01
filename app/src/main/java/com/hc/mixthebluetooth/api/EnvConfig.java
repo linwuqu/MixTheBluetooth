@@ -9,7 +9,6 @@ public final class EnvConfig {
     public final String env;
     @NonNull
     public final String baseUrl;
-    public final boolean useMock;
     public final boolean debug;
     @NonNull
     public final String remoteName;
@@ -17,13 +16,11 @@ public final class EnvConfig {
 
     public EnvConfig(@NonNull String env,
                      @NonNull String baseUrl,
-                     boolean useMock,
                      boolean debug,
                      @NonNull String remoteName,
                      boolean networkEnabled) {
         this.env = env;
         this.baseUrl = baseUrl;
-        this.useMock = useMock;
         this.debug = debug;
         this.remoteName = remoteName;
         this.networkEnabled = networkEnabled;
@@ -34,7 +31,6 @@ public final class EnvConfig {
         return new EnvConfig(
                 BuildConfig.API_ENV,
                 BuildConfig.API_BASE_URL,
-                BuildConfig.USE_MOCK_API,
                 BuildConfig.DEBUG,
                 "",
                 false
@@ -43,6 +39,6 @@ public final class EnvConfig {
 
     @NonNull
     public EnvConfig withRemote(@NonNull String remoteName, boolean networkEnabled) {
-        return new EnvConfig(env, baseUrl, useMock, debug, remoteName, networkEnabled);
+        return new EnvConfig(env, baseUrl, debug, remoteName, networkEnabled);
     }
 }

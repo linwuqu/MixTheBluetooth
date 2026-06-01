@@ -11,7 +11,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="手机号"
-        android:inputType="phone" />
+        android:inputType="phone"
+        android:text="18800000001" />
 
     <EditText
         android:id="@+id/register_username"
@@ -19,7 +20,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:hint="用户名"
-        android:inputType="textPersonName" />
+        android:inputType="textPersonName"
+        android:text="bioai-dev-user" />
 
     <EditText
         android:id="@+id/register_password"
@@ -27,7 +29,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:hint="密码"
-        android:inputType="textPassword" />
+        android:inputType="textPassword"
+        android:text="123456" />
 
     <Button
         android:id="@+id/register_submit"

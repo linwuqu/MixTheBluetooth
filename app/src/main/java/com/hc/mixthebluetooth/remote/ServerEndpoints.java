@@ -8,6 +8,7 @@ import retrofit2.http.GET;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.Part;
+import retrofit2.http.Path;
 
 public interface ServerEndpoints {
     @POST("/api/account/v1/login")
@@ -28,4 +29,11 @@ public interface ServerEndpoints {
             @Part("fileSize") RequestBody fileSize,
             @Part MultipartBody.Part file
     );
+
+    @Multipart
+    @POST("/api/test/v1/upload")
+    Call<ServerResponse<Object>> testUpload(@Part MultipartBody.Part file);
+
+    @GET("/api/cgm/v1/jobs/{jobId}")
+    Call<ServerModels.CgmJobResp> cgmJob(@Path("jobId") long jobId);
 }

@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.uni.Commands;
 import com.hc.mixthebluetooth.uni.Controller;
+import com.hc.mixthebluetooth.uni.Widgets;
 
 import java.util.Date;
 
@@ -20,6 +21,10 @@ public final class CgmProfile {
                 .action(Controller.ActionSpec.postText("sync_time", "同步时间", () -> Commands.LegacyCgm.syncTime(new Date())))
                 .action(Controller.ActionSpec.postText("read_cache", "读取缓存", Commands.LegacyCgm::readCache))
                 .action(Controller.ActionSpec.postText("delete_cache", "删除缓存", Commands.LegacyCgm::deleteCache))
+                .widget(Widgets.WidgetSpec.cgmResult("cgm_result")
+                        .title("CGM mmol/L")
+                        .order(0)
+                        .build())
                 .rawLineConsumer(new CgmRawLineConsumer())
                 .build();
     }

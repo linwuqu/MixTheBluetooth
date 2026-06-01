@@ -3,6 +3,7 @@ package com.hc.mixthebluetooth.api;
 import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.api.auth.AuthService;
+import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 
@@ -10,6 +11,7 @@ public final class AppApi {
     private static AuthService auth;
     private static FileService file;
     private static DeviceDataService deviceData;
+    private static CgmService cgm;
     private static EnvConfig env;
 
     private AppApi() {
@@ -18,10 +20,12 @@ public final class AppApi {
     public static synchronized void install(@NonNull AuthService authService,
                                             @NonNull FileService fileService,
                                             @NonNull DeviceDataService deviceDataService,
+                                            @NonNull CgmService cgmService,
                                             @NonNull EnvConfig envConfig) {
         auth = authService;
         file = fileService;
         deviceData = deviceDataService;
+        cgm = cgmService;
         env = envConfig;
     }
 
@@ -44,6 +48,12 @@ public final class AppApi {
     }
 
     @NonNull
+    public static synchronized CgmService cgm() {
+        if (cgm == null) throw new IllegalStateException("AppApi is not initialized");
+        return cgm;
+    }
+
+    @NonNull
     public static synchronized EnvConfig env() {
         if (env == null) throw new IllegalStateException("AppApi is not initialized");
         return env;
@@ -53,6 +63,7 @@ public final class AppApi {
         auth = null;
         file = null;
         deviceData = null;
+        cgm = null;
         env = null;
     }
 }

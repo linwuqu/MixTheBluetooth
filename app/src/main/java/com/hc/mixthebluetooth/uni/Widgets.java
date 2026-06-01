@@ -23,6 +23,7 @@ import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
+import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.uni.Controller.Region;
 
 import java.text.SimpleDateFormat;
@@ -40,7 +41,8 @@ public final class Widgets {
         LINE,
         GAUGE,
         VALUE,
-        STATS
+        STATS,
+        CGM_RESULT
     }
 
     public enum WidgetStyle {
@@ -55,6 +57,9 @@ public final class Widgets {
 
         void onSample(@NonNull BluetoothSample sample);
 
+        default void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+        }
+
         void reset();
     }
 
@@ -64,6 +69,7 @@ public final class Widgets {
         if (spec.kind == WidgetKind.GAUGE) return new GaugeMetricWidget(context, spec);
         if (spec.kind == WidgetKind.VALUE) return new ValueMetricWidget(context, spec);
         if (spec.kind == WidgetKind.STATS) return new StatsMetricWidget(context, spec);
+        if (spec.kind == WidgetKind.CGM_RESULT) return new CgmResultMetricWidget(context, spec);
         return new ValueMetricWidget(context, spec);
     }
 
@@ -139,6 +145,11 @@ public final class Widgets {
         @NonNull
         public static Builder stats(@NonNull String id) {
             return new Builder(id, WidgetKind.STATS).region(Region.MAIN).style(WidgetStyle.COMPACT);
+        }
+
+        @NonNull
+        public static Builder cgmResult(@NonNull String id) {
+            return new Builder(id, WidgetKind.CGM_RESULT).region(Region.MAIN).style(WidgetStyle.CARD);
         }
     }
 
@@ -570,6 +581,159 @@ public final class Widgets {
         }
     }
 
+    private static final class CgmResultMetricWidget implements MetricWidget {
+        private final LinearLayout root;
+        private final LineChart chart;
+        private final TextView summary;
+        private final TextView units;
+
+        CgmResultMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
+            root = card(context, LinearLayout.VERTICAL);
+            root.addView(title(context, spec.title), matchWrap());
+
+            chart = new LineChart(context);
+            setupCgmChart(chart);
+            root.addView(chart, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(context, 230)
+            ));
+
+            summary = statBlock(context);
+            units = statBlock(context);
+            summary.setText("等待 CGM 结果");
+            units.setText("units=[]");
+            root.addView(summary, matchWrap());
+            root.addView(units, matchWrap());
+        }
+
+        @NonNull
+        @Override
+        public View view() {
+            return root;
+        }
+
+        @Override
+        public void onSample(@NonNull BluetoothSample sample) {
+        }
+
+        @Override
+        public void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+            ArrayList<Entry> predicted = new ArrayList<>();
+            ArrayList<Entry> actual = new ArrayList<>();
+            for (ServerModels.CgmPoint point : allPoints(result)) {
+                predicted.add(new Entry(point.time, (float) point.predicted));
+                if (point.actual != null) {
+                    actual.add(new Entry(point.time, point.actual.floatValue()));
+                }
+            }
+
+            LineData data = new LineData();
+            data.addDataSet(cgmSet(predicted, "Predicted mmol/L", Color.rgb(45, 99, 155)));
+            if (!actual.isEmpty()) {
+                data.addDataSet(cgmSet(actual, "Actual mmol/L", Color.rgb(245, 158, 11)));
+            }
+            chart.setData(data);
+            chart.invalidate();
+
+            summary.setText(String.format(Locale.getDefault(),
+                    "status=%s  points=%d  units=%d\nprediction[min=%s max=%s mean=%s std=%s]  avgMard=%s  mardStd=%s\nids[result=%d job=%d dataset=%d]  created=%s",
+                    textOrDash(result.status),
+                    result.pointCount,
+                    result.unitCount,
+                    formatDouble(result.predictionMin),
+                    formatDouble(result.predictionMax),
+                    formatDouble(result.predictionMean),
+                    formatDouble(result.predictionStd),
+                    formatDouble(result.avgMard),
+                    result.mardStd == null ? "--" : formatDouble(result.mardStd),
+                    result.resultId,
+                    result.jobId,
+                    result.datasetId,
+                    textOrDash(result.gmtCreate)));
+            units.setText(formatUnits(result.summaryJson == null ? null : result.summaryJson.units));
+        }
+
+        @Override
+        public void reset() {
+            chart.clear();
+            summary.setText("等待 CGM 结果");
+            units.setText("units=[]");
+        }
+
+        private void setupCgmChart(@NonNull LineChart chart) {
+            chart.getDescription().setEnabled(false);
+            chart.setTouchEnabled(true);
+            chart.setDragEnabled(true);
+            chart.setScaleEnabled(true);
+            chart.setPinchZoom(true);
+            chart.setDrawGridBackground(false);
+            chart.getAxisRight().setEnabled(false);
+
+            XAxis xAxis = chart.getXAxis();
+            xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+            xAxis.setGranularity(1f);
+            xAxis.setDrawGridLines(false);
+            xAxis.setValueFormatter(new ValueFormatter() {
+                @Override
+                public String getFormattedValue(float value) {
+                    return String.format(Locale.getDefault(), "%.0f", value);
+                }
+            });
+
+            YAxis yAxis = chart.getAxisLeft();
+            yAxis.setAxisMinimum(0f);
+            yAxis.setAxisMaximum(15f);
+            yAxis.setGranularity(3f);
+            yAxis.setDrawGridLines(true);
+        }
+
+        @NonNull
+        private LineDataSet cgmSet(@NonNull List<Entry> entries, @NonNull String label, int color) {
+            LineDataSet set = new LineDataSet(entries, label);
+            set.setColor(color);
+            set.setCircleColor(color);
+            set.setLineWidth(1.4f);
+            set.setCircleRadius(3f);
+            set.setDrawCircles(true);
+            set.setDrawValues(false);
+            return set;
+        }
+
+        @NonNull
+        private List<ServerModels.CgmPoint> allPoints(@NonNull ServerModels.CgmJobData data) {
+            ArrayList<ServerModels.CgmPoint> points = new ArrayList<>();
+            if (data.summaryJson == null || data.summaryJson.units == null) {
+                return points;
+            }
+            for (ServerModels.CgmUnit unit : data.summaryJson.units) {
+                if (unit.points != null) {
+                    points.addAll(unit.points);
+                }
+            }
+            return points;
+        }
+
+        @NonNull
+        private String formatUnits(@Nullable List<ServerModels.CgmUnit> unitList) {
+            if (unitList == null || unitList.isEmpty()) {
+                return "units=[]";
+            }
+            StringBuilder builder = new StringBuilder();
+            for (ServerModels.CgmUnit unit : unitList) {
+                if (builder.length() > 0) {
+                    builder.append('\n');
+                }
+                builder.append(String.format(Locale.getDefault(),
+                        "unit=%d  title=%s  points=%d  mard=%s",
+                        unit.unit,
+                        textOrDash(unit.unitTitle),
+                        unit.pointCount,
+                        formatDouble(unit.mard)));
+            }
+            return builder.toString();
+        }
+    }
+
     @NonNull
     private static LinearLayout card(@NonNull Context context, int orientation) {
         LinearLayout v = new LinearLayout(context);
@@ -610,6 +774,15 @@ public final class Widgets {
     }
 
     @NonNull
+    private static TextView statBlock(@NonNull Context context) {
+        TextView v = new TextView(context);
+        v.setTextColor(Color.rgb(71, 85, 105));
+        v.setTextSize(12f);
+        v.setPadding(0, dp(context, 6), 0, 0);
+        return v;
+    }
+
+    @NonNull
     private static LinearLayout.LayoutParams matchWrap() {
         return new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -630,6 +803,16 @@ public final class Widgets {
     private static String format(float value) {
         if (Math.abs(value) >= 100f) return String.format(Locale.getDefault(), "%.1f", value);
         return String.format(Locale.getDefault(), "%.3f", value);
+    }
+
+    @NonNull
+    private static String formatDouble(double value) {
+        return String.format(Locale.getDefault(), "%.2f", value);
+    }
+
+    @NonNull
+    private static String textOrDash(@Nullable String value) {
+        return value == null || value.trim().isEmpty() ? "--" : value;
     }
 }
 
