@@ -1,5 +1,7 @@
 # LAN + Static HTTP CGM Loop Implementation Plan
 
+> **Status:** Superseded for realistic LAN testing by `docs/superpowers/plans/2026-06-01-lan-static-http-backend.md`. Use the LAN static HTTP backend plan when the goal is to exercise real Android HTTP packets.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a practical static/LAN HTTP CGM loop so the app can complete register, login, device data, upload, CGM result, and chart rendering without USB or backend, while real LAN HTTP remains one `apiEnv` configuration change away.

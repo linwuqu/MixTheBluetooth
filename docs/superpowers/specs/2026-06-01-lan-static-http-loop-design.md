@@ -2,6 +2,8 @@
 
 Date: 2026-06-01
 
+Status: Superseded for realistic LAN testing by `docs/superpowers/specs/2026-06-01-lan-static-http-backend-design.md`. The app-internal static loop remains useful only as an offline fallback.
+
 ## 1. Background
 
 The backend is still under active development, but the Android app needs a stable integration path for development and demos. The current app already has most of the real chain in place: `AppApi`, Retrofit/OkHttp, `BioAI.Http` logging, account APIs, file upload, CGM polling, `UniFragment`, `Controller`, and CGM widgets.
