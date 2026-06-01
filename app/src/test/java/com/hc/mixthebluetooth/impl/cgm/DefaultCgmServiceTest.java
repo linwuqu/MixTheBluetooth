@@ -74,4 +74,131 @@ public class DefaultCgmServiceTest {
             assertEquals("/api/cgm/v1/jobs/456", poll.getPath());
         }
     }
+
+    @Test
+    public void uploadHttpFailureKeepsFileAndReturnsError() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(500)
+                    .setBody("{\"code\":500,\"success\":false,\"msg\":\"upload failed\",\"data\":null}"));
+            server.start();
+
+            File file = cacheFile();
+            DefaultCgmService service = service(server);
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+            service.uploadAndPoll(file, value -> {
+                result.set(value);
+                latch.countDown();
+            });
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            assertNotNull(result.get());
+            assertFalse(result.get().isOk());
+            assertTrue(file.exists());
+
+            RecordedRequest upload = server.takeRequest();
+            assertEquals("POST", upload.getMethod());
+            assertEquals("/api/test/v1/upload", upload.getPath());
+        }
+    }
+
+    @Test
+    public void uploadSuccessWithoutJobIdKeepsFileAndReturnsEmptyData() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"code\":200,\"success\":true,\"msg\":\"success\",\"data\":{}}"));
+            server.start();
+
+            File file = cacheFile();
+            DefaultCgmService service = service(server);
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+            service.uploadAndPoll(file, value -> {
+                result.set(value);
+                latch.countDown();
+            });
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            assertNotNull(result.get());
+            assertFalse(result.get().isOk());
+            assertEquals(CallResult.EMPTY_DATA, result.get().code);
+            assertTrue(file.exists());
+            assertEquals(1, server.getRequestCount());
+        }
+    }
+
+    @Test
+    public void pollContinuesUntilGenerated() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(CgmJobRespParsingTest.SAMPLE_JSON.replace("\"GENERATED\"", "\"PROCESSING\"")));
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(CgmJobRespParsingTest.SAMPLE_JSON));
+            server.start();
+
+            DefaultCgmService service = service(server);
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+            service.poll(456L, value -> {
+                result.set(value);
+                latch.countDown();
+            });
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            assertNotNull(result.get());
+            assertTrue(result.get().isOk());
+            assertEquals("GENERATED", result.get().data.status);
+
+            RecordedRequest first = server.takeRequest();
+            RecordedRequest second = server.takeRequest();
+            assertEquals("/api/cgm/v1/jobs/456", first.getPath());
+            assertEquals("/api/cgm/v1/jobs/456", second.getPath());
+        }
+    }
+
+    @Test
+    public void generatedResultWithMissingOptionalSummaryDoesNotCrashService() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"code\":200,\"message\":\"success\",\"data\":{\"jobId\":456,\"status\":\"GENERATED\",\"pointCount\":0,\"unitCount\":0}}"));
+            server.start();
+
+            DefaultCgmService service = service(server);
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+            service.poll(456L, value -> {
+                result.set(value);
+                latch.countDown();
+            });
+
+            assertTrue(latch.await(2, TimeUnit.SECONDS));
+            assertNotNull(result.get());
+            assertTrue(result.get().isOk());
+            assertNotNull(result.get().data);
+            assertEquals(456L, result.get().data.jobId);
+            assertEquals("GENERATED", result.get().data.status);
+        }
+    }
+
+    private File cacheFile() throws Exception {
+        File file = temporaryFolder.newFile("CGM_Cache_data.txt");
+        Files.write(file.toPath(),
+                "Start Playback\nEIS:1,1000,0.12\nPlayback all done\n"
+                        .getBytes(StandardCharsets.UTF_8));
+        return file;
+    }
+
+    private DefaultCgmService service(MockWebServer server) {
+        ServerEndpoints endpoints = ServerClient.create(server.url("/").toString(), () -> null, true);
+        return new DefaultCgmService(endpoints, (runnable, delayMillis) -> runnable.run());
+    }
 }
