@@ -5,10 +5,13 @@ import android.content.Context;
 import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.api.EnvConfig;
 import com.hc.mixthebluetooth.api.auth.AuthService;
+import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.impl.auth.DefaultAuthService;
+import com.hc.mixthebluetooth.impl.auth.StaticAuthService;
 import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
+import com.hc.mixthebluetooth.impl.cgm.StaticCgmService;
 import com.hc.mixthebluetooth.impl.device.DefaultDeviceDataService;
 import com.hc.mixthebluetooth.impl.file.DefaultFileService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
@@ -32,19 +35,33 @@ public final class AppApiBootstrap {
         SessionStore sessionStore = new SessionStore(app);
 
         ServerEndpoints endpoints = ServerClient.create(env.baseUrl, sessionStore, env.debug);
-        env = env.withRemote("RetrofitServer(" + env.baseUrl + ")", true);
-        ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
-                "env=" + env.env + "\nbaseUrl=" + env.baseUrl + "\nremote=" + env.remoteName);
-
         FileService fileService = new DefaultFileService(endpoints);
+        AuthService authService;
+        CgmService cgmService;
+
+        if (env.isStatic()) {
+            authService = new StaticAuthService(sessionStore);
+            cgmService = new StaticCgmService();
+            env = env.withRemote("StaticBioAiTransport", false);
+        } else {
+            authService = new DefaultAuthService(endpoints, sessionStore);
+            cgmService = new DefaultCgmService(endpoints);
+            env = env.withRemote("RetrofitServer(" + env.baseUrl + ")", true);
+        }
+
+        ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
+                "env=" + env.env
+                        + "\nbaseUrl=" + env.baseUrl
+                        + "\nremote=" + env.remoteName
+                        + "\nnetworkEnabled=" + env.networkEnabled);
+
         DeviceDataService deviceDataService = new DefaultDeviceDataService(
                 new DeviceDataRecorder(app),
                 new DeviceReplaySample(app),
                 fileService
         );
-        AuthService authService = new DefaultAuthService(endpoints, sessionStore);
 
-        AppApi.install(authService, fileService, deviceDataService, new DefaultCgmService(endpoints), env);
+        AppApi.install(authService, fileService, deviceDataService, cgmService, env);
         initialized = true;
     }
 
