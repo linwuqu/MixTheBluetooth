@@ -21,6 +21,7 @@ import com.hc.mixthebluetooth.activity.single.FragmentParameter;
 import com.hc.mixthebluetooth.activity.tool.Analysis;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 import com.hc.mixthebluetooth.remote.ServerModels;
@@ -34,6 +35,11 @@ import java.util.List;
 
 public final class Controller {
     private static final int AUTO_CLEAR_BYTES = 400_000;
+    private static final String OWNER = "Controller";
+    private static final String API_BT_SEND = "BT_SEND";
+    private static final String API_BT_RECV = "BT_RECV";
+    private static final String API_DEVICE_CONNECT = "DEVICE_CONNECT";
+    private static final String API_RENDER = "RENDER";
 
     public enum Region {
         ACTION,
@@ -230,8 +236,11 @@ public final class Controller {
             onBtData((BTPackage.BTData) event);
         } else if (event instanceof BTPackage.Connected) {
             module = ((BTPackage.Connected) event).module;
+            ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state",
+                    "connected=true\ndevice=" + (module == null ? "" : module.getName()));
         } else if (event instanceof BTPackage.Disconnected) {
             module = null;
+            ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state", "connected=false");
         } else if (event instanceof BTPackage.SentBytes) {
             sentBytes += ((BTPackage.SentBytes) event).count;
             updateByteCounter();
@@ -245,6 +254,11 @@ public final class Controller {
     }
 
     public void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+        ApiTraceLogger.text(OWNER, API_RENDER, "cgmResult",
+                "jobId=" + result.jobId
+                        + "\nstatus=" + result.status
+                        + "\npointCount=" + result.pointCount
+                        + "\nunitCount=" + result.unitCount);
         for (MetricWidget widget : widgets) {
             widget.onCgmResult(result);
         }
@@ -303,7 +317,10 @@ public final class Controller {
 
     private void handleAction(@NonNull ActionSpec action) {
         if (action.route == Route.POST && action.textSupplier != null && module != null) {
-            gateway.postText(module, action.textSupplier.get());
+            String payload = action.textSupplier.get();
+            ApiTraceLogger.text(OWNER, API_BT_SEND, "command",
+                    "id=" + action.id + "\npayload=" + payload);
+            gateway.postText(module, payload);
             return;
         }
         if (action.route == Route.INNER && action.builtIn != null) {
@@ -351,6 +368,9 @@ public final class Controller {
         if (text == null || text.isEmpty()) {
             return;
         }
+
+        ApiTraceLogger.text(OWNER, API_BT_RECV, "data",
+                "bytes=" + data.bytes.length + "\ntext=" + text);
 
         FragmentMessageItem item = new FragmentMessageItem(text, Analysis.getTime(), false, data.module, false);
         item.setDataEndNewline(true);

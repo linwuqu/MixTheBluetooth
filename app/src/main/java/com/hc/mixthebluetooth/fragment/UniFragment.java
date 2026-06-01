@@ -15,6 +15,7 @@ import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.uni.Codec;
 import com.hc.mixthebluetooth.uni.Controller;
 import com.hc.mixthebluetooth.uni.Profiles;
@@ -101,6 +102,7 @@ public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
         @Override
         public void onCacheFileReady(@NonNull File file) {
+            ApiTraceLogger.file("UniFragment", "CACHE_FILE_READY", file);
             Log.d("UniFragment", "CGM cache file ready: " + file.getAbsolutePath());
             AppApi.cgm().uploadAndPoll(file, result -> {
                 if (!isAdded()) {

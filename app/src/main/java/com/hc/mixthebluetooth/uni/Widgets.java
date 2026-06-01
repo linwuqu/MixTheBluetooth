@@ -23,6 +23,7 @@ import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
+import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.uni.Controller.Region;
 
@@ -626,6 +627,14 @@ public final class Widgets {
                     actual.add(new Entry(point.time, point.actual.floatValue()));
                 }
             }
+
+            ApiTraceLogger.text("CgmWidgetBinder", "RENDER", "result",
+                    "jobId=" + result.jobId
+                            + "\nstatus=" + result.status
+                            + "\npoints=" + predicted.size()
+                            + "\npredicted=" + predicted.size()
+                            + "\nactual=" + actual.size()
+                            + "\nunitCount=" + result.unitCount);
 
             LineData data = new LineData();
             data.addDataSet(cgmSet(predicted, "Predicted mmol/L", Color.rgb(45, 99, 155)));
