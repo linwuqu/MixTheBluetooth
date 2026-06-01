@@ -2,59 +2,89 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a switchable static/LAN HTTP CGM loop so the app can complete register, login, device, upload, CGM result, and chart rendering without USB or backend, while keeping real LAN HTTP one configuration change away.
+**Goal:** Add a practical static/LAN HTTP CGM loop so the app can complete register, login, device data, upload, CGM result, and chart rendering without USB or backend, while real LAN HTTP remains one `apiEnv` configuration change away.
 
-**Architecture:** Add `API_MODE` to environment config and select service implementations in `AppApiBootstrap`. `STATIC_LOOP` installs deterministic static auth and CGM services, with CGM fixed to `jobId=64`; `LAN_HTTP`, `DEV_HTTP`, and `PROD_HTTP` keep using Retrofit. UI and controller code continue to call the same `AppApi` interfaces.
+**Architecture:** Keep environment selection simple: `API_ENV=static` means app-internal static loop; `lan`, `dev`, and `prod` use real Retrofit HTTP. Add static auth and CGM services behind the existing `AppApi` interfaces, wire them in `AppApiBootstrap`, and keep UI/controller code unaware of whether the backend is static or real. Static CGM uses the real endpoint shape conceptually and always returns `jobId=64`.
 
-**Tech Stack:** Android Java, Gradle BuildConfig fields, Retrofit 2, OkHttp, Gson, MPAndroidChart, JUnit 4, MockWebServer.
+**Tech Stack:** Android Java, Gradle BuildConfig fields, Retrofit 2, OkHttp, Gson, MPAndroidChart, JUnit 4, MockWebServer, logcat.
 
 ---
 
 ## Scope Check
 
-This plan is one cohesive subsystem: environment selection plus static service implementations for the existing HTTP/CGM loop. It does not create a fake Bluetooth packet source, does not add a new debug screen, and does not alter the real board command path.
+This plan is one focused implementation slice: environment selection plus static implementations for the existing service layer. It does not fake Bluetooth packets, does not add a new debug-only page, and does not restructure the large UI files. The goal is a working loop first; deeper package cleanup can happen after the behavior is stable.
+
+## Design Decisions
+
+- Do not add `ApiMode`. `API_ENV` already expresses the required behavior for this project stage.
+- Keep the current `EnvConfig.fromBuildConfig()` style. Add only small helpers such as `isStatic()` and `isRealHttp()`.
+- Keep `AppApiBootstrap` as the dependency assembly point. It should choose static or default services with one clear `if (env.isStatic())` branch.
+- Do not add a `Services` wrapper type just for tests. Test public behavior and service outcomes instead.
+- Static runtime implementations are new. Existing `StaticConstants` is only an event constant holder, not static HTTP.
+- Tests must verify meaningful behavior: endpoint contracts, full service-chain outcomes, and failure tolerance. Delete old tests that only cover removed mock infrastructure or conflict with the current chain.
+
+## Current Runtime API Implementations
+
+```text
+AuthService
+  current: DefaultAuthService
+  real HTTP:
+    POST /api/account/v1/register
+    POST /api/account/v1/login
+    GET  /api/account/v1/detail
+  new static: StaticAuthService
+
+FileService
+  current: DefaultFileService
+  real HTTP:
+    POST /api/file/v1/upload
+  static loop:
+    keep DefaultFileService installed, but CGM loop uses CgmService testUpload path
+
+CgmService
+  current: DefaultCgmService
+  real HTTP:
+    POST /api/test/v1/upload
+    GET  /api/cgm/v1/jobs/{jobId}
+  new static: StaticCgmService
+    returns upload success with jobId=64
+    returns generated CGM result for /api/cgm/v1/jobs/64 conceptually
+
+DeviceDataService
+  current: DefaultDeviceDataService
+  local device/cache file handling
+  unchanged in this plan
+```
 
 ## File Map
 
 - Create: `app/config/env.static.properties`
-  Static app-internal loop configuration.
 - Create: `app/config/env.lan.properties`
-  LAN backend configuration.
 - Modify: `app/config/env.dev.properties`
-  Add `API_MODE=DEV_HTTP`.
 - Modify: `app/config/env.prod.properties`
-  Add `API_MODE=PROD_HTTP`.
 - Modify: `app/build.gradle`
-  Read `API_MODE` and expose it through `BuildConfig`.
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java`
-  Add `ApiMode`, parsing, and helper methods.
-- Test: `app/src/test/java/com/hc/mixthebluetooth/api/EnvConfigTest.java`
-  Verify mode parsing and fallback behavior.
 - Create: `app/src/main/java/com/hc/mixthebluetooth/staticdata/StaticBioAiFixtures.java`
-  Deterministic static account, upload, and CGM data.
 - Create: `app/src/main/java/com/hc/mixthebluetooth/impl/auth/StaticAuthService.java`
-  Static account implementation using the existing `AuthService`.
-- Test: `app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java`
-  Verify register/login/detail and token persistence.
 - Create: `app/src/main/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmService.java`
-  Static CGM implementation using `jobId=64`.
-- Test: `app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java`
-  Verify upload, poll, generated data, and missing file behavior.
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/impl/AppApiBootstrap.java`
-  Select static vs Retrofit services based on `EnvConfig.apiMode`.
-- Test: `app/src/test/java/com/hc/mixthebluetooth/impl/AppApiBootstrapModeTest.java`
-  Verify service selection without needing Android instrumentation.
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/uni/Controller.java`
-  Add `BioAI.Http` logs for connection, send, receive/cache, and render handoff.
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/UniFragment.java`
-  Log cache-file upload entry through `ApiTraceLogger`.
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/uni/Widgets.java`
-  Log CGM render summary through `ApiTraceLogger`.
-- Test: existing unit tests plus focused new tests.
+- Add focused tests under:
+  - `app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java`
+  - `app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java`
+  - `app/src/test/java/com/hc/mixthebluetooth/impl/StaticLoopServiceChainTest.java`
+- Keep and update meaningful existing tests:
+  - `ServerEndpointsContractTest`
+  - `CgmJobRespParsingTest`
+  - `DefaultCgmServiceTest`
+  - auth/file/device service tests that still reflect current behavior
+- Delete obsolete tests that reference removed runtime mock infrastructure or old debug pages.
 
 ---
 
-### Task 1: Add API_MODE Configuration
+### Task 1: Simplify Environment Selection
 
 **Files:**
 - Create: `app/config/env.static.properties`
@@ -63,91 +93,14 @@ This plan is one cohesive subsystem: environment selection plus static service i
 - Modify: `app/config/env.prod.properties`
 - Modify: `app/build.gradle`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java`
-- Test: `app/src/test/java/com/hc/mixthebluetooth/api/EnvConfigTest.java`
 
-- [ ] **Step 1: Write failing EnvConfig tests**
-
-Create `app/src/test/java/com/hc/mixthebluetooth/api/EnvConfigTest.java`:
-
-```java
-package com.hc.mixthebluetooth.api;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import org.junit.Test;
-
-public class EnvConfigTest {
-    @Test
-    public void parsesStaticMode() {
-        EnvConfig env = EnvConfig.fromValues(
-                "static",
-                "http://127.0.0.1/",
-                "STATIC_LOOP",
-                true
-        );
-
-        assertEquals("static", env.env);
-        assertEquals("http://127.0.0.1/", env.baseUrl);
-        assertEquals(EnvConfig.ApiMode.STATIC_LOOP, env.apiMode);
-        assertTrue(env.isStaticLoop());
-        assertFalse(env.usesRealHttp());
-    }
-
-    @Test
-    public void parsesLanMode() {
-        EnvConfig env = EnvConfig.fromValues(
-                "lan",
-                "http://192.168.10.23:8080/",
-                "LAN_HTTP",
-                true
-        );
-
-        assertEquals(EnvConfig.ApiMode.LAN_HTTP, env.apiMode);
-        assertFalse(env.isStaticLoop());
-        assertTrue(env.usesRealHttp());
-    }
-
-    @Test
-    public void unknownModeFallsBackFromEnvName() {
-        EnvConfig staticEnv = EnvConfig.fromValues(
-                "static",
-                "http://127.0.0.1/",
-                "",
-                true
-        );
-        EnvConfig prodEnv = EnvConfig.fromValues(
-                "prod",
-                "https://example.com/",
-                "not-a-mode",
-                false
-        );
-
-        assertEquals(EnvConfig.ApiMode.STATIC_LOOP, staticEnv.apiMode);
-        assertEquals(EnvConfig.ApiMode.PROD_HTTP, prodEnv.apiMode);
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.api.EnvConfigTest"
-```
-
-Expected: FAIL because `EnvConfig.ApiMode`, `fromValues`, `isStaticLoop`, and `usesRealHttp` do not exist.
-
-- [ ] **Step 3: Add environment files**
+- [ ] **Step 1: Add env files**
 
 Create `app/config/env.static.properties`:
 
 ```properties
 API_ENV=static
 API_BASE_URL=http://127.0.0.1/
-API_MODE=STATIC_LOOP
 ```
 
 Create `app/config/env.lan.properties`:
@@ -155,38 +108,36 @@ Create `app/config/env.lan.properties`:
 ```properties
 API_ENV=lan
 API_BASE_URL=http://124.16.68.18:8080/
-API_MODE=LAN_HTTP
 ```
 
-Replace `app/config/env.dev.properties` with:
+Update `app/config/env.dev.properties`:
 
 ```properties
 API_ENV=dev
 API_BASE_URL=http://124.16.68.18:8080/
-API_MODE=DEV_HTTP
 ```
 
-Replace `app/config/env.prod.properties` with:
+Update `app/config/env.prod.properties`:
 
 ```properties
 API_ENV=prod
 API_BASE_URL=https://example.com/
-API_MODE=PROD_HTTP
 ```
 
-- [ ] **Step 4: Expose API_MODE in Gradle**
+- [ ] **Step 2: Keep Gradle BuildConfig simple**
 
-In `app/build.gradle`, replace the existing `buildConfigField` block inside `defaultConfig` with:
+In `app/build.gradle`, keep only the existing env/baseUrl fields:
 
 ```groovy
         buildConfigField "String", "API_ENV", "\"${envProps.getProperty("API_ENV", envName)}\""
         buildConfigField "String", "API_BASE_URL", "\"${envProps.getProperty("API_BASE_URL", "http://10.0.2.2:8080/")}\""
-        buildConfigField "String", "API_MODE", "\"${envProps.getProperty("API_MODE", envName == "static" ? "STATIC_LOOP" : "DEV_HTTP")}\""
 ```
 
-- [ ] **Step 5: Implement EnvConfig mode parsing**
+Do not add `API_MODE`.
 
-Replace `app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java` with:
+- [ ] **Step 3: Add small EnvConfig helpers**
+
+Update `app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java` to keep the existing constructor shape and add helper methods:
 
 ```java
 package com.hc.mixthebluetooth.api;
@@ -195,23 +146,12 @@ import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.BuildConfig;
 
-import java.util.Locale;
-
 public final class EnvConfig {
-    public enum ApiMode {
-        STATIC_LOOP,
-        LAN_HTTP,
-        DEV_HTTP,
-        PROD_HTTP
-    }
-
     @NonNull
     public final String env;
     @NonNull
     public final String baseUrl;
     public final boolean debug;
-    @NonNull
-    public final ApiMode apiMode;
     @NonNull
     public final String remoteName;
     public final boolean networkEnabled;
@@ -219,222 +159,69 @@ public final class EnvConfig {
     public EnvConfig(@NonNull String env,
                      @NonNull String baseUrl,
                      boolean debug,
-                     @NonNull ApiMode apiMode,
                      @NonNull String remoteName,
                      boolean networkEnabled) {
         this.env = env;
         this.baseUrl = baseUrl;
         this.debug = debug;
-        this.apiMode = apiMode;
         this.remoteName = remoteName;
         this.networkEnabled = networkEnabled;
     }
 
     @NonNull
     public static EnvConfig fromBuildConfig() {
-        return fromValues(
+        return new EnvConfig(
                 BuildConfig.API_ENV,
                 BuildConfig.API_BASE_URL,
-                BuildConfig.API_MODE,
-                BuildConfig.DEBUG
+                BuildConfig.DEBUG,
+                "",
+                false
         );
     }
 
-    @NonNull
-    public static EnvConfig fromValues(@NonNull String env,
-                                       @NonNull String baseUrl,
-                                       @NonNull String modeName,
-                                       boolean debug) {
-        ApiMode mode = parseMode(env, modeName);
-        return new EnvConfig(env, baseUrl, debug, mode, "", mode != ApiMode.STATIC_LOOP);
+    public boolean isStatic() {
+        return "static".equalsIgnoreCase(env);
+    }
+
+    public boolean isRealHttp() {
+        return !isStatic();
     }
 
     @NonNull
     public EnvConfig withRemote(@NonNull String remoteName, boolean networkEnabled) {
-        return new EnvConfig(env, baseUrl, debug, apiMode, remoteName, networkEnabled);
-    }
-
-    public boolean isStaticLoop() {
-        return apiMode == ApiMode.STATIC_LOOP;
-    }
-
-    public boolean usesRealHttp() {
-        return apiMode != ApiMode.STATIC_LOOP;
-    }
-
-    @NonNull
-    private static ApiMode parseMode(@NonNull String env, @NonNull String modeName) {
-        String normalized = modeName.trim().toUpperCase(Locale.US);
-        for (ApiMode mode : ApiMode.values()) {
-            if (mode.name().equals(normalized)) {
-                return mode;
-            }
-        }
-        String envName = env.trim().toLowerCase(Locale.US);
-        if ("static".equals(envName)) {
-            return ApiMode.STATIC_LOOP;
-        }
-        if ("lan".equals(envName)) {
-            return ApiMode.LAN_HTTP;
-        }
-        if ("prod".equals(envName)) {
-            return ApiMode.PROD_HTTP;
-        }
-        return ApiMode.DEV_HTTP;
+        return new EnvConfig(env, baseUrl, debug, remoteName, networkEnabled);
     }
 }
 ```
 
-- [ ] **Step 6: Run focused test**
+- [ ] **Step 4: Build env variants enough to catch config mistakes**
 
 Run:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.api.EnvConfigTest"
+.\gradlew.bat :app:assembleDebug -PapiEnv=static
+.\gradlew.bat :app:assembleDebug -PapiEnv=lan
 ```
 
-Expected: PASS.
+Expected: both compile. If Gradle cannot run because the wrapper needs a network download, install/use the already configured local Gradle distribution, then rerun these commands.
 
-- [ ] **Step 7: Commit Task 1**
+- [ ] **Step 5: Commit Task 1**
 
 ```powershell
-git add app/config/env.static.properties app/config/env.lan.properties app/config/env.dev.properties app/config/env.prod.properties app/build.gradle app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java app/src/test/java/com/hc/mixthebluetooth/api/EnvConfigTest.java
-git commit -m "feat: add api mode configuration"
+git add app/config/env.static.properties app/config/env.lan.properties app/config/env.dev.properties app/config/env.prod.properties app/build.gradle app/src/main/java/com/hc/mixthebluetooth/api/EnvConfig.java
+git commit -m "feat: add static and lan env selection"
 ```
 
 ---
 
-### Task 2: Add Static Fixtures And Static Auth Service
+### Task 2: Add Static Fixtures And Static Auth
 
 **Files:**
 - Create: `app/src/main/java/com/hc/mixthebluetooth/staticdata/StaticBioAiFixtures.java`
 - Create: `app/src/main/java/com/hc/mixthebluetooth/impl/auth/StaticAuthService.java`
 - Test: `app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java`
 
-- [ ] **Step 1: Write failing StaticAuthService tests**
-
-Create `app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java`:
-
-```java
-package com.hc.mixthebluetooth.impl.auth;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import com.hc.mixthebluetooth.api.CallResult;
-import com.hc.mixthebluetooth.api.auth.AuthUser;
-import com.hc.mixthebluetooth.local.SessionStore;
-import com.hc.mixthebluetooth.staticdata.StaticBioAiFixtures;
-
-import org.junit.Test;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-
-public class StaticAuthServiceTest {
-    @Test
-    public void registerReturnsDeterministicStaticUser() {
-        StaticAuthService service = new StaticAuthService(new SessionStore(new MemoryStore()));
-        AtomicReference<CallResult<AuthUser>> result = new AtomicReference<>();
-
-        service.register(
-                StaticBioAiFixtures.USERNAME,
-                StaticBioAiFixtures.PASSWORD,
-                StaticBioAiFixtures.PHONE,
-                result::set
-        );
-
-        assertNotNull(result.get());
-        assertTrue(result.get().isOk());
-        assertEquals(StaticBioAiFixtures.ACCOUNT_ID, result.get().data.accountId);
-        assertEquals(StaticBioAiFixtures.USERNAME, result.get().data.username);
-        assertEquals(StaticBioAiFixtures.PHONE, result.get().data.phone);
-    }
-
-    @Test
-    public void loginSavesStaticSession() {
-        SessionStore store = new SessionStore(new MemoryStore());
-        StaticAuthService service = new StaticAuthService(store);
-        AtomicReference<CallResult<AuthUser>> result = new AtomicReference<>();
-
-        service.login(StaticBioAiFixtures.PHONE, StaticBioAiFixtures.PASSWORD, result::set);
-
-        assertNotNull(result.get());
-        assertTrue(result.get().isOk());
-        assertEquals(StaticBioAiFixtures.STATIC_TOKEN, result.get().data.token);
-        assertNotNull(store.currentUser());
-        assertEquals(StaticBioAiFixtures.STATIC_TOKEN, store.currentUser().token);
-    }
-
-    @Test
-    public void detailReturnsCurrentStaticSession() {
-        SessionStore store = new SessionStore(new MemoryStore());
-        StaticAuthService service = new StaticAuthService(store);
-        AtomicReference<CallResult<AuthUser>> result = new AtomicReference<>();
-
-        service.login(StaticBioAiFixtures.PHONE, StaticBioAiFixtures.PASSWORD, value -> { });
-        service.detail(result::set);
-
-        assertNotNull(result.get());
-        assertTrue(result.get().isOk());
-        assertEquals(StaticBioAiFixtures.ACCOUNT_ID, result.get().data.accountId);
-    }
-
-    private static final class MemoryStore implements SessionStore.Store {
-        private final Map<String, Object> values = new HashMap<>();
-
-        @Override
-        public void putString(@NonNull String key, @NonNull String value) {
-            values.put(key, value);
-        }
-
-        @Override
-        public void putLong(@NonNull String key, long value) {
-            values.put(key, value);
-        }
-
-        @Nullable
-        @Override
-        public String getString(@NonNull String key) {
-            Object value = values.get(key);
-            return value instanceof String ? (String) value : null;
-        }
-
-        @Override
-        public long getLong(@NonNull String key, long defaultValue) {
-            Object value = values.get(key);
-            return value instanceof Long ? (Long) value : defaultValue;
-        }
-
-        @Override
-        public void remove(@NonNull String key) {
-            values.remove(key);
-        }
-
-        @Override
-        public void clear() {
-            values.clear();
-        }
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.auth.StaticAuthServiceTest"
-```
-
-Expected: FAIL because `StaticAuthService` and `StaticBioAiFixtures` do not exist.
-
-- [ ] **Step 3: Create StaticBioAiFixtures**
+- [ ] **Step 1: Create static fixture data**
 
 Create `app/src/main/java/com/hc/mixthebluetooth/staticdata/StaticBioAiFixtures.java`:
 
@@ -521,7 +308,7 @@ public final class StaticBioAiFixtures {
 }
 ```
 
-- [ ] **Step 4: Create StaticAuthService**
+- [ ] **Step 2: Implement static auth**
 
 Create `app/src/main/java/com/hc/mixthebluetooth/impl/auth/StaticAuthService.java`:
 
@@ -583,7 +370,98 @@ public final class StaticAuthService implements AuthService {
 }
 ```
 
-- [ ] **Step 5: Run focused test**
+- [ ] **Step 3: Add realistic static auth test**
+
+Create `app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java`:
+
+```java
+package com.hc.mixthebluetooth.impl.auth;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.auth.AuthUser;
+import com.hc.mixthebluetooth.local.SessionStore;
+import com.hc.mixthebluetooth.staticdata.StaticBioAiFixtures;
+
+import org.junit.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class StaticAuthServiceTest {
+    @Test
+    public void registerThenLoginThenDetailPreservesSession() {
+        SessionStore store = new SessionStore(new MemoryStore());
+        StaticAuthService service = new StaticAuthService(store);
+        AtomicReference<CallResult<AuthUser>> register = new AtomicReference<>();
+        AtomicReference<CallResult<AuthUser>> login = new AtomicReference<>();
+        AtomicReference<CallResult<AuthUser>> detail = new AtomicReference<>();
+
+        service.register(
+                StaticBioAiFixtures.USERNAME,
+                StaticBioAiFixtures.PASSWORD,
+                StaticBioAiFixtures.PHONE,
+                register::set
+        );
+        service.login(StaticBioAiFixtures.PHONE, StaticBioAiFixtures.PASSWORD, login::set);
+        service.detail(detail::set);
+
+        assertTrue(register.get().isOk());
+        assertTrue(login.get().isOk());
+        assertTrue(detail.get().isOk());
+        assertEquals(StaticBioAiFixtures.ACCOUNT_ID, detail.get().data.accountId);
+        assertEquals(StaticBioAiFixtures.STATIC_TOKEN, detail.get().data.token);
+        assertNotNull(store.currentUser());
+        assertEquals(StaticBioAiFixtures.STATIC_TOKEN, store.currentUser().token);
+    }
+
+    private static final class MemoryStore implements SessionStore.Store {
+        private final Map<String, Object> values = new HashMap<>();
+
+        @Override
+        public void putString(@NonNull String key, @NonNull String value) {
+            values.put(key, value);
+        }
+
+        @Override
+        public void putLong(@NonNull String key, long value) {
+            values.put(key, value);
+        }
+
+        @Nullable
+        @Override
+        public String getString(@NonNull String key) {
+            Object value = values.get(key);
+            return value instanceof String ? (String) value : null;
+        }
+
+        @Override
+        public long getLong(@NonNull String key, long defaultValue) {
+            Object value = values.get(key);
+            return value instanceof Long ? (Long) value : defaultValue;
+        }
+
+        @Override
+        public void remove(@NonNull String key) {
+            values.remove(key);
+        }
+
+        @Override
+        public void clear() {
+            values.clear();
+        }
+    }
+}
+```
+
+- [ ] **Step 4: Run focused test**
 
 Run:
 
@@ -593,108 +471,22 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 2**
+- [ ] **Step 5: Commit Task 2**
 
 ```powershell
 git add app/src/main/java/com/hc/mixthebluetooth/staticdata/StaticBioAiFixtures.java app/src/main/java/com/hc/mixthebluetooth/impl/auth/StaticAuthService.java app/src/test/java/com/hc/mixthebluetooth/impl/auth/StaticAuthServiceTest.java
-git commit -m "feat: add static auth service"
+git commit -m "feat: add static auth loop"
 ```
 
 ---
 
-### Task 3: Add Static CGM Service With jobId=64
+### Task 3: Add Static CGM With Meaningful Chain And Failure Tests
 
 **Files:**
 - Create: `app/src/main/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmService.java`
 - Test: `app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java`
 
-- [ ] **Step 1: Write failing StaticCgmService tests**
-
-Create `app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java`:
-
-```java
-package com.hc.mixthebluetooth.impl.cgm;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
-import com.hc.mixthebluetooth.api.CallResult;
-import com.hc.mixthebluetooth.remote.ServerModels;
-import com.hc.mixthebluetooth.staticdata.StaticBioAiFixtures;
-
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-
-import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.util.concurrent.atomic.AtomicReference;
-
-public class StaticCgmServiceTest {
-    @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
-    @Test
-    public void uploadAndPollReturnsStaticJob64AndKeepsLocalFile() throws Exception {
-        File file = temporaryFolder.newFile("cgm-cache.txt");
-        Files.write(file.toPath(), "Start Playback\nstatic payload\n".getBytes(StandardCharsets.UTF_8));
-        StaticCgmService service = new StaticCgmService();
-        AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
-
-        service.uploadAndPoll(file, result::set);
-
-        assertNotNull(result.get());
-        assertTrue(result.get().isOk());
-        assertNotNull(result.get().data);
-        assertEquals(StaticBioAiFixtures.STATIC_JOB_ID, result.get().data.jobId);
-        assertEquals("GENERATED", result.get().data.status);
-        assertEquals(6, result.get().data.pointCount);
-        assertTrue(file.exists());
-    }
-
-    @Test
-    public void pollOnlyAcceptsStaticJob64() {
-        StaticCgmService service = new StaticCgmService();
-        AtomicReference<CallResult<ServerModels.CgmJobData>> success = new AtomicReference<>();
-        AtomicReference<CallResult<ServerModels.CgmJobData>> failure = new AtomicReference<>();
-
-        service.poll(64L, success::set);
-        service.poll(65L, failure::set);
-
-        assertTrue(success.get().isOk());
-        assertEquals(64L, success.get().data.jobId);
-        assertFalse(failure.get().isOk());
-        assertEquals(CallResult.EMPTY_DATA, failure.get().code);
-    }
-
-    @Test
-    public void uploadMissingFileReturnsLocalError() {
-        StaticCgmService service = new StaticCgmService();
-        AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
-
-        service.uploadAndPoll(new File(temporaryFolder.getRoot(), "missing.txt"), result::set);
-
-        assertNotNull(result.get());
-        assertFalse(result.get().isOk());
-        assertEquals(CallResult.LOCAL_FILE_NOT_FOUND, result.get().code);
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.cgm.StaticCgmServiceTest"
-```
-
-Expected: FAIL because `StaticCgmService` does not exist.
-
-- [ ] **Step 3: Create StaticCgmService**
+- [ ] **Step 1: Implement StaticCgmService**
 
 Create `app/src/main/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmService.java`:
 
@@ -754,7 +546,87 @@ public final class StaticCgmService implements CgmService {
 }
 ```
 
-- [ ] **Step 4: Run focused test**
+- [ ] **Step 2: Add static CGM service-chain test**
+
+Create `app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java`:
+
+```java
+package com.hc.mixthebluetooth.impl.cgm;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.remote.ServerModels;
+import com.hc.mixthebluetooth.staticdata.StaticBioAiFixtures;
+
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class StaticCgmServiceTest {
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+    @Test
+    public void uploadAndPollReturnsRenderableGeneratedCgmData() throws Exception {
+        File file = temporaryFolder.newFile("cgm-cache.txt");
+        Files.write(file.toPath(), "Start Playback\nstatic payload\nPlayback all done\n".getBytes(StandardCharsets.UTF_8));
+        StaticCgmService service = new StaticCgmService();
+        AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+        service.uploadAndPoll(file, result::set);
+
+        assertNotNull(result.get());
+        assertTrue(result.get().isOk());
+        ServerModels.CgmJobData data = result.get().data;
+        assertNotNull(data);
+        assertEquals(StaticBioAiFixtures.STATIC_JOB_ID, data.jobId);
+        assertEquals("GENERATED", data.status);
+        assertEquals(6, data.pointCount);
+        assertNotNull(data.summaryJson);
+        assertNotNull(data.summaryJson.units);
+        assertFalse(data.summaryJson.units.isEmpty());
+        assertNotNull(data.summaryJson.units.get(0).points);
+        assertEquals(6, data.summaryJson.units.get(0).points.size());
+        assertEquals(0, data.summaryJson.units.get(0).points.get(0).index);
+        assertTrue(file.exists());
+    }
+
+    @Test
+    public void missingFileReturnsLocalErrorWithoutThrowing() {
+        StaticCgmService service = new StaticCgmService();
+        AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+        service.uploadAndPoll(new File(temporaryFolder.getRoot(), "missing.txt"), result::set);
+
+        assertNotNull(result.get());
+        assertFalse(result.get().isOk());
+        assertEquals(CallResult.LOCAL_FILE_NOT_FOUND, result.get().code);
+    }
+
+    @Test
+    public void unknownStaticJobReturnsControlledError() {
+        StaticCgmService service = new StaticCgmService();
+        AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+
+        service.poll(65L, result::set);
+
+        assertNotNull(result.get());
+        assertFalse(result.get().isOk());
+        assertEquals(CallResult.EMPTY_DATA, result.get().code);
+    }
+}
+```
+
+- [ ] **Step 3: Run focused tests**
 
 Run:
 
@@ -764,7 +636,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 5: Run real CGM tests to protect existing behavior**
+- [ ] **Step 4: Keep real HTTP endpoint tests passing**
 
 Run:
 
@@ -772,73 +644,126 @@ Run:
 .\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.cgm.DefaultCgmServiceTest" --tests "com.hc.mixthebluetooth.remote.ServerEndpointsContractTest"
 ```
 
-Expected: PASS; `DefaultCgmService` still uploads to `/api/test/v1/upload` and polls `/api/cgm/v1/jobs/{jobId}`.
+Expected: PASS. These tests prove real HTTP still uses:
 
-- [ ] **Step 6: Commit Task 3**
+```text
+POST /api/test/v1/upload
+GET  /api/cgm/v1/jobs/{jobId}
+```
+
+- [ ] **Step 5: Commit Task 3**
 
 ```powershell
 git add app/src/main/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmService.java app/src/test/java/com/hc/mixthebluetooth/impl/cgm/StaticCgmServiceTest.java
-git commit -m "feat: add static cgm service"
+git commit -m "feat: add static cgm job 64 loop"
 ```
 
 ---
 
-### Task 4: Select Static Or Retrofit Services In AppApiBootstrap
+### Task 4: Wire Static Services In AppApiBootstrap
 
 **Files:**
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/impl/AppApiBootstrap.java`
-- Test: `app/src/test/java/com/hc/mixthebluetooth/impl/AppApiBootstrapModeTest.java`
+- Test: `app/src/test/java/com/hc/mixthebluetooth/impl/StaticLoopServiceChainTest.java`
 
-- [ ] **Step 1: Write failing service selection test**
+- [ ] **Step 1: Wire services with a simple env branch**
 
-Create `app/src/test/java/com/hc/mixthebluetooth/impl/AppApiBootstrapModeTest.java`:
+Modify `AppApiBootstrap.init` so the service selection block reads:
+
+```java
+        ServerEndpoints endpoints = ServerClient.create(env.baseUrl, sessionStore, env.debug);
+        FileService fileService = new DefaultFileService(endpoints);
+        AuthService authService;
+        CgmService cgmService;
+
+        if (env.isStatic()) {
+            authService = new StaticAuthService(sessionStore);
+            cgmService = new StaticCgmService();
+            env = env.withRemote("StaticBioAiTransport", false);
+        } else {
+            authService = new DefaultAuthService(endpoints, sessionStore);
+            cgmService = new DefaultCgmService(endpoints);
+            env = env.withRemote("RetrofitServer(" + env.baseUrl + ")", true);
+        }
+
+        ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
+                "env=" + env.env
+                        + "\nbaseUrl=" + env.baseUrl
+                        + "\nremote=" + env.remoteName
+                        + "\nnetworkEnabled=" + env.networkEnabled);
+```
+
+Keep the existing `DefaultDeviceDataService` construction, but pass the selected `fileService`.
+
+Required imports:
+
+```java
+import com.hc.mixthebluetooth.api.cgm.CgmService;
+import com.hc.mixthebluetooth.impl.auth.StaticAuthService;
+import com.hc.mixthebluetooth.impl.cgm.StaticCgmService;
+```
+
+- [ ] **Step 2: Add a realistic static service-chain test without changing production code for testability**
+
+Create `app/src/test/java/com/hc/mixthebluetooth/impl/StaticLoopServiceChainTest.java`:
 
 ```java
 package com.hc.mixthebluetooth.impl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.hc.mixthebluetooth.api.EnvConfig;
+import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.auth.AuthUser;
 import com.hc.mixthebluetooth.impl.auth.StaticAuthService;
-import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
 import com.hc.mixthebluetooth.impl.cgm.StaticCgmService;
 import com.hc.mixthebluetooth.local.SessionStore;
+import com.hc.mixthebluetooth.remote.ServerModels;
+import com.hc.mixthebluetooth.staticdata.StaticBioAiFixtures;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
-public class AppApiBootstrapModeTest {
-    @Test
-    public void staticModeCreatesStaticServices() {
-        EnvConfig env = EnvConfig.fromValues("static", "http://127.0.0.1/", "STATIC_LOOP", true);
-        AppApiBootstrap.Services services = AppApiBootstrap.createCoreServicesForTest(
-                env,
-                new SessionStore(new MemoryStore())
-        );
-
-        assertTrue(services.auth instanceof StaticAuthService);
-        assertTrue(services.cgm instanceof StaticCgmService);
-        assertEquals("StaticBioAiTransport", services.remoteName);
-        assertEquals(false, services.networkEnabled);
-    }
+public class StaticLoopServiceChainTest {
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
-    public void lanModeCreatesRetrofitServices() {
-        EnvConfig env = EnvConfig.fromValues("lan", "http://127.0.0.1:8080/", "LAN_HTTP", true);
-        AppApiBootstrap.Services services = AppApiBootstrap.createCoreServicesForTest(
-                env,
-                new SessionStore(new MemoryStore())
-        );
+    public void staticAuthThenCgmChainProducesRenderableJob64() throws Exception {
+        SessionStore store = new SessionStore(new MemoryStore());
+        StaticAuthService auth = new StaticAuthService(store);
+        StaticCgmService cgm = new StaticCgmService();
+        File file = temporaryFolder.newFile("cgm-cache.txt");
+        Files.write(file.toPath(), "Start Playback\npayload\nPlayback all done\n".getBytes(StandardCharsets.UTF_8));
 
-        assertTrue(services.cgm instanceof DefaultCgmService);
-        assertEquals("RetrofitServer(http://127.0.0.1:8080/)", services.remoteName);
-        assertEquals(true, services.networkEnabled);
+        AtomicReference<CallResult<AuthUser>> register = new AtomicReference<>();
+        AtomicReference<CallResult<AuthUser>> login = new AtomicReference<>();
+        AtomicReference<CallResult<ServerModels.CgmJobData>> cgmResult = new AtomicReference<>();
+
+        auth.register(StaticBioAiFixtures.USERNAME, StaticBioAiFixtures.PASSWORD, StaticBioAiFixtures.PHONE, register::set);
+        auth.login(StaticBioAiFixtures.PHONE, StaticBioAiFixtures.PASSWORD, login::set);
+        cgm.uploadAndPoll(file, cgmResult::set);
+
+        assertTrue(register.get().isOk());
+        assertTrue(login.get().isOk());
+        assertNotNull(store.currentUser());
+        assertEquals(StaticBioAiFixtures.STATIC_TOKEN, store.currentUser().token);
+        assertTrue(cgmResult.get().isOk());
+        assertEquals(64L, cgmResult.get().data.jobId);
+        assertEquals("GENERATED", cgmResult.get().data.status);
+        assertNotNull(cgmResult.get().data.summaryJson.units.get(0).points);
     }
 
     private static final class MemoryStore implements SessionStore.Store {
@@ -880,183 +805,53 @@ public class AppApiBootstrapModeTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+This test intentionally checks the chain outcome rather than checking `AppApiBootstrap` internals.
+
+- [ ] **Step 3: Run service-chain test**
 
 Run:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.AppApiBootstrapModeTest"
-```
-
-Expected: FAIL because `AppApiBootstrap.Services` and `createCoreServicesForTest` do not exist.
-
-- [ ] **Step 3: Add service factory to AppApiBootstrap**
-
-Replace `app/src/main/java/com/hc/mixthebluetooth/impl/AppApiBootstrap.java` with:
-
-```java
-package com.hc.mixthebluetooth.impl;
-
-import android.content.Context;
-
-import androidx.annotation.NonNull;
-
-import com.hc.mixthebluetooth.api.AppApi;
-import com.hc.mixthebluetooth.api.EnvConfig;
-import com.hc.mixthebluetooth.api.auth.AuthService;
-import com.hc.mixthebluetooth.api.cgm.CgmService;
-import com.hc.mixthebluetooth.api.device.DeviceDataService;
-import com.hc.mixthebluetooth.api.file.FileService;
-import com.hc.mixthebluetooth.impl.auth.DefaultAuthService;
-import com.hc.mixthebluetooth.impl.auth.StaticAuthService;
-import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
-import com.hc.mixthebluetooth.impl.cgm.StaticCgmService;
-import com.hc.mixthebluetooth.impl.device.DefaultDeviceDataService;
-import com.hc.mixthebluetooth.impl.file.DefaultFileService;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
-import com.hc.mixthebluetooth.local.DeviceDataRecorder;
-import com.hc.mixthebluetooth.local.DeviceReplaySample;
-import com.hc.mixthebluetooth.local.SessionStore;
-import com.hc.mixthebluetooth.remote.ServerClient;
-import com.hc.mixthebluetooth.remote.ServerEndpoints;
-
-public final class AppApiBootstrap {
-    public static final class Services {
-        @NonNull
-        public final AuthService auth;
-        @NonNull
-        public final FileService file;
-        @NonNull
-        public final CgmService cgm;
-        @NonNull
-        public final String remoteName;
-        public final boolean networkEnabled;
-
-        Services(@NonNull AuthService auth,
-                 @NonNull FileService file,
-                 @NonNull CgmService cgm,
-                 @NonNull String remoteName,
-                 boolean networkEnabled) {
-            this.auth = auth;
-            this.file = file;
-            this.cgm = cgm;
-            this.remoteName = remoteName;
-            this.networkEnabled = networkEnabled;
-        }
-    }
-
-    private static boolean initialized;
-
-    private AppApiBootstrap() {
-    }
-
-    public static synchronized void init(Context context) {
-        if (initialized) return;
-
-        Context app = context.getApplicationContext();
-        EnvConfig env = EnvConfig.fromBuildConfig();
-        SessionStore sessionStore = new SessionStore(app);
-        Services services = createCoreServices(env, sessionStore);
-        env = env.withRemote(services.remoteName, services.networkEnabled);
-
-        ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
-                "env=" + env.env
-                        + "\nmode=" + env.apiMode
-                        + "\nbaseUrl=" + env.baseUrl
-                        + "\nremote=" + env.remoteName);
-
-        DeviceDataService deviceDataService = new DefaultDeviceDataService(
-                new DeviceDataRecorder(app),
-                new DeviceReplaySample(app),
-                services.file
-        );
-
-        AppApi.install(services.auth, services.file, deviceDataService, services.cgm, env);
-        initialized = true;
-    }
-
-    @NonNull
-    static Services createCoreServicesForTest(@NonNull EnvConfig env, @NonNull SessionStore sessionStore) {
-        return createCoreServices(env, sessionStore);
-    }
-
-    @NonNull
-    private static Services createCoreServices(@NonNull EnvConfig env, @NonNull SessionStore sessionStore) {
-        if (env.isStaticLoop()) {
-            ServerEndpoints endpoints = ServerClient.create(env.baseUrl, sessionStore, false);
-            FileService fileService = new DefaultFileService(endpoints);
-            return new Services(
-                    new StaticAuthService(sessionStore),
-                    fileService,
-                    new StaticCgmService(),
-                    "StaticBioAiTransport",
-                    false
-            );
-        }
-
-        ServerEndpoints endpoints = ServerClient.create(env.baseUrl, sessionStore, env.debug);
-        FileService fileService = new DefaultFileService(endpoints);
-        return new Services(
-                new DefaultAuthService(endpoints, sessionStore),
-                fileService,
-                new DefaultCgmService(endpoints),
-                "RetrofitServer(" + env.baseUrl + ")",
-                true
-        );
-    }
-
-    public static synchronized void resetForTest() {
-        initialized = false;
-        AppApi.clearForTest();
-    }
-}
-```
-
-- [ ] **Step 4: Run focused bootstrap test**
-
-Run:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.AppApiBootstrapModeTest"
+.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.StaticLoopServiceChainTest"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Run existing API tests**
+- [ ] **Step 4: Build static env**
 
 Run:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.auth.DefaultAuthServiceTest" --tests "com.hc.mixthebluetooth.impl.file.DefaultFileServiceTest" --tests "com.hc.mixthebluetooth.impl.cgm.*"
+.\gradlew.bat :app:assembleDebug -PapiEnv=static
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 4**
+- [ ] **Step 5: Commit Task 4**
 
 ```powershell
-git add app/src/main/java/com/hc/mixthebluetooth/impl/AppApiBootstrap.java app/src/test/java/com/hc/mixthebluetooth/impl/AppApiBootstrapModeTest.java
-git commit -m "feat: select api services by mode"
+git add app/src/main/java/com/hc/mixthebluetooth/impl/AppApiBootstrap.java app/src/test/java/com/hc/mixthebluetooth/impl/StaticLoopServiceChainTest.java
+git commit -m "feat: wire static app api services"
 ```
 
 ---
 
-### Task 5: Add Missing BioAI.Http Logs For Device And Render Nodes
+### Task 5: Add BioAI.Http Logs For Full Flow Visibility
 
 **Files:**
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/uni/Controller.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/fragment/UniFragment.java`
 - Modify: `app/src/main/java/com/hc/mixthebluetooth/uni/Widgets.java`
 
-- [ ] **Step 1: Add controller log helper**
+- [ ] **Step 1: Log device connection and BT send/receive in Controller**
 
-In `app/src/main/java/com/hc/mixthebluetooth/uni/Controller.java`, add this import:
+In `Controller.java`, add:
 
 ```java
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 ```
 
-Add these constants near `AUTO_CLEAR_BYTES`:
+Add constants:
 
 ```java
     private static final String OWNER = "Controller";
@@ -1066,44 +861,36 @@ Add these constants near `AUTO_CLEAR_BYTES`:
     private static final String API_RENDER = "RENDER";
 ```
 
-- [ ] **Step 2: Log connection events**
-
-In `Controller.onEvent`, replace the connected/disconnected branches with:
+In the `BTPackage.Connected` branch:
 
 ```java
-        } else if (event instanceof BTPackage.Connected) {
-            module = ((BTPackage.Connected) event).module;
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state",
                     "connected=true\ndevice=" + (module == null ? "" : module.getName()));
-        } else if (event instanceof BTPackage.Disconnected) {
-            module = null;
+```
+
+In the `BTPackage.Disconnected` branch:
+
+```java
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state", "connected=false");
 ```
 
-- [ ] **Step 3: Log BT send commands**
-
-In `Controller.handleAction`, before `gateway.postText(...)`, replace the POST branch with:
+In the POST action branch:
 
 ```java
-        if (action.route == Route.POST && action.textSupplier != null && module != null) {
             String payload = action.textSupplier.get();
             ApiTraceLogger.text(OWNER, API_BT_SEND, "command",
                     "id=" + action.id + "\npayload=" + payload);
             gateway.postText(module, payload);
-            return;
-        }
 ```
 
-- [ ] **Step 4: Log BT receive text and CGM result handoff**
-
-In `Controller.onBtData`, after decoding `text` and before creating `FragmentMessageItem`, add:
+After BT text decode succeeds:
 
 ```java
         ApiTraceLogger.text(OWNER, API_BT_RECV, "data",
                 "bytes=" + data.bytes.length + "\ntext=" + text);
 ```
 
-In `Controller.onCgmResult`, add the render handoff log before iterating widgets:
+In `onCgmResult` before widget dispatch:
 
 ```java
         ApiTraceLogger.text(OWNER, API_RENDER, "cgmResult",
@@ -1113,29 +900,29 @@ In `Controller.onCgmResult`, add the render handoff log before iterating widgets
                         + "\nunitCount=" + result.unitCount);
 ```
 
-- [ ] **Step 5: Log UniFragment cache-file entry**
+- [ ] **Step 2: Log cache-file handoff in UniFragment**
 
-In `app/src/main/java/com/hc/mixthebluetooth/fragment/UniFragment.java`, add:
+In `UniFragment.java`, add:
 
 ```java
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 ```
 
-Replace the first line of `FragmentGateway.onCacheFileReady` with:
+At the start of `onCacheFileReady`:
 
 ```java
             ApiTraceLogger.file("UniFragment", "CACHE_FILE_READY", file);
 ```
 
-- [ ] **Step 6: Log widget render summary**
+- [ ] **Step 3: Log widget render result**
 
-In `app/src/main/java/com/hc/mixthebluetooth/uni/Widgets.java`, add:
+In `Widgets.java`, add:
 
 ```java
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 ```
 
-In `CgmResultMetricWidget.onCgmResult`, after `ArrayList<Entry> actual = new ArrayList<>();` and after the loop has populated both lists, add:
+In `CgmResultMetricWidget.onCgmResult`, after the predicted/actual lists are populated:
 
 ```java
             ApiTraceLogger.text("CgmWidgetBinder", "RENDER", "result",
@@ -1147,31 +934,75 @@ In `CgmResultMetricWidget.onCgmResult`, after `ArrayList<Entry> actual = new Arr
                             + "\nunitCount=" + result.unitCount);
 ```
 
-- [ ] **Step 7: Run compile and unit tests**
+- [ ] **Step 4: Run compile/tests**
 
 Run:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.uni.*" --tests "com.hc.mixthebluetooth.impl.cgm.*"
+.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.impl.StaticLoopServiceChainTest" --tests "com.hc.mixthebluetooth.impl.cgm.StaticCgmServiceTest"
+.\gradlew.bat :app:assembleDebug -PapiEnv=static
 ```
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit Task 5**
+- [ ] **Step 5: Commit Task 5**
 
 ```powershell
 git add app/src/main/java/com/hc/mixthebluetooth/uni/Controller.java app/src/main/java/com/hc/mixthebluetooth/fragment/UniFragment.java app/src/main/java/com/hc/mixthebluetooth/uni/Widgets.java
-git commit -m "feat: log cgm loop milestones"
+git commit -m "feat: log static cgm loop milestones"
 ```
 
 ---
 
-### Task 6: Final Verification
+### Task 6: Clean Up Obsolete Tests And Verify Realistic Test Set
 
 **Files:**
-- No planned source edits.
+- Delete stale tests only if they reference removed runtime mock/debug code.
+- Keep tests that protect real current behavior.
 
-- [ ] **Step 1: Run full unit tests**
+- [ ] **Step 1: Identify obsolete tests**
+
+Run:
+
+```powershell
+rg -n "MockServer|VerificationActivity|env.mock|useMock|activity_verification" app/src/test app/src/androidTest
+```
+
+Expected: Any matches refer to removed or obsolete runtime mock/debug paths.
+
+- [ ] **Step 2: Delete obsolete tests**
+
+Delete tests that are only about removed runtime mock infrastructure, for example:
+
+```text
+app/src/test/java/com/hc/mixthebluetooth/remote/MockServerTest.java
+```
+
+Do not delete:
+
+```text
+ServerEndpointsContractTest
+CgmJobRespParsingTest
+DefaultCgmServiceTest
+DefaultAuthServiceTest
+DefaultFileServiceTest
+DefaultDeviceDataServiceTest
+StaticAuthServiceTest
+StaticCgmServiceTest
+StaticLoopServiceChainTest
+```
+
+- [ ] **Step 3: Run the realistic backend/service contract test set**
+
+Run:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.remote.ServerEndpointsContractTest" --tests "com.hc.mixthebluetooth.remote.CgmJobRespParsingTest" --tests "com.hc.mixthebluetooth.impl.cgm.*" --tests "com.hc.mixthebluetooth.impl.auth.*" --tests "com.hc.mixthebluetooth.impl.StaticLoopServiceChainTest"
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Run all unit tests**
 
 Run:
 
@@ -1179,91 +1010,125 @@ Run:
 .\gradlew.bat :app:testDebugUnitTest
 ```
 
-Expected: BUILD SUCCESSFUL.
+Expected: PASS. If failures are from obsolete tests found in Step 1, delete or rewrite those tests so they match the current service architecture.
 
-- [ ] **Step 2: Build static debug APK**
+- [ ] **Step 5: Commit Task 6**
+
+```powershell
+git add app/src/test
+git commit -m "test: align tests with static and real http loop"
+```
+
+If no test files changed, skip this commit.
+
+---
+
+### Task 7: Full Chain Verification
+
+**Files:**
+- No planned source edits unless verification exposes a defect.
+
+- [ ] **Step 1: Build static and LAN APKs**
 
 Run:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug -PapiEnv=static
-```
-
-Expected: BUILD SUCCESSFUL and generated debug APK under `app/build/outputs/apk/debug/`.
-
-- [ ] **Step 3: Build LAN debug APK**
-
-Run:
-
-```powershell
 .\gradlew.bat :app:assembleDebug -PapiEnv=lan
 ```
 
-Expected: BUILD SUCCESSFUL.
+Expected: both builds pass.
 
-- [ ] **Step 4: Confirm endpoint contract tests still protect real paths**
+- [ ] **Step 2: USB logcat static acceptance**
 
-Run:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests "com.hc.mixthebluetooth.remote.ServerEndpointsContractTest"
-```
-
-Expected: PASS, including:
-
-```text
-testUploadEndpointUsesMultipartFileOnly
-cgmEndpointUsesFixedJobPathWithoutQuery
-```
-
-- [ ] **Step 5: Manual USB logcat check**
-
-Run:
+Install/run the static APK and start:
 
 ```powershell
 adb logcat -v time -s BioAI.Http
 ```
 
-Expected static flow log contains:
+Complete the app flow through login and CGM cache/upload/result.
+
+Expected log milestones:
 
 ```text
 AppApiBootstrap API ENV config
-mode=STATIC_LOOP
+env=static
+remote=StaticBioAiTransport
 StaticAuthService API POST /api/account/v1/register request
 StaticAuthService API POST /api/account/v1/login response
+Controller API DEVICE_CONNECT state
+Controller API BT_SEND command
+Controller API BT_RECV data
+UniFragment API CACHE_FILE_READY file
 StaticCgmService API POST /api/test/v1/upload response
 StaticCgmService API GET /api/cgm/v1/jobs/64 response attempt=1
+Controller API RENDER cgmResult
 CgmWidgetBinder API RENDER result
 jobId=64
+status=GENERATED
 ```
 
-- [ ] **Step 6: Commit verification note only if files changed**
+- [ ] **Step 3: No-USB static acceptance**
 
-If verification required changing `env.lan.properties` to the current AP-assigned host IP, commit that config change:
+Run the static APK without USB attached. Complete the same app flow.
+
+Expected: the app does not require adb reverse, a backend server, or a USB cable to complete the static service chain. If log visibility is needed without USB, use the existing in-app log page if available; otherwise record this as a follow-up rather than blocking the service implementation.
+
+- [ ] **Step 4: LAN smoke test**
+
+With backend/proxy listening on its host and Android using a concrete LAN URL, build:
 
 ```powershell
-git add app/config/env.lan.properties
-git commit -m "chore: update lan api url"
+.\gradlew.bat :app:assembleDebug -PapiEnv=lan
 ```
 
-If no files changed during verification, do not create an empty commit.
+Expected log milestones use `DefaultAuthService` and `DefaultCgmService` instead of static services. The CGM result request must be:
+
+```text
+GET /api/cgm/v1/jobs/{jobId}
+```
+
+- [ ] **Step 5: Real HTTP fault tolerance smoke checks**
+
+Using MockWebServer tests and/or a temporarily unreachable LAN URL, confirm:
+
+```text
+register/login network failure -> logged failure, app callback gets error
+upload non-200 -> txt file is not deleted
+upload success without jobId -> controlled EMPTY_DATA error
+CGM non-GENERATED -> polling continues until limit
+CGM network failure -> retries until limit, then controlled error
+CGM missing optional fields -> no crash in service parsing
+```
+
+Add or adjust tests if any of these fail in a way not already covered.
+
+- [ ] **Step 6: Final commit for verification fixes**
+
+If verification required fixes:
+
+```powershell
+git add app
+git commit -m "fix: harden static and lan cgm loop"
+```
+
+If no files changed, do not create an empty commit.
 
 ---
 
-## Risks And Guardrails
+## Risk Notes
 
-- Do not use `0.0.0.0` as an Android target URL.
-- Do not add adb reverse or USB-only networking.
-- Do not add a separate debug page for the static loop.
-- Do not remove `DefaultCgmService` or Retrofit endpoints.
-- Do not change the confirmed real CGM path: `/api/cgm/v1/jobs/{jobId}`.
-- Static loop must use `jobId=64`.
-- Static CGM upload should not delete the local txt file; real upload deletion remains controlled by `DefaultCgmService`.
-- UI code should continue to call `AppApi.auth()` and `AppApi.cgm()` without checking API mode.
+- `0.0.0.0` is only for backend listening. Android target URLs must be concrete IPs or hostnames.
+- Static CGM uses `jobId=64`; real CGM uses backend-provided `jobId`.
+- Static mode should not delete local txt files. Real upload deletion behavior remains in `DefaultCgmService`.
+- Avoid tests that only assert constants or constructors. Prefer chain outcomes, endpoint paths, retry behavior, file lifecycle, and parsed renderable data.
+- Keep old tests only when they protect current behavior. Delete tests that preserve removed mock/debug behavior.
 
 ## Self-Review
 
-- Spec coverage: Tasks cover API mode config, static loop, LAN real HTTP config, `jobId=64`, logging, tests, and build verification.
-- Placeholder scan: No banned placeholder markers or unresolved file names remain.
-- Type consistency: `EnvConfig.ApiMode`, `StaticBioAiFixtures.STATIC_JOB_ID`, `StaticAuthService`, `StaticCgmService`, and `AppApiBootstrap.Services` are defined before later tasks use them.
-- Endpoint consistency: All CGM result paths use `/api/cgm/v1/jobs/{jobId}`; static examples use `/api/cgm/v1/jobs/64`.
+- Endpoint consistency: all real CGM result paths use `/api/cgm/v1/jobs/{jobId}`.
+- Static consistency: all static CGM result paths use `jobId=64`.
+- Simplicity: no `ApiMode`, no test-only `Services` wrapper in `AppApiBootstrap`.
+- Testing quality: tests check chain outcomes, endpoint contracts, and fault tolerance rather than trivial static assertions.
+- Scope: no fake Bluetooth source, no new debug page, no large package restructure.
