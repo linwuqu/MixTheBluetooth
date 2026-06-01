@@ -37,6 +37,14 @@ public final class EnvConfig {
         );
     }
 
+    public boolean isStatic() {
+        return "static".equalsIgnoreCase(env);
+    }
+
+    public boolean isRealHttp() {
+        return !isStatic();
+    }
+
     @NonNull
     public EnvConfig withRemote(@NonNull String remoteName, boolean networkEnabled) {
         return new EnvConfig(env, baseUrl, debug, remoteName, networkEnabled);
