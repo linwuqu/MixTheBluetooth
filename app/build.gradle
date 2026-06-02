@@ -16,6 +16,9 @@ android {
         }
         buildConfigField "String", "API_ENV", "\"${envProps.getProperty("API_ENV", envName)}\""
         buildConfigField "String", "API_BASE_URL", "\"${envProps.getProperty("API_BASE_URL", "http://10.0.2.2:8080/")}\""
+        buildConfigField "boolean", "API_DEBUG", "${envProps.getProperty("API_DEBUG", "true")}"
+        buildConfigField "String", "API_REMOTE_NAME", "\"${envProps.getProperty("API_REMOTE_NAME", envName)}\""
+        buildConfigField "boolean", "API_NETWORK_ENABLED", "${envProps.getProperty("API_NETWORK_ENABLED", "true")}"
         buildFeatures {
             viewBinding true
         }

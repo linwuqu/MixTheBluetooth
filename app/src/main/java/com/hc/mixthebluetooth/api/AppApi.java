@@ -6,6 +6,7 @@ import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
+import com.hc.mixthebluetooth.runtime.EnvConfig;
 
 public final class AppApi {
     private static AuthService auth;

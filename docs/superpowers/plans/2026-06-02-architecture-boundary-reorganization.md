@@ -202,11 +202,11 @@ app/config/env.static-lan.properties
 Required content:
 
 ```properties
-api.env=static-lan
-api.baseUrl=http://192.168.6.7:18080/
-api.debug=true
-api.remoteName=static-lan
-api.networkEnabled=true
+API_ENV=static-lan
+API_BASE_URL=http://192.168.6.7:18080/
+API_DEBUG=true
+API_REMOTE_NAME=static-lan
+API_NETWORK_ENABLED=true
 ```
 
 - [ ] Keep:
