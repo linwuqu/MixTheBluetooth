@@ -11,12 +11,25 @@ public final class CallResult<T> {
     public static final int LOCAL_FILE_NOT_FOUND = -200;
     public static final int DEVICE_REPLAY_INCOMPLETE = -300;
 
+    public enum Status {
+        OK,
+        PENDING,
+        ERROR
+    }
+
+    /**
+     * Kept temporarily so older call sites that read the field directly keep compiling.
+     */
+    @Deprecated
     public enum State {
         OK,
         PENDING,
         ERROR
     }
 
+    @NonNull
+    public final Status status;
+    @Deprecated
     @NonNull
     public final State state;
     public final int code;
@@ -27,9 +40,10 @@ public final class CallResult<T> {
     @Nullable
     public final Throwable cause;
 
-    private CallResult(@NonNull State state, int code, @NonNull String message,
+    private CallResult(@NonNull Status status, int code, @NonNull String message,
                        @Nullable T data, @Nullable Throwable cause) {
-        this.state = state;
+        this.status = status;
+        this.state = State.valueOf(status.name());
         this.code = code;
         this.message = message;
         this.data = data;
@@ -38,29 +52,29 @@ public final class CallResult<T> {
 
     @NonNull
     public static <T> CallResult<T> ok(@Nullable T data) {
-        return new CallResult<>(State.OK, 0, "", data, null);
+        return new CallResult<>(Status.OK, 0, "", data, null);
     }
 
     @NonNull
     public static <T> CallResult<T> pending(@NonNull String message) {
-        return new CallResult<>(State.PENDING, 0, message, null, null);
+        return new CallResult<>(Status.PENDING, 0, message, null, null);
     }
 
     @NonNull
     public static <T> CallResult<T> error(int code, @NonNull String message,
                                           @Nullable Throwable cause) {
-        return new CallResult<>(State.ERROR, code, message, null, cause);
+        return new CallResult<>(Status.ERROR, code, message, null, cause);
     }
 
     public boolean isOk() {
-        return state == State.OK;
+        return status == Status.OK;
     }
 
     public boolean isPending() {
-        return state == State.PENDING;
+        return status == Status.PENDING;
     }
 
     public boolean isError() {
-        return state == State.ERROR;
+        return status == Status.ERROR;
     }
 }

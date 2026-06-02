@@ -22,9 +22,9 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
+import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
-import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.uni.Controller.Region;
 
 import java.text.SimpleDateFormat;
@@ -58,7 +58,7 @@ public final class Widgets {
 
         void onSample(@NonNull BluetoothSample sample);
 
-        default void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+        default void onCgmResult(@NonNull CgmResult result) {
         }
 
         void reset();
@@ -618,10 +618,10 @@ public final class Widgets {
         }
 
         @Override
-        public void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+        public void onCgmResult(@NonNull CgmResult result) {
             ArrayList<Entry> predicted = new ArrayList<>();
             ArrayList<Entry> actual = new ArrayList<>();
-            for (ServerModels.CgmPoint point : allPoints(result)) {
+            for (CgmResult.Point point : allPoints(result)) {
                 predicted.add(new Entry(point.time, (float) point.predicted));
                 if (point.actual != null) {
                     actual.add(new Entry(point.time, point.actual.floatValue()));
@@ -709,12 +709,12 @@ public final class Widgets {
         }
 
         @NonNull
-        private List<ServerModels.CgmPoint> allPoints(@NonNull ServerModels.CgmJobData data) {
-            ArrayList<ServerModels.CgmPoint> points = new ArrayList<>();
+        private List<CgmResult.Point> allPoints(@NonNull CgmResult data) {
+            ArrayList<CgmResult.Point> points = new ArrayList<>();
             if (data.summaryJson == null || data.summaryJson.units == null) {
                 return points;
             }
-            for (ServerModels.CgmUnit unit : data.summaryJson.units) {
+            for (CgmResult.Unit unit : data.summaryJson.units) {
                 if (unit.points != null) {
                     points.addAll(unit.points);
                 }
@@ -723,12 +723,12 @@ public final class Widgets {
         }
 
         @NonNull
-        private String formatUnits(@Nullable List<ServerModels.CgmUnit> unitList) {
+        private String formatUnits(@Nullable List<CgmResult.Unit> unitList) {
             if (unitList == null || unitList.isEmpty()) {
                 return "units=[]";
             }
             StringBuilder builder = new StringBuilder();
-            for (ServerModels.CgmUnit unit : unitList) {
+            for (CgmResult.Unit unit : unitList) {
                 if (builder.length() > 0) {
                     builder.append('\n');
                 }

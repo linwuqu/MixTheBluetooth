@@ -6,6 +6,9 @@ import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
+import com.hc.mixthebluetooth.api.log.AppLogger;
+import com.hc.mixthebluetooth.api.persistence.SessionStore;
+import com.hc.mixthebluetooth.api.persistence.SettingsStore;
 import com.hc.mixthebluetooth.runtime.EnvConfig;
 
 public final class AppApi {
@@ -14,6 +17,9 @@ public final class AppApi {
     private static DeviceDataService deviceData;
     private static CgmService cgm;
     private static EnvConfig env;
+    private static SessionStore sessionStore;
+    private static SettingsStore settingsStore;
+    private static AppLogger logger;
 
     private AppApi() {
     }
@@ -23,11 +29,25 @@ public final class AppApi {
                                             @NonNull DeviceDataService deviceDataService,
                                             @NonNull CgmService cgmService,
                                             @NonNull EnvConfig envConfig) {
+        install(authService, fileService, deviceDataService, cgmService, envConfig, null, null, null);
+    }
+
+    public static synchronized void install(@NonNull AuthService authService,
+                                            @NonNull FileService fileService,
+                                            @NonNull DeviceDataService deviceDataService,
+                                            @NonNull CgmService cgmService,
+                                            @NonNull EnvConfig envConfig,
+                                            SessionStore session,
+                                            SettingsStore settings,
+                                            AppLogger appLogger) {
         auth = authService;
         file = fileService;
         deviceData = deviceDataService;
         cgm = cgmService;
         env = envConfig;
+        sessionStore = session;
+        settingsStore = settings;
+        logger = appLogger;
     }
 
     @NonNull
@@ -60,11 +80,32 @@ public final class AppApi {
         return env;
     }
 
+    @NonNull
+    public static synchronized SessionStore sessionStore() {
+        if (sessionStore == null) throw new IllegalStateException("AppApi is not initialized");
+        return sessionStore;
+    }
+
+    @NonNull
+    public static synchronized SettingsStore settingsStore() {
+        if (settingsStore == null) throw new IllegalStateException("AppApi is not initialized");
+        return settingsStore;
+    }
+
+    @NonNull
+    public static synchronized AppLogger logger() {
+        if (logger == null) throw new IllegalStateException("AppApi is not initialized");
+        return logger;
+    }
+
     public static synchronized void clearForTest() {
         auth = null;
         file = null;
         deviceData = null;
         cgm = null;
         env = null;
+        sessionStore = null;
+        settingsStore = null;
+        logger = null;
     }
 }

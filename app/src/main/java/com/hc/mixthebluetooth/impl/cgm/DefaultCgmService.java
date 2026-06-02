@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 
 import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
@@ -15,6 +16,7 @@ import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.remote.ServerResponse;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Map;
 
 import okhttp3.MediaType;
@@ -50,7 +52,7 @@ public final class DefaultCgmService implements CgmService {
 
     @Override
     public void uploadAndPoll(File cacheFile,
-                              ApiCallback<CallResult<ServerModels.CgmJobData>> callback) {
+                              ApiCallback<CallResult<CgmResult>> callback) {
         if (cacheFile == null || !cacheFile.exists() || !cacheFile.isFile()) {
             callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "CGM 缓存 txt 不存在", null));
             return;
@@ -91,13 +93,13 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @Override
-    public void poll(long jobId, ApiCallback<CallResult<ServerModels.CgmJobData>> callback) {
+    public void poll(long jobId, ApiCallback<CallResult<CgmResult>> callback) {
         pollAttempt(jobId, 1, callback);
     }
 
     private void pollAttempt(long jobId,
                              int attempt,
-                             ApiCallback<CallResult<ServerModels.CgmJobData>> callback) {
+                             ApiCallback<CallResult<CgmResult>> callback) {
         String api = API_CGM.replace("{jobId}", String.valueOf(jobId));
         endpoints.cgmJob(jobId).enqueue(new Callback<ServerModels.CgmJobResp>() {
             @Override
@@ -106,7 +108,7 @@ public final class DefaultCgmService implements CgmService {
                 ServerModels.CgmJobResp result = response.body();
                 ApiTraceLogger.json(OWNER, api, "response attempt=" + attempt, result);
                 if (isGenerated(response, result)) {
-                    callback.onResult(CallResult.ok(result.data));
+                    callback.onResult(CallResult.ok(toApiResult(result.data)));
                     return;
                 }
                 if (attempt >= MAX_POLL_ATTEMPTS) {
@@ -152,6 +154,81 @@ public final class DefaultCgmService implements CgmService {
                 && result.code == 200
                 && result.data != null
                 && "GENERATED".equalsIgnoreCase(result.data.status);
+    }
+
+    @NonNull
+    private static CgmResult toApiResult(@NonNull ServerModels.CgmJobData data) {
+        CgmResult result = new CgmResult();
+        result.resultId = data.resultId;
+        result.jobId = data.jobId;
+        result.datasetId = data.datasetId;
+        result.pointCount = data.pointCount;
+        result.unitCount = data.unitCount;
+        result.predictionMin = data.predictionMin;
+        result.predictionMax = data.predictionMax;
+        result.predictionMean = data.predictionMean;
+        result.predictionStd = data.predictionStd;
+        result.avgMard = data.avgMard;
+        result.mardStd = data.mardStd;
+        result.summaryJson = toApiSummary(data.summaryJson);
+        result.status = data.status;
+        result.gmtCreate = data.gmtCreate;
+        return result;
+    }
+
+    @Nullable
+    private static CgmResult.Summary toApiSummary(@Nullable ServerModels.CgmSummary data) {
+        if (data == null) return null;
+        CgmResult.Summary result = new CgmResult.Summary();
+        result.avgMard = data.avgMard;
+        result.mardStd = data.mardStd;
+        result.pointCount = data.pointCount;
+        result.unitCount = data.unitCount;
+        result.predictionStats = toApiPredictionStats(data.predictionStats);
+        if (data.units != null) {
+            result.units = new ArrayList<>();
+            for (ServerModels.CgmUnit unit : data.units) {
+                result.units.add(toApiUnit(unit));
+            }
+        }
+        return result;
+    }
+
+    @Nullable
+    private static CgmResult.PredictionStats toApiPredictionStats(@Nullable ServerModels.CgmPredictionStats data) {
+        if (data == null) return null;
+        CgmResult.PredictionStats result = new CgmResult.PredictionStats();
+        result.min = data.min;
+        result.max = data.max;
+        result.mean = data.mean;
+        result.std = data.std;
+        return result;
+    }
+
+    @NonNull
+    private static CgmResult.Unit toApiUnit(@NonNull ServerModels.CgmUnit data) {
+        CgmResult.Unit result = new CgmResult.Unit();
+        result.unit = data.unit;
+        result.unitTitle = data.unitTitle;
+        result.pointCount = data.pointCount;
+        result.mard = data.mard;
+        if (data.points != null) {
+            result.points = new ArrayList<>();
+            for (ServerModels.CgmPoint point : data.points) {
+                result.points.add(toApiPoint(point));
+            }
+        }
+        return result;
+    }
+
+    @NonNull
+    private static CgmResult.Point toApiPoint(@NonNull ServerModels.CgmPoint data) {
+        CgmResult.Point result = new CgmResult.Point();
+        result.index = data.index;
+        result.time = data.time;
+        result.predicted = data.predicted;
+        result.actual = data.actual;
+        return result;
     }
 
     @Nullable

@@ -21,10 +21,10 @@ import com.hc.mixthebluetooth.activity.single.FragmentParameter;
 import com.hc.mixthebluetooth.activity.tool.Analysis;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
+import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
-import com.hc.mixthebluetooth.remote.ServerModels;
 import com.hc.mixthebluetooth.uni.Widgets.MetricWidget;
 import com.hc.mixthebluetooth.uni.Widgets.WidgetSpec;
 
@@ -253,7 +253,7 @@ public final class Controller {
         output.release();
     }
 
-    public void onCgmResult(@NonNull ServerModels.CgmJobData result) {
+    public void onCgmResult(@NonNull CgmResult result) {
         ApiTraceLogger.text(OWNER, API_RENDER, "cgmResult",
                 "jobId=" + result.jobId
                         + "\nstatus=" + result.status

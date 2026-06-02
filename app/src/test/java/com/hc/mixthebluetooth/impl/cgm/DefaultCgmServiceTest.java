@@ -6,10 +6,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.remote.CgmJobRespParsingTest;
 import com.hc.mixthebluetooth.remote.ServerClient;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
-import com.hc.mixthebluetooth.remote.ServerModels;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -49,7 +49,7 @@ public class DefaultCgmServiceTest {
             ServerEndpoints endpoints = ServerClient.create(server.url("/").toString(), () -> null, true);
             DefaultCgmService service = new DefaultCgmService(endpoints, (runnable, delayMillis) -> runnable.run());
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+            AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
             service.uploadAndPoll(file, value -> {
                 result.set(value);
@@ -86,7 +86,7 @@ public class DefaultCgmServiceTest {
             File file = cacheFile();
             DefaultCgmService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+            AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
             service.uploadAndPoll(file, value -> {
                 result.set(value);
@@ -115,7 +115,7 @@ public class DefaultCgmServiceTest {
             File file = cacheFile();
             DefaultCgmService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+            AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
             service.uploadAndPoll(file, value -> {
                 result.set(value);
@@ -144,7 +144,7 @@ public class DefaultCgmServiceTest {
 
             DefaultCgmService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+            AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
             service.poll(456L, value -> {
                 result.set(value);
@@ -173,7 +173,7 @@ public class DefaultCgmServiceTest {
 
             DefaultCgmService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<CallResult<ServerModels.CgmJobData>> result = new AtomicReference<>();
+            AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
             service.poll(456L, value -> {
                 result.set(value);
