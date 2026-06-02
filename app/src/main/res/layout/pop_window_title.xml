@@ -22,21 +22,6 @@
             android:paddingTop="15dp"
             android:text="@string/reset_mtu" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/line"/>
-
-        <TextView
-            android:id="@+id/pop_title_file"
-            android:layout_width="150dp"
-            android:layout_height="wrap_content"
-            android:paddingTop="15dp"
-            android:textSize="16sp"
-            android:gravity="center"
-            android:paddingBottom="15dp"
-            android:text="@string/send_file"/>
-
     </LinearLayout>
 
 </LinearLayout>

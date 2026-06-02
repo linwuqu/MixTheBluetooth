@@ -1,4 +1,4 @@
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation">
+﻿<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="ExtraTranslation">
 
     <string name="hint">提示</string>
     <string name="app_name">Biosensors System</string>
@@ -11,31 +11,14 @@
     <string name="pop_window_item_5">自定义过滤:  0x</string>
     <string name="pop_window_item_6">例如:FFF0</string>
 
-    <string name="pop_window_fragment_1">HEX发送</string>
-    <string name="pop_window_fragment_2">HEX接收</string>
-    <string name="pop_window_fragment_3">显示发送时间</string>
-    <string name="pop_window_fragment_4">显示发送数据</string>
-    <string name="pop_window_fragment_5">接收数据中</string>
-    <string name="pop_window_fragment_6">清空接收内容</string>
-    <string name="pop_window_fragment_7">收满400k清屏</string>
-    <string name="pop_window_fragment_8">发送新行</string>
-
     <string name="hint_collect_menu_1">收藏蓝牙</string>
     <string name="hint_collect_menu_2">可选：输入蓝牙的别名</string>
     <string name="hint_collect_menu_3">确认取消收藏？</string>
-
-    <string name="hint_set_button_1">设置按钮</string>
-    <string name="hint_set_button_2">设置按钮名称:</string>
-    <string name="hint_set_button_3">设置按钮内容:</string>
 
     <string name="fragment_message_read">收到</string>
     <string name="fragment_message_byte">字节</string>
     <string name="fragment_message_byte_number_1">（待发送</string>
     <string name="fragment_message_byte_number_2">字节)</string>
-
-    <string name="fragment_read_data">收到的数据</string>
-    <string name="fragment_read_data_hex">HEX接收</string>
-    <string name="fragment_show_read_data">显示接收数据</string>
 
     <string name="cancel">取消</string>
     <string name="affirm">确认</string>
@@ -45,24 +28,7 @@
     <string name="loop_time">大于10</string>
     <string name="zero">0</string>
     <string name="Long_press_set">长按设置</string>
-
-    <string name="set_direction_button">设置方向按钮</string>
-    <string name="click_send">点击发送</string>
-    <string name="long_click_send">长按发送</string>
-    <string name="time_hint">持续发送时间间隔:</string>
-
-    <string name="set_send_module">设置发送模式(方向按钮共享此设置)</string>
-
-    <string name="button_group">按钮组</string>
-    <string name="direction_button">方向按钮</string>
-
-    <string name="any_character">任意字符</string>
-
-    <string name="three_fragment">其他信息</string>
     <string name="message_fragment">通信界面</string>
-    <string name="custom_fragment">自定义按钮</string>
-    <string name="log_fragment">日志信息</string>
-    <string name="ion_analysis_fragment">离子分析</string>
 
     <string name="module_message">模块信息</string>
     <string name="module_type">模块类型:</string>
@@ -97,27 +63,6 @@
     <string name="hint_hid_download">前往下载</string>
     <string name="hint_hid_no_hint">已经知道了，以后不再提示</string>
 
-    <string name="activity_hid_one">1.先到电脑浏览器输入打开此网址:http://www.hc01.com/download</string>
-    <string name="activity_hid_two">2.在资料分类->测试工具里，找到HC-T测试架串口助手下载即可（此软件有可能会引起360的误判，关闭360或者添加信任即可）</string>
-    <string name="activity_hid_three">3.若打开出现下图这个提示，请先下载安装Microsoft.NETFramework4 即可正常使用,下载链接</string>
-    <string name="activity_hid_four">4.若插入模块到电脑，启动HC-T软件，识别不到串口，则需要安装CH340驱动。到电脑打开下面链接，在资料分类->产品驱动里，找到HC-T底板驱动（for Windows）下载安装即可</string>
-    <string name="activity_hid_check_copy">http://www.hc01.com/download  点击复制</string>
-    <string name="activity_hid_check_copy_framework">点击复制链接,提取码hc01(请到电脑上下载安装)</string>
-    <string name="activity_hid_check_copy_ch340">http://www.hc01.com/download  点击复制</string>
-    <string name="activity_hid_hc_t">5.软件打开后的使用方法</string>
-
-    <string name="hint_invalid_1">AT指令设置无效</string>
-    <string name="hint_invalid_2">\t\t手机与模块通讯是透传模式，在这模式下所有的AT指令设置效果均无效。若想使用AT指令设置模块，请先断开连接，再在HID助手里设置。</string>
-    <string name="hint_invalid_3">前往下载HID助手</string>
-    <string name="hint_invalid_4">不再提示</string>
-
-    <string name="coded_format">编码格式</string>
-    <string name="coded_format_string">字符编码格式:</string>
-    <string name="coded_format_gbk">GBK</string>
-    <string name="coded_format_utf">UTF-8</string>
-    <string name="coded_format_unicode">Unicode</string>
-    <string name="coded_format_ascii">ASCII</string>
-
     <string name="about_us">广州汇承信息科技有限公司</string>
     <string name="web">官网 www.hc01.com</string>
     <string name="versions">版本 1.4.2</string>
@@ -126,20 +71,7 @@
     <string name="permission_hint">\t\t App在扫描周围蓝牙前，需要获取位置权限，否则无法扫描周围蓝牙。为了保证App正常工作，请授予位置权限。</string>
     <string name="permission_affirm">好的，授予</string>
     <string name="permission_cancle">拒绝，退出</string>
-
-    <string name="send_file">发送文件</string>
     <string name="reset_mtu">修改MTU</string>
-
-    <string name="file_name">文件名:</string>
-
-    <string name="select_file">选择文件</string>
-
-    <string name="select_velocity">选择发送速度:</string>
-
-    <string name="normal_speed">速度一:每秒约传输800字节(推荐在9600波特率下使用)</string>
-    <string name="height_speed">速度二:每秒约传输8000字节(推荐在115200波特率下使用)</string>
-    <string name="super_height_speed">速度三:每秒约传输18000字节，部分手机支持(推荐在230400波特率下使用)</string>
-    <string name="max_height_speed">速度四:每秒约传输30000+字节,部分手机，部分模块支持(推荐在460800波特率下使用)</string>
     <string name="custom_speed">速度五:自定义速度5k/s</string>
     <string name="set">设置</string>
 

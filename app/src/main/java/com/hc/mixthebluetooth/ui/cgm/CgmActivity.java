@@ -146,10 +146,6 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         viewPagerManage.addFragment(new CgmFragment());
 
         viewBinding.tabMessage.setVisibility(View.GONE);
-        viewBinding.tabCustom.setVisibility(View.GONE);
-        viewBinding.tabIonAnalysis.setVisibility(View.GONE);
-        viewBinding.tabSetting.setVisibility(View.GONE);
-        viewBinding.tabLog.setVisibility(View.GONE);
 
         viewBinding.communicationFragment.setAdapter(viewPagerManage.getAdapter());
         viewPagerManage.setPositionListener(this::updateTabSelection);
@@ -451,17 +447,9 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     private void popupWindow(View anchor) {
         CommonPopupWindow window = new CommonPopupWindow(R.layout.pop_window_title, anchor);
 
-        hideRemovedMenuItems(window);
         updateMtuMenuText(window);
         bindPopupActions(window);
         showPopupWindow(window);
-    }
-
-    private void hideRemovedMenuItems(CommonPopupWindow window) {
-        View file = window.findViewById(R.id.pop_title_file);
-        if (file != null) {
-            file.setVisibility(View.GONE);
-        }
     }
 
     private void updateMtuMenuText(CommonPopupWindow window) {
@@ -483,22 +471,12 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
                 return;
             }
 
-            if (v.getId() == R.id.pop_title_file) {
-                openSendFilePage();
-                return;
-            }
-
             if (v.getId() == R.id.pop_title_mtu) {
                 openMtuDialog();
             }
         };
 
-        window.setListeners(listener, R.id.pop_title_file, R.id.pop_title_mtu);
-    }
-
-    private void openSendFilePage() {
-        publishStopLoopSend();
-        toastShort("File sending page was removed");
+        window.setListeners(listener, R.id.pop_title_mtu);
     }
 
     private void openMtuDialog() {
