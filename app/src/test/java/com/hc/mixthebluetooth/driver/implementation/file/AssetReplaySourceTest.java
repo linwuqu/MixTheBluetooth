@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.local;
+package com.hc.mixthebluetooth.driver.implementation.file;
 
 import static org.junit.Assert.assertEquals;
 
@@ -7,13 +7,13 @@ import org.junit.Test;
 import java.io.InputStream;
 import java.util.List;
 
-public class DeviceReplaySampleTest {
+public class AssetReplaySourceTest {
     @Test
     public void readsPlaybackSampleLinesInOrder() throws Exception {
         InputStream input = getClass().getClassLoader()
                 .getResourceAsStream("device/device_replay_sample.txt");
 
-        List<String> lines = DeviceReplaySample.readLines(input);
+        List<String> lines = AssetReplaySource.readLines(input);
 
         assertEquals(5, lines.size());
         assertEquals("Start Playback", lines.get(0));

@@ -12,9 +12,9 @@ import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
 import com.hc.mixthebluetooth.impl.device.DefaultDeviceDataService;
 import com.hc.mixthebluetooth.impl.file.DefaultFileService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
-import com.hc.mixthebluetooth.local.DeviceDataRecorder;
-import com.hc.mixthebluetooth.local.DeviceReplaySample;
 import com.hc.mixthebluetooth.api.persistence.SessionStore;
+import com.hc.mixthebluetooth.driver.implementation.file.AndroidFileRecorder;
+import com.hc.mixthebluetooth.driver.implementation.file.AssetReplaySource;
 import com.hc.mixthebluetooth.persistence.EncryptedSessionStore;
 import com.hc.mixthebluetooth.remote.ServerClient;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
@@ -45,8 +45,8 @@ public final class AppApiBootstrap {
                         + "\nnetworkEnabled=" + env.networkEnabled());
 
         DeviceDataService deviceDataService = new DefaultDeviceDataService(
-                new DeviceDataRecorder(app),
-                new DeviceReplaySample(app),
+                new AndroidFileRecorder(app),
+                new AssetReplaySource(app),
                 fileService
         );
 

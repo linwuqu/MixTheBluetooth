@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.local;
+package com.hc.mixthebluetooth.driver.implementation.file;
 
 import android.content.Context;
 import android.os.Environment;
@@ -7,6 +7,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.driver.capability.DeviceReplayRecorder;
+import com.hc.mixthebluetooth.driver.capability.FileRecorder;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -17,7 +19,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public final class DeviceDataRecorder {
+public final class AndroidFileRecorder implements DeviceReplayRecorder, FileRecorder {
     public interface DateProvider {
         @NonNull
         String today();
@@ -29,16 +31,17 @@ public final class DeviceDataRecorder {
     @Nullable
     private File currentFile;
 
-    public DeviceDataRecorder(@NonNull Context context) {
+    public AndroidFileRecorder(@NonNull Context context) {
         this(defaultDir(context), () -> new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date()));
     }
 
-    public DeviceDataRecorder(@NonNull File dir, @NonNull DateProvider dateProvider) {
+    public AndroidFileRecorder(@NonNull File dir, @NonNull DateProvider dateProvider) {
         this.dir = dir;
         this.dateProvider = dateProvider;
     }
 
     @NonNull
+    @Override
     public CallResult<File> consumeLine(@Nullable String line) {
         if (line == null || line.isEmpty()) {
             return CallResult.pending(recording ? "recording" : "idle");
@@ -46,7 +49,7 @@ public final class DeviceDataRecorder {
         if (line.contains("Start Playback")) {
             recording = true;
             currentFile = new File(dir, dateProvider.today() + "CGM_Cache_data.txt");
-            append(line);
+            appendLine(line);
             return CallResult.pending("recording");
         }
         if (line.contains("Playback all done")) {
@@ -56,18 +59,20 @@ public final class DeviceDataRecorder {
                     : CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "设备回放数据不完整", null);
         }
         if (recording) {
-            append(line);
+            appendLine(line);
             return CallResult.pending("recording");
         }
         return CallResult.pending("idle");
     }
 
     @Nullable
+    @Override
     public File currentFile() {
         return currentFile;
     }
 
-    private void append(@NonNull String line) {
+    @Override
+    public void appendLine(@NonNull String line) {
         if (!dir.exists()) dir.mkdirs();
         if (currentFile == null) return;
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
@@ -76,6 +81,22 @@ public final class DeviceDataRecorder {
             writer.write("\n");
         } catch (Exception ignored) {
         }
+    }
+
+    @NonNull
+    @Override
+    public File finish() {
+        if (currentFile == null) {
+            throw new IllegalStateException("No replay file has been started");
+        }
+        recording = false;
+        return currentFile;
+    }
+
+    @Override
+    public void reset() {
+        recording = false;
+        currentFile = null;
     }
 
     @NonNull

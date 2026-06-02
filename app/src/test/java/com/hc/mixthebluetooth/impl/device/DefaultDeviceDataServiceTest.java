@@ -7,8 +7,8 @@ import static org.junit.Assert.assertTrue;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
-import com.hc.mixthebluetooth.local.DeviceDataRecorder;
-import com.hc.mixthebluetooth.local.DeviceReplaySample;
+import com.hc.mixthebluetooth.driver.implementation.file.AndroidFileRecorder;
+import com.hc.mixthebluetooth.driver.implementation.file.AssetReplaySource;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -70,8 +70,8 @@ public class DefaultDeviceDataServiceTest {
 
     private DefaultDeviceDataService serviceWithSample(java.util.List<String> lines) {
         return new DefaultDeviceDataService(
-                new DeviceDataRecorder(temporaryFolder.getRoot(), () -> "2026-05-24"),
-                new DeviceReplaySample(lines),
+                new AndroidFileRecorder(temporaryFolder.getRoot(), () -> "2026-05-24"),
+                new AssetReplaySource(lines),
                 fakeFileService()
         );
     }

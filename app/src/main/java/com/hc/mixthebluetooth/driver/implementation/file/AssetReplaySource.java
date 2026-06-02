@@ -1,8 +1,10 @@
-package com.hc.mixthebluetooth.local;
+package com.hc.mixthebluetooth.driver.implementation.file;
 
 import android.content.Context;
 
 import androidx.annotation.NonNull;
+
+import com.hc.mixthebluetooth.driver.capability.ReplaySource;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,27 +14,25 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Supplies fixed replay lines for mock/debug verification when no Bluetooth board is connected.
- */
-public final class DeviceReplaySample {
+public final class AssetReplaySource implements ReplaySource {
     public static final String DEFAULT_ASSET = "device/device_replay_sample.txt";
 
     private final Context context;
     private final List<String> fixedLines;
 
-    public DeviceReplaySample(@NonNull Context context) {
+    public AssetReplaySource(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.fixedLines = null;
     }
 
-    public DeviceReplaySample(@NonNull List<String> fixedLines) {
+    public AssetReplaySource(@NonNull List<String> fixedLines) {
         this.context = null;
         this.fixedLines = new ArrayList<>(fixedLines);
     }
 
     @NonNull
-    public List<String> readDefaultLines() throws IOException {
+    @Override
+    public List<String> readLines() throws IOException {
         if (fixedLines != null) {
             return new ArrayList<>(fixedLines);
         }

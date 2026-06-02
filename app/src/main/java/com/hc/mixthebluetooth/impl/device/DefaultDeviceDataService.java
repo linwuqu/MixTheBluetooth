@@ -7,19 +7,19 @@ import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
-import com.hc.mixthebluetooth.local.DeviceDataRecorder;
-import com.hc.mixthebluetooth.local.DeviceReplaySample;
+import com.hc.mixthebluetooth.driver.capability.DeviceReplayRecorder;
+import com.hc.mixthebluetooth.driver.capability.ReplaySource;
 
 import java.io.File;
 import java.util.List;
 
 public final class DefaultDeviceDataService implements DeviceDataService {
-    private final DeviceDataRecorder recorder;
-    private final DeviceReplaySample sampleSource;
+    private final DeviceReplayRecorder recorder;
+    private final ReplaySource sampleSource;
     private final FileService fileService;
 
-    public DefaultDeviceDataService(@NonNull DeviceDataRecorder recorder,
-                                    @NonNull DeviceReplaySample sample,
+    public DefaultDeviceDataService(@NonNull DeviceReplayRecorder recorder,
+                                    @NonNull ReplaySource sample,
                                     @NonNull FileService fileService) {
         this.recorder = recorder;
         this.sampleSource = sample;
@@ -29,7 +29,7 @@ public final class DefaultDeviceDataService implements DeviceDataService {
     @Override
     public void replaySample(ApiCallback<CallResult<File>> callback) {
         try {
-            List<String> lines = sampleSource.readDefaultLines();
+            List<String> lines = sampleSource.readLines();
             CallResult<File> last = CallResult.error(
                     CallResult.DEVICE_REPLAY_INCOMPLETE,
                     "设备回放数据不完整",
