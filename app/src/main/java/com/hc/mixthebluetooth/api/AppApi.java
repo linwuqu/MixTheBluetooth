@@ -4,6 +4,7 @@ import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.log.AppLogger;
@@ -16,6 +17,7 @@ public final class AppApi {
     private static FileService file;
     private static DeviceDataService deviceData;
     private static CgmService cgm;
+    private static CgmWorkflow cgmWorkflow;
     private static EnvConfig env;
     private static SessionStore sessionStore;
     private static SettingsStore settingsStore;
@@ -29,7 +31,7 @@ public final class AppApi {
                                             @NonNull DeviceDataService deviceDataService,
                                             @NonNull CgmService cgmService,
                                             @NonNull EnvConfig envConfig) {
-        install(authService, fileService, deviceDataService, cgmService, envConfig, null, null, null);
+        install(authService, fileService, deviceDataService, cgmService, null, envConfig, null, null, null);
     }
 
     public static synchronized void install(@NonNull AuthService authService,
@@ -40,10 +42,23 @@ public final class AppApi {
                                             SessionStore session,
                                             SettingsStore settings,
                                             AppLogger appLogger) {
+        install(authService, fileService, deviceDataService, cgmService, null, envConfig, session, settings, appLogger);
+    }
+
+    public static synchronized void install(@NonNull AuthService authService,
+                                            @NonNull FileService fileService,
+                                            @NonNull DeviceDataService deviceDataService,
+                                            @NonNull CgmService cgmService,
+                                            CgmWorkflow workflow,
+                                            @NonNull EnvConfig envConfig,
+                                            SessionStore session,
+                                            SettingsStore settings,
+                                            AppLogger appLogger) {
         auth = authService;
         file = fileService;
         deviceData = deviceDataService;
         cgm = cgmService;
+        cgmWorkflow = workflow;
         env = envConfig;
         sessionStore = session;
         settingsStore = settings;
@@ -75,6 +90,12 @@ public final class AppApi {
     }
 
     @NonNull
+    public static synchronized CgmWorkflow cgmWorkflow() {
+        if (cgmWorkflow == null) throw new IllegalStateException("AppApi is not initialized");
+        return cgmWorkflow;
+    }
+
+    @NonNull
     public static synchronized EnvConfig env() {
         if (env == null) throw new IllegalStateException("AppApi is not initialized");
         return env;
@@ -103,6 +124,7 @@ public final class AppApi {
         file = null;
         deviceData = null;
         cgm = null;
+        cgmWorkflow = null;
         env = null;
         sessionStore = null;
         settingsStore = null;

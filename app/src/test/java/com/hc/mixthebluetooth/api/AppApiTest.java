@@ -8,6 +8,7 @@ import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
@@ -45,6 +46,7 @@ public class AppApiTest {
         assertSame(contracts.file, AppApi.file());
         assertSame(contracts.deviceData, AppApi.deviceData());
         assertSame(contracts.cgm, AppApi.cgm());
+        assertSame(contracts.cgmWorkflow, AppApi.cgmWorkflow());
         assertSame(contracts.env, AppApi.env());
         assertSame(contracts.sessionStore, AppApi.sessionStore());
         assertSame(contracts.settingsStore, AppApi.settingsStore());
@@ -63,6 +65,7 @@ public class AppApiTest {
         assertSame(second.file, AppApi.file());
         assertSame(second.deviceData, AppApi.deviceData());
         assertSame(second.cgm, AppApi.cgm());
+        assertSame(second.cgmWorkflow, AppApi.cgmWorkflow());
         assertSame(second.env, AppApi.env());
         assertSame(second.sessionStore, AppApi.sessionStore());
         assertSame(second.settingsStore, AppApi.settingsStore());
@@ -75,6 +78,7 @@ public class AppApiTest {
                 contracts.file,
                 contracts.deviceData,
                 contracts.cgm,
+                contracts.cgmWorkflow,
                 contracts.env,
                 contracts.sessionStore,
                 contracts.settingsStore,
@@ -88,6 +92,7 @@ public class AppApiTest {
         };
         final DeviceDataService deviceData = new FakeDeviceDataService();
         final CgmService cgm = new FakeCgmService();
+        final CgmWorkflow cgmWorkflow = new FakeCgmWorkflow();
         final EnvConfig env = new EnvConfig("dev", "http://example.test/", true, "dev", true);
         final MemoryPreferencesStore memory = new MemoryPreferencesStore();
         final SessionStore sessionStore = new EncryptedSessionStore(memory);
@@ -152,6 +157,16 @@ public class AppApiTest {
 
         @Override
         public void poll(long jobId, ApiCallback<CallResult<CgmResult>> callback) {
+        }
+    }
+
+    private static final class FakeCgmWorkflow implements CgmWorkflow {
+        @Override
+        public void onDeviceLine(@NonNull String line, @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+        }
+
+        @Override
+        public void reset() {
         }
     }
 }

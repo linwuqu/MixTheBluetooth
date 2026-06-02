@@ -13,14 +13,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.activity.single.BTPackage;
 import com.hc.mixthebluetooth.activity.single.StaticConstants;
-import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.api.CallResult;
+import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.uni.Codec;
 import com.hc.mixthebluetooth.uni.Controller;
 import com.hc.mixthebluetooth.uni.Profiles;
-
-import java.io.File;
 
 public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
@@ -101,22 +99,18 @@ public class UniFragment extends BTFragment<FragmentUnifiedMessageBinding> {
         }
 
         @Override
-        public void onCacheFileReady(@NonNull File file) {
-            ApiTraceLogger.file("UniFragment", "CACHE_FILE_READY", file);
-            Log.d("UniFragment", "CGM cache file ready: " + file.getAbsolutePath());
-            AppApi.cgm().uploadAndPoll(file, result -> {
-                if (!isAdded()) {
-                    return;
+        public void onCgmWorkflowResult(@NonNull CallResult<CgmResult> result) {
+            if (result.isPending() || !isAdded()) {
+                return;
+            }
+            requireActivity().runOnUiThread(() -> {
+                if (result.isOk() && result.data != null) {
+                    controller.onCgmResult(result.data);
+                    Toast.makeText(requireContext(), "CGM 数据已生成", Toast.LENGTH_SHORT).show();
+                } else {
+                    Log.w("UniFragment", "CGM flow failed: " + result.message);
+                    Toast.makeText(requireContext(), "CGM 失败: " + result.message, Toast.LENGTH_LONG).show();
                 }
-                requireActivity().runOnUiThread(() -> {
-                    if (result.isOk() && result.data != null) {
-                        controller.onCgmResult(result.data);
-                        Toast.makeText(requireContext(), "CGM 数据已生成", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Log.w("UniFragment", "CGM flow failed: " + result.message);
-                        Toast.makeText(requireContext(), "CGM 失败: " + result.message, Toast.LENGTH_LONG).show();
-                    }
-                });
             });
         }
     }

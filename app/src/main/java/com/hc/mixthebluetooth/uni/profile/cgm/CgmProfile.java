@@ -32,11 +32,7 @@ public final class CgmProfile {
     private static final class CgmRawLineConsumer implements Controller.RawLineConsumer {
         @Override
         public void onLine(@NonNull Context context, @NonNull String line, @NonNull Controller.Gateway gateway) {
-            AppApi.deviceData().consumeLine(line, result -> {
-                if (result.isOk() && result.data != null) {
-                    gateway.onCacheFileReady(result.data);
-                }
-            });
+            AppApi.cgmWorkflow().onDeviceLine(line, gateway::onCgmWorkflowResult);
         }
     }
 }

@@ -47,16 +47,16 @@ public final class AndroidFileRecorder implements DeviceReplayRecorder, FileReco
             return CallResult.pending(recording ? "recording" : "idle");
         }
         if (line.contains("Start Playback")) {
-            recording = true;
-            currentFile = new File(dir, dateProvider.today() + "CGM_Cache_data.txt");
+            start();
             appendLine(line);
             return CallResult.pending("recording");
         }
         if (line.contains("Playback all done")) {
-            recording = false;
-            return currentFile != null
-                    ? CallResult.ok(currentFile)
-                    : CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "设备回放数据不完整", null);
+            try {
+                return CallResult.ok(finish());
+            } catch (IllegalStateException e) {
+                return CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "Device replay incomplete", e);
+            }
         }
         if (recording) {
             appendLine(line);
@@ -69,6 +69,12 @@ public final class AndroidFileRecorder implements DeviceReplayRecorder, FileReco
     @Override
     public File currentFile() {
         return currentFile;
+    }
+
+    @Override
+    public void start() {
+        recording = true;
+        currentFile = new File(dir, dateProvider.today() + "CGM_Cache_data.txt");
     }
 
     @Override

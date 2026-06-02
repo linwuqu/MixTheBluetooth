@@ -21,6 +21,7 @@ import com.hc.mixthebluetooth.activity.single.FragmentParameter;
 import com.hc.mixthebluetooth.activity.tool.Analysis;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
+import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
@@ -28,7 +29,6 @@ import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 import com.hc.mixthebluetooth.uni.Widgets.MetricWidget;
 import com.hc.mixthebluetooth.uni.Widgets.WidgetSpec;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +73,7 @@ public final class Controller {
     public interface Gateway {
         void postText(@NonNull DeviceModule module, @NonNull String text);
 
-        default void onCacheFileReady(@NonNull File file) {
+        default void onCgmWorkflowResult(@NonNull CallResult<CgmResult> result) {
         }
     }
 
