@@ -5,8 +5,8 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.hc.mixthebluetooth.activity.single.FragmentParameter;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 
 public final class Codec {
     private Codec() {
@@ -27,7 +27,7 @@ public final class Codec {
 
     @NonNull
     public static byte[] encodeText(@NonNull Context context, @NonNull String text) {
-        String charset = FragmentParameter.getInstance().getCodeFormat(context);
+        String charset = AppApi.settingsStore().textEncoding();
         byte[] bytes = Analysis.getBytes(text, charset, false);
         return bytes != null ? bytes : new byte[0];
     }

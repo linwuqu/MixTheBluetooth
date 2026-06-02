@@ -21,7 +21,6 @@ import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
-import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.ui.shared.view.CircleProgressView;
 import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;

@@ -5,7 +5,6 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.hc.mixthebluetooth.activity.tool.SampleRecorder;
 
 public final class Output {
     private final SampleRecorder recorder = new SampleRecorder();

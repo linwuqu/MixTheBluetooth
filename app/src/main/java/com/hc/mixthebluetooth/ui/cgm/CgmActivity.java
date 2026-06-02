@@ -19,9 +19,7 @@ import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.basiclibrary.viewBasic.manage.ViewPagerManage;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.single.BTPackage;
-import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
-import com.hc.mixthebluetooth.activity.single.StaticConstants;
+import com.hc.mixthebluetooth.driver.implementation.bluetooth.AndroidBluetoothController;
 import com.hc.mixthebluetooth.ui.shared.view.UnderlineTextView;
 import com.hc.mixthebluetooth.ui.shared.dialog.SetMtu;
 import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
@@ -39,7 +37,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     private UnderlineTextView mUnderlineTV;
     private ViewPagerManage viewPagerManage;
 
-    private HoldBluetooth mHoldBluetooth;
+    private AndroidBluetoothController mAndroidBluetoothController;
     private List<DeviceModule> modules;
     private DeviceModule mErrorDisconnect;
     private String connectState = CONNECTING;
@@ -70,13 +68,13 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     protected void onDestroy() {
         super.onDestroy();
         logWarn("关闭CgmActivity...");
-        if (modules != null) mHoldBluetooth.disconnect(modules.get(0));
+        if (modules != null) mAndroidBluetoothController.disconnect(modules.get(0));
     }
 
 
     // ----------------- Initialization -----------------
     private void initDependencies() {
-        mHoldBluetooth = HoldBluetooth.getInstance();
+        mAndroidBluetoothController = AndroidBluetoothController.getInstance();
     }
 
     private void readIntentArgs() {
@@ -99,7 +97,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     }
 
     private void initBluetoothListener() {
-        HoldBluetooth.OnReadDataListener dataListener = new HoldBluetooth.OnReadDataListener() {
+        AndroidBluetoothController.OnReadDataListener dataListener = new AndroidBluetoothController.OnReadDataListener() {
             @Override
             public void readData(String mac, byte[] data) {
                 onBluetoothData(data);
@@ -140,7 +138,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
                 onBluetoothMtuChanged(mtu);
             }
         };
-        mHoldBluetooth.setOnReadListener(dataListener);
+        mAndroidBluetoothController.setOnReadListener(dataListener);
     }
 
     private void initPages() {
@@ -198,17 +196,17 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
             return;
         }
 
-        mHoldBluetooth.sendData(item.getModule(), item.getByteData().clone());
+        mAndroidBluetoothController.sendData(item.getModule(), item.getByteData().clone());
     }
 
     private void onBtPostCommand(Object data) {
-        if (!(data instanceof BTPackage.BTPost)) {
+        if (!(data instanceof CgmBluetoothEvent.BTPost)) {
             logWarn("Ignore BT post command, payload is not BTPost: " + data);
             return;
         }
 
-        BTPackage.BTPost post = (BTPackage.BTPost) data;
-        mHoldBluetooth.sendData(post.module, post.bytes.clone());
+        CgmBluetoothEvent.BTPost post = (CgmBluetoothEvent.BTPost) data;
+        mAndroidBluetoothController.sendData(post.module, post.bytes.clone());
     }
 
     // ----------------- Page Navigation -----------------
@@ -250,7 +248,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     }
 
     private void onBluetoothConnected() {
-        modules = mHoldBluetooth.getConnectedArray();
+        modules = mAndroidBluetoothController.getConnectedArray();
 
         DeviceModule module = getCurrentModule();
         if (module == null) return;
@@ -266,9 +264,9 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         if (mErrorDisconnect == null) {
             mErrorDisconnect = deviceModule;
 
-            if (mHoldBluetooth != null && deviceModule != null) {
+            if (mAndroidBluetoothController != null && deviceModule != null) {
                 mTimeHandler.postDelayed(() -> {
-                    mHoldBluetooth.connect(deviceModule);
+                    mAndroidBluetoothController.connect(deviceModule);
                     setState(CONNECTING);
                     publishStopLoopSend();
                 }, 2000);
@@ -316,18 +314,18 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
     // ----------------- Fragment Events -----------------
     private void publishBtData(DeviceModule module, byte[] data) {
-        sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.BTData(module, data));
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.BTData(module, data));
+        sendDataToFragment(StaticConstants.CH_BT_DATA, new CgmBluetoothEvent.BTData(module, data));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new CgmBluetoothEvent.BTData(module, data));
     }
 
     private void publishBtConnected(DeviceModule module) {
-        sendDataToFragment(StaticConstants.CH_BT_DATA, new BTPackage.Connected(module));
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.Connected(module));
+        sendDataToFragment(StaticConstants.CH_BT_DATA, new CgmBluetoothEvent.Connected(module));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new CgmBluetoothEvent.Connected(module));
     }
 
     private void publishBtDisconnected() {
-        sendDataToFragment(StaticConstants.CH_BT_DATA, BTPackage.Disconnected.INSTANCE);
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, BTPackage.Disconnected.INSTANCE);
+        sendDataToFragment(StaticConstants.CH_BT_DATA, CgmBluetoothEvent.Disconnected.INSTANCE);
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, CgmBluetoothEvent.Disconnected.INSTANCE);
     }
 
     private void publishLog(String className, String data, String level) {
@@ -336,7 +334,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
     private void publishConnectState(String state) {
         sendDataToFragment(StaticConstants.CH_SET_CONNECT_STATE, state);
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.ConnectState(state));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new CgmBluetoothEvent.ConnectState(state));
     }
 
     private void publishSpeedVisible(boolean visible) {
@@ -349,12 +347,12 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
     private void publishSentBytes(int number) {
         sendDataToFragment(StaticConstants.CH_SENT_BYTES, number);
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, new BTPackage.SentBytes(number));
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, new CgmBluetoothEvent.SentBytes(number));
     }
 
     private void publishStopLoopSend() {
         sendDataToFragment(StaticConstants.CH_STOP_LOOP_SEND, null);
-        sendDataToFragment(StaticConstants.CH_BT_EVENT, BTPackage.StopLoopSend.INSTANCE);
+        sendDataToFragment(StaticConstants.CH_BT_EVENT, CgmBluetoothEvent.StopLoopSend.INSTANCE);
     }
 
     private void publishFragmentHide() {
@@ -406,9 +404,9 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
     private void disconnectCurrentModule() {
         DeviceModule module = getCurrentModule();
-        if (module == null || mHoldBluetooth == null) return;
+        if (module == null || mAndroidBluetoothController == null) return;
 
-        mHoldBluetooth.tempDisconnect(module);
+        mAndroidBluetoothController.tempDisconnect(module);
         setState(DISCONNECT);
     }
 
@@ -419,13 +417,13 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
             module = mErrorDisconnect;
         }
 
-        if (module == null || mHoldBluetooth == null) {
+        if (module == null || mAndroidBluetoothController == null) {
             toastShort("连接失败");
             setState(DISCONNECT);
             return;
         }
 
-        mHoldBluetooth.connect(module);
+        mAndroidBluetoothController.connect(module);
         log("开启连接动画");
         setState(CONNECTING);
     }
@@ -520,7 +518,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         builder.setView(R.layout.hint_set_mtu_vessel).fullWidth().loadAnimation().create().show();
 
         SetMtu setMtu = builder.getView(R.id.hint_set_mtu_vessel_view);
-        setMtu.setBuilder(builder).setCallback(mtu -> mHoldBluetooth.setMTU(module, mtu));
+        setMtu.setBuilder(builder).setCallback(mtu -> mAndroidBluetoothController.setMTU(module, mtu));
     }
 
     private void showPopupWindow(@NonNull CommonPopupWindow window) {

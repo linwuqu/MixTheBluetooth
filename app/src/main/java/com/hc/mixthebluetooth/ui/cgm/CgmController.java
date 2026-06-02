@@ -16,16 +16,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.single.BTPackage;
-import com.hc.mixthebluetooth.activity.single.FragmentParameter;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
-import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
-import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
-import com.hc.mixthebluetooth.ui.cgm.MessageAdapter;
-import com.hc.mixthebluetooth.ui.cgm.MessageItem;
 import com.hc.mixthebluetooth.ui.cgm.CgmWidgets.MetricWidget;
 import com.hc.mixthebluetooth.ui.cgm.CgmWidgets.WidgetSpec;
 
@@ -232,20 +227,20 @@ public final class CgmController {
     }
 
     public void onEvent(@Nullable Object event) {
-        if (event instanceof BTPackage.BTData) {
-            onBtData((BTPackage.BTData) event);
-        } else if (event instanceof BTPackage.Connected) {
-            module = ((BTPackage.Connected) event).module;
+        if (event instanceof CgmBluetoothEvent.BTData) {
+            onBtData((CgmBluetoothEvent.BTData) event);
+        } else if (event instanceof CgmBluetoothEvent.Connected) {
+            module = ((CgmBluetoothEvent.Connected) event).module;
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state",
                     "connected=true\ndevice=" + (module == null ? "" : module.getName()));
-        } else if (event instanceof BTPackage.Disconnected) {
+        } else if (event instanceof CgmBluetoothEvent.Disconnected) {
             module = null;
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state", "connected=false");
-        } else if (event instanceof BTPackage.SentBytes) {
-            sentBytes += ((BTPackage.SentBytes) event).count;
+        } else if (event instanceof CgmBluetoothEvent.SentBytes) {
+            sentBytes += ((CgmBluetoothEvent.SentBytes) event).count;
             updateByteCounter();
-        } else if (event instanceof BTPackage.ConnectState) {
-            setBottomInfo(((BTPackage.ConnectState) event).state);
+        } else if (event instanceof CgmBluetoothEvent.ConnectState) {
+            setBottomInfo(((CgmBluetoothEvent.ConnectState) event).state);
         }
     }
 
@@ -354,13 +349,13 @@ public final class CgmController {
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    private void onBtData(@NonNull BTPackage.BTData data) {
+    private void onBtData(@NonNull CgmBluetoothEvent.BTData data) {
         module = data.module;
         readBytes += data.bytes.length;
         updateByteCounter();
 
         Codec.Options options = new Codec.Options(
-                FragmentParameter.getInstance().getCodeFormat(context),
+                AppApi.settingsStore().textEncoding(),
                 false,
                 false
         );

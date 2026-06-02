@@ -11,8 +11,6 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.hc.bluetoothlibrary.DeviceModule;
-import com.hc.mixthebluetooth.activity.single.BTPackage;
-import com.hc.mixthebluetooth.activity.single.StaticConstants;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
@@ -91,7 +89,7 @@ public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
             byte[] bytes = Codec.encodeText(requireContext(), text);
             sendDataToActivity(
                     StaticConstants.CMD_BT_POST,
-                    new BTPackage.BTPost(module, bytes)
+                    new CgmBluetoothEvent.BTPost(module, bytes)
             );
         }
 

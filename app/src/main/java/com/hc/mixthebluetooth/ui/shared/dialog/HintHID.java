@@ -7,9 +7,9 @@ import android.widget.LinearLayout;
 
 import com.hc.basiclibrary.dialog.CommonDialog;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.databinding.HintHidMenuBinding;
-import com.hc.mixthebluetooth.storage.Storage;
 
 public class HintHID extends LinearLayout {
 
@@ -75,8 +75,7 @@ public class HintHID extends LinearLayout {
 
     private void setNoShowPopWindow(){
         if (mViewBinding.hintHidNoShow.isChecked()){
-            Storage storage = new Storage(getContext());
-            storage.saveFirstTime();
+            AppApi.settingsStore().setFirstLaunch(false);
         }
     }
 

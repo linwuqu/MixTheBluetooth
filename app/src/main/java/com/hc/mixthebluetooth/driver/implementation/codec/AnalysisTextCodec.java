@@ -2,7 +2,7 @@ package com.hc.mixthebluetooth.driver.implementation.codec;
 
 import androidx.annotation.NonNull;
 
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.api.codec.TextCodec;
 
 public final class AnalysisTextCodec implements TextCodec {

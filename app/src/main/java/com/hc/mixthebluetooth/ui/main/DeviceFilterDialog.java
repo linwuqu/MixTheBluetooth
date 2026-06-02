@@ -15,7 +15,8 @@ import android.widget.PopupWindow;
 import androidx.core.widget.PopupWindowCompat;
 
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.storage.Storage;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.api.persistence.SettingsStore;
 import com.hc.mixthebluetooth.ui.shared.view.CheckBoxSample;
 
 public class DeviceFilterDialog {
@@ -34,14 +35,14 @@ public class DeviceFilterDialog {
     private LinearLayout layoutFilter;
     private EditText editFilter;
 
-    private final Storage storage;
+    private final SettingsStore settingsStore;
 
     private final DismissListener listener;
 
     private boolean isResetEngine;//记录下是否切换搜索方式
 
     public DeviceFilterDialog(View view,Activity activity,DismissListener listener){
-        storage = new Storage(activity);
+        settingsStore = AppApi.settingsStore();
         this.listener = listener;
         isResetEngine = false;
         showPopupWindow(R.layout.pop_window_main,view,activity);
@@ -102,12 +103,12 @@ public class DeviceFilterDialog {
         };
 
         popupWindow.setOnDismissListener(() -> {
-            storage.saveData(BLE_KEY,checkBle.isChecked());
-            storage.saveData(NAME_KEY,checkName.isChecked());
-            storage.saveData(FILTER_KEY,checkFilter.isChecked());
-            storage.saveData(CUSTOM_KEY,checkCustom.isChecked());
+            settingsStore.putBoolean(BLE_KEY,checkBle.isChecked());
+            settingsStore.putBoolean(NAME_KEY,checkName.isChecked());
+            settingsStore.putBoolean(FILTER_KEY,checkFilter.isChecked());
+            settingsStore.putBoolean(CUSTOM_KEY,checkCustom.isChecked());
             if (checkCustom.isChecked()) {
-                storage.saveData(DATA_KEY,editFilter.getText().toString().trim());
+                settingsStore.putString(DATA_KEY,editFilter.getText().toString().trim());
             }
             if (listener != null){
                 listener.onDismissListener(isResetEngine);
@@ -120,13 +121,13 @@ public class DeviceFilterDialog {
         // 设置好参数之后再show
         popupWindow.showAsDropDown(view);
 
-        boolean b = storage.getData(BLE_KEY);
-        checkName.setChecked(storage.getData(NAME_KEY));
+        boolean b = settingsStore.getBoolean(BLE_KEY, false);
+        checkName.setChecked(settingsStore.getBoolean(NAME_KEY, false));
         checkMix.setChecked(!b);
         checkBle.setChecked(b);
-        checkFilter.setChecked(storage.getData(FILTER_KEY));
-        checkCustom.setChecked(storage.getData(CUSTOM_KEY));
-        editFilter.setText(storage.getDataString(DATA_KEY));
+        checkFilter.setChecked(settingsStore.getBoolean(FILTER_KEY, false));
+        checkCustom.setChecked(settingsStore.getBoolean(CUSTOM_KEY, false));
+        editFilter.setText(settingsStore.getString(DATA_KEY, null));
         setFilter();
 
     }

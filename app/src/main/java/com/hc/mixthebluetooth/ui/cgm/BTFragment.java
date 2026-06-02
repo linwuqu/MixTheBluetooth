@@ -8,8 +8,6 @@ import androidx.viewbinding.ViewBinding;
 
 import com.hc.basiclibrary.viewBasic.BaseFragment;
 import com.hc.bluetoothlibrary.DeviceModule;
-import com.hc.mixthebluetooth.activity.single.BTPackage;
-import com.hc.mixthebluetooth.activity.single.StaticConstants;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -115,17 +113,17 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
     }
 
     private void routeBtData(Object data) {
-        if (data instanceof BTPackage.BTData) {
-            onBtData((BTPackage.BTData) data);
+        if (data instanceof CgmBluetoothEvent.BTData) {
+            onBtData((CgmBluetoothEvent.BTData) data);
             return;
         }
 
-        if (data instanceof BTPackage.Connected) {
-            onBtConnected(((BTPackage.Connected) data).module);
+        if (data instanceof CgmBluetoothEvent.Connected) {
+            onBtConnected(((CgmBluetoothEvent.Connected) data).module);
             return;
         }
 
-        if (data instanceof BTPackage.Disconnected) {
+        if (data instanceof CgmBluetoothEvent.Disconnected) {
             onBtDisconnected();
             return;
         }
@@ -137,7 +135,7 @@ public abstract class BTFragment<T extends ViewBinding> extends BaseFragment<T> 
     protected void onBtConnected(DeviceModule module) {
     }
 
-    protected void onBtData(BTPackage.BTData data) {
+    protected void onBtData(CgmBluetoothEvent.BTData data) {
     }
 
     protected void onBtDisconnected() {

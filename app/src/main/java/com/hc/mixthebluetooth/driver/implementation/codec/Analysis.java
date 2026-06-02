@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.driver.implementation.codec;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;

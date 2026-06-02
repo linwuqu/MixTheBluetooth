@@ -3,16 +3,16 @@ package com.hc.mixthebluetooth.driver.implementation.bluetooth;
 import androidx.annotation.NonNull;
 
 import com.hc.bluetoothlibrary.DeviceModule;
-import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.driver.implementation.bluetooth.AndroidBluetoothController;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.driver.capability.BluetoothTransport;
 
 import java.util.List;
 
 public final class AndroidBluetoothTransport implements BluetoothTransport {
-    private final HoldBluetooth holdBluetooth;
+    private final AndroidBluetoothController holdBluetooth;
 
-    public AndroidBluetoothTransport(@NonNull HoldBluetooth holdBluetooth) {
+    public AndroidBluetoothTransport(@NonNull AndroidBluetoothController holdBluetooth) {
         this.holdBluetooth = holdBluetooth;
     }
 

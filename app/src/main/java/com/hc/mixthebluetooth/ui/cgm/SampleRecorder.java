@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.tool;
+package com.hc.mixthebluetooth.ui.cgm;
 
 import android.content.Context;
 import android.os.Environment;

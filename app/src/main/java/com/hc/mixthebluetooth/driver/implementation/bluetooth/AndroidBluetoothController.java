@@ -1,26 +1,24 @@
-package com.hc.mixthebluetooth.activity.single;
+package com.hc.mixthebluetooth.driver.implementation.bluetooth;
 
 import android.content.Context;
 import android.util.Log;
 
-import com.hc.basiclibrary.log.LogUtils;
 import com.hc.bluetoothlibrary.AllBluetoothManage;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.bluetoothlibrary.IBluetooth;
 import com.hc.bluetoothlibrary.IBluetoothStop;
-import com.hc.mixthebluetooth.storage.Storage;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class HoldBluetooth {
-    private static final HoldBluetooth ourInstance = new HoldBluetooth();
+public class AndroidBluetoothController {
+    private static final AndroidBluetoothController ourInstance = new AndroidBluetoothController();
 
-    public static HoldBluetooth getInstance() {
+    public static AndroidBluetoothController getInstance() {
         return ourInstance;
     }
 
-    private HoldBluetooth() {}
+    private AndroidBluetoothController() {}
 
     public final static String DEVELOPMENT_MODE_KEY = "DEVELOPMENT_MODE_KEY";//日志模式的存储键值
 
@@ -31,7 +29,7 @@ public class HoldBluetooth {
 
     private boolean isDevelopmentMode = true;//默认为false 控制是否打开日志
 
-    public void initHoldBluetooth(final Context context, final UpdateList updateList){
+    public void initAndroidBluetoothController(final Context context, final UpdateList updateList){
 
         //接口里都有注释
         mAllBluetoothManage = new AllBluetoothManage(context, new IBluetooth() {
@@ -198,8 +196,8 @@ public class HoldBluetooth {
     }
 
     //设置是否进入开发模式
-    public void setDevelopmentMode(Context context) {
-        isDevelopmentMode = new Storage(context).getData(DEVELOPMENT_MODE_KEY);//获取是否进入开发模式
+    public void setDevelopmentMode(boolean enabled) {
+        isDevelopmentMode = enabled;
     }
 
     private void log(String log,String lv){

@@ -10,7 +10,7 @@ import com.hc.basiclibrary.dialog.CommonDialog;
 import com.hc.basiclibrary.ioc.OnClick;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.databinding.HintCollectMenuBinding;
 
 public class CollectBluetoothDialog extends LinearLayout {

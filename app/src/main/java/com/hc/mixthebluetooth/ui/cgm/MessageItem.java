@@ -2,8 +2,8 @@ package com.hc.mixthebluetooth.ui.cgm;
 
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.bluetoothlibrary.tootl.ModuleParameters;
-import com.hc.mixthebluetooth.activity.single.FragmentParameter;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 
 public class MessageItem {
 
@@ -48,7 +48,7 @@ public class MessageItem {
         if (data!= null) {
             return data;
         }
-        return Analysis.getByteToString(byteData, FragmentParameter.getInstance().getCodeFormat(null),isHex,false);
+        return Analysis.getByteToString(byteData, AppApi.settingsStore().textEncoding(),isHex,false);
     }
 
     /**

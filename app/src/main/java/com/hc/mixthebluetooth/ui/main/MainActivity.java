@@ -22,13 +22,14 @@ import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.single.HoldBluetooth;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.api.persistence.SettingsStore;
+import com.hc.mixthebluetooth.driver.implementation.bluetooth.AndroidBluetoothController;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.ui.cgm.CgmActivity;
 import com.hc.mixthebluetooth.ui.shared.dialog.HintHID;
 import com.hc.mixthebluetooth.ui.shared.dialog.PermissionHint;
 import com.hc.mixthebluetooth.databinding.ActivityMainBinding;
-import com.hc.mixthebluetooth.storage.Storage;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,12 +47,12 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
 
     private DefaultNavigationBar mTitle;
 
-    private Storage mStorage;
+    private SettingsStore settingsStore;
 
     private final List<DeviceModule> mModuleArray = new ArrayList<>();
     private final List<DeviceModule> mFilterModuleArray = new ArrayList<>();
 
-    private HoldBluetooth mHoldBluetooth;
+    private AndroidBluetoothController mAndroidBluetoothController;
 
     /*
      * 这个项目中类的开始入口为这里initAll()方法中
@@ -59,13 +60,13 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     @Override
     public void initAll() {
 
-        mStorage = new Storage(this);//sp存储
+        settingsStore = AppApi.settingsStore();//sp存储
 
         //设置头部
         setTitle();
 
         //初始化单例模式中的蓝牙扫描回调
-        initHoldBluetooth();
+        initAndroidBluetoothController();
 
         //初始化权限
         initPermission();
@@ -88,9 +89,9 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     /*
      * 连接蓝牙
      * */
-    private void initHoldBluetooth() {
-        mHoldBluetooth = HoldBluetooth.getInstance();
-        final HoldBluetooth.UpdateList updateList = new HoldBluetooth.UpdateList() {
+    private void initAndroidBluetoothController() {
+        mAndroidBluetoothController = AndroidBluetoothController.getInstance();
+        final AndroidBluetoothController.UpdateList updateList = new AndroidBluetoothController.UpdateList() {
             @Override
             public void update(boolean isStart, DeviceModule deviceModule) {
 
@@ -121,7 +122,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
                 }
             }
         };
-        mHoldBluetooth.initHoldBluetooth(MainActivity.this, updateList);
+        mAndroidBluetoothController.initAndroidBluetoothController(MainActivity.this, updateList);
     }
 
     private void initView() {
@@ -143,7 +144,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     //刷新的具体实现
     private void refresh() {
         popDialog();
-        if (mHoldBluetooth.scan(mStorage.getData(DeviceFilterDialog.BLE_KEY))) {
+        if (mAndroidBluetoothController.scan(settingsStore.getBoolean(DeviceFilterDialog.BLE_KEY, false))) {
             mModuleArray.clear();
             mFilterModuleArray.clear();
             mTitle.updateLoadingState(true);
@@ -153,12 +154,12 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
 
     //根据条件过滤列表，并选择是否更新列表
     private void addFilterList(DeviceModule deviceModule, boolean isRefresh) {
-        if (mStorage.getData(DeviceFilterDialog.NAME_KEY) && deviceModule.getName().equals("N/A"))
+        if (settingsStore.getBoolean(DeviceFilterDialog.NAME_KEY, false) && deviceModule.getName().equals("N/A"))
             return;
 
-        if (mStorage.getData(DeviceFilterDialog.BLE_KEY) && !deviceModule.isBLE()) return;
+        if (settingsStore.getBoolean(DeviceFilterDialog.BLE_KEY, false) && !deviceModule.isBLE()) return;
 
-        if ((mStorage.getData(DeviceFilterDialog.FILTER_KEY) || mStorage.getData(DeviceFilterDialog.CUSTOM_KEY)) && !deviceModule.isHcModule(mStorage.getData(DeviceFilterDialog.CUSTOM_KEY), mStorage.getDataString(DeviceFilterDialog.DATA_KEY))) {
+        if ((settingsStore.getBoolean(DeviceFilterDialog.FILTER_KEY, false) || settingsStore.getBoolean(DeviceFilterDialog.CUSTOM_KEY, false)) && !deviceModule.isHcModule(settingsStore.getBoolean(DeviceFilterDialog.CUSTOM_KEY, false), settingsStore.getString(DeviceFilterDialog.DATA_KEY, null))) {
             return;
         }
         deviceModule.isCollectName(MainActivity.this);
@@ -183,7 +184,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
             upDateList();
             mTitle.updateRightImage(false);
             if (resetEngine) {//更换搜索引擎，重新搜索
-                mHoldBluetooth.stopScan();
+                mAndroidBluetoothController.stopScan();
                 refresh();
             }
         });
@@ -205,9 +206,9 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
                     return;
                 }
                 log("选蓝牙-调用setDevelopmentMode");
-                mHoldBluetooth.setDevelopmentMode(MainActivity.this);//设置是否进入开发模式
+                mAndroidBluetoothController.setDevelopmentMode(settingsStore.getBoolean(AndroidBluetoothController.DEVELOPMENT_MODE_KEY, true));//设置是否进入开发模式
                 log("选蓝牙-调用connect");
-                mHoldBluetooth.connect(module);
+                mAndroidBluetoothController.connect(module);
                 log("选蓝牙-准备跳转CgmActivity");
                 Intent intent = new Intent(MainActivity.this, CgmActivity.class);
                 intent.putExtra("device_name", module.getName());
@@ -247,7 +248,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
 
     //扫描弹出提醒框
     private void popDialog() {
-        if (mStorage != null && mStorage.getFirstTime()) {
+        if (settingsStore != null && settingsStore.firstLaunch()) {
             CommonDialog.Builder hidBuilder = new CommonDialog.Builder(MainActivity.this);
             CommonDialog dialog = hidBuilder.setView(R.layout.hint_hid_vessel).loadAnimation().fullWidth().setCancelable(false).create();
             HintHID hintHID = hidBuilder.getView(R.id.hint_hid_vessel_view);
@@ -279,7 +280,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
                 //授权成功后打开蓝牙
                 log("申请成功");
                 new Handler().postDelayed(() -> {
-                    if (mHoldBluetooth.bluetoothState()) {
+                    if (mAndroidBluetoothController.bluetoothState()) {
                         if (Analysis.isOpenGPS(MainActivity.this)) {
                             refresh();
                         } else {
@@ -320,7 +321,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     protected void onPause() {
         super.onPause();
         //退出这个界面，或是返回桌面时，停止扫描
-        mHoldBluetooth.stopScan();
+        mAndroidBluetoothController.stopScan();
     }
 
     @Override

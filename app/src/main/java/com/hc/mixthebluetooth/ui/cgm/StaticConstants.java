@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.single;
+package com.hc.mixthebluetooth.ui.cgm;
 
 /**
  * Central event-channel names used by Activity, Fragment, and services.

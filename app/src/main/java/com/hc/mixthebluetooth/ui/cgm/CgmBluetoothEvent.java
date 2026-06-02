@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.activity.single;
+package com.hc.mixthebluetooth.ui.cgm;
 
 import androidx.annotation.NonNull;
 
@@ -12,11 +12,11 @@ import com.hc.bluetoothlibrary.DeviceModule;
  * This class keeps the same event-bus transport but gives each payload a
  * clear Java type before we start migrating Fragment code.
  */
-public abstract class BTPackage {
-    private BTPackage() {
+public abstract class CgmBluetoothEvent {
+    private CgmBluetoothEvent() {
     }
 
-    public static final class BTData extends BTPackage {
+    public static final class BTData extends CgmBluetoothEvent {
         @NonNull
         public final DeviceModule module;
 
@@ -29,7 +29,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class Connected extends BTPackage {
+    public static final class Connected extends CgmBluetoothEvent {
         @NonNull
         public final DeviceModule module;
 
@@ -38,14 +38,14 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class Disconnected extends BTPackage {
+    public static final class Disconnected extends CgmBluetoothEvent {
         public static final Disconnected INSTANCE = new Disconnected();
 
         private Disconnected() {
         }
     }
 
-    public static final class Velocity extends BTPackage {
+    public static final class Velocity extends CgmBluetoothEvent {
         public final int bytesPerSecond;
 
         public Velocity(int bytesPerSecond) {
@@ -53,7 +53,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class Log extends BTPackage {
+    public static final class Log extends CgmBluetoothEvent {
         @NonNull
         public final String message;
 
@@ -62,7 +62,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class BTPost extends BTPackage {
+    public static final class BTPost extends CgmBluetoothEvent {
         @NonNull
         public final DeviceModule module;
 
@@ -75,7 +75,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class ConnectState extends BTPackage {
+    public static final class ConnectState extends CgmBluetoothEvent {
         @NonNull
         public final String state;
 
@@ -84,7 +84,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class SentBytes extends BTPackage {
+    public static final class SentBytes extends CgmBluetoothEvent {
         public final int count;
 
         public SentBytes(int count) {
@@ -92,7 +92,7 @@ public abstract class BTPackage {
         }
     }
 
-    public static final class StopLoopSend extends BTPackage {
+    public static final class StopLoopSend extends CgmBluetoothEvent {
         public static final StopLoopSend INSTANCE = new StopLoopSend();
 
         private StopLoopSend() {

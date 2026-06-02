@@ -9,8 +9,7 @@ import com.hc.basiclibrary.recyclerAdapterBasic.ItemClickListener;
 import com.hc.basiclibrary.recyclerAdapterBasic.RecyclerCommonAdapter;
 import com.hc.basiclibrary.recyclerAdapterBasic.ViewHolder;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
-import com.hc.mixthebluetooth.ui.cgm.MessageItem;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 
 import java.util.List;
 

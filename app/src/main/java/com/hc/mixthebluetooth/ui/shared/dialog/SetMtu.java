@@ -11,7 +11,7 @@ import androidx.annotation.NonNull;
 
 import com.hc.basiclibrary.dialog.CommonDialog;
 import com.hc.mixthebluetooth.R;
-import com.hc.mixthebluetooth.activity.tool.Analysis;
+import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.databinding.HintCollectMenuBinding;
 
 
