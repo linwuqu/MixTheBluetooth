@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.impl.device;
+package com.hc.mixthebluetooth.application.device;
 
 import androidx.annotation.NonNull;
 
@@ -32,7 +32,7 @@ public final class DefaultDeviceDataService implements DeviceDataService {
             List<String> lines = sampleSource.readLines();
             CallResult<File> last = CallResult.error(
                     CallResult.DEVICE_REPLAY_INCOMPLETE,
-                    "设备回放数据不完整",
+                    "Device replay incomplete",
                     null
             );
             for (String line : lines) {
@@ -40,11 +40,11 @@ public final class DefaultDeviceDataService implements DeviceDataService {
             }
             callback.onResult(last.isOk() ? last : CallResult.error(
                     CallResult.DEVICE_REPLAY_INCOMPLETE,
-                    "设备回放数据不完整",
+                    "Device replay incomplete",
                     null
             ));
         } catch (Exception e) {
-            callback.onResult(CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "设备回放失败", e));
+            callback.onResult(CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "Device replay failed", e));
         }
     }
 
@@ -62,7 +62,7 @@ public final class DefaultDeviceDataService implements DeviceDataService {
     public void uploadLastDataFile(ApiCallback<CallResult<UploadedFile>> callback) {
         File file = lastDataFile();
         if (file == null || !file.exists()) {
-            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "文件不存在", null));
+            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "File not found", null));
             return;
         }
         fileService.upload(file, callback);

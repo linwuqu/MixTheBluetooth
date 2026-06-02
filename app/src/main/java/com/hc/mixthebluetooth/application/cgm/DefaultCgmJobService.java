@@ -10,7 +10,7 @@ import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
 import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerResponse;

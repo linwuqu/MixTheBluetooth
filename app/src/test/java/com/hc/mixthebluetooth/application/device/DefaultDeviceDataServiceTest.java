@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.impl.device;
+package com.hc.mixthebluetooth.application.device;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;

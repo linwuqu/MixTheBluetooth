@@ -8,7 +8,7 @@ import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
 import com.hc.mixthebluetooth.api.persistence.SessionStore;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
 import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerResponse;

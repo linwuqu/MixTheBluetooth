@@ -3,14 +3,13 @@ package com.hc.mixthebluetooth.driver.implementation.http;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.hc.mixthebluetooth.driver.capability.HttpTransport;
 import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
 
 public final class RetrofitServerClient {
     public interface TokenProvider {
@@ -30,6 +29,13 @@ public final class RetrofitServerClient {
     public static BioAiEndpoints create(@NonNull String baseUrl,
                                          @NonNull TokenProvider tokenProvider,
                                          boolean bodyLogging) {
+        return create(transport(baseUrl, tokenProvider, bodyLogging));
+    }
+
+    @NonNull
+    public static HttpTransport transport(@NonNull String baseUrl,
+                                          @NonNull TokenProvider tokenProvider,
+                                          boolean bodyLogging) {
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
         logging.setLevel(bodyLogging ? HttpLoggingInterceptor.Level.BODY : HttpLoggingInterceptor.Level.BASIC);
 
@@ -48,16 +54,16 @@ public final class RetrofitServerClient {
                 .addInterceptor(logging)
                 .build();
 
-        return create(baseUrl, client);
+        return new RetrofitHttpTransport(baseUrl, client);
     }
 
     @NonNull
     public static BioAiEndpoints create(@NonNull String baseUrl, @NonNull OkHttpClient client) {
-        return new Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .client(client)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build()
-                .create(BioAiEndpoints.class);
+        return create(new RetrofitHttpTransport(baseUrl, client));
+    }
+
+    @NonNull
+    public static BioAiEndpoints create(@NonNull HttpTransport transport) {
+        return transport.retrofit().create(BioAiEndpoints.class);
     }
 }

@@ -23,7 +23,7 @@ import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSampleParser;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.recyclerData.FragmentMessAdapter;
 import com.hc.mixthebluetooth.recyclerData.itemHolder.FragmentMessageItem;
 import com.hc.mixthebluetooth.uni.Widgets.MetricWidget;

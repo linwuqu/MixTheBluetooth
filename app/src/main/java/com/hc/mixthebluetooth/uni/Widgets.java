@@ -24,7 +24,7 @@ import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.hc.mixthebluetooth.activity.tool.BluetoothSample;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.customView.CircleProgressView;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.uni.Controller.Region;
 
 import java.text.SimpleDateFormat;

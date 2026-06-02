@@ -19,7 +19,7 @@ import com.hc.basiclibrary.viewBasic.HomeApplication;
 import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.api.AppApi;
-import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 
 import java.util.Objects;
 

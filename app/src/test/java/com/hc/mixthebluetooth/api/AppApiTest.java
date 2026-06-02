@@ -6,9 +6,11 @@ import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
+import com.hc.mixthebluetooth.api.codec.TextCodec;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
+import com.hc.mixthebluetooth.api.device.DeviceGateway;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
@@ -47,6 +49,8 @@ public class AppApiTest {
         assertSame(contracts.deviceData, AppApi.deviceData());
         assertSame(contracts.cgm, AppApi.cgm());
         assertSame(contracts.cgmWorkflow, AppApi.cgmWorkflow());
+        assertSame(contracts.deviceGateway, AppApi.deviceGateway());
+        assertSame(contracts.textCodec, AppApi.textCodec());
         assertSame(contracts.env, AppApi.env());
         assertSame(contracts.sessionStore, AppApi.sessionStore());
         assertSame(contracts.settingsStore, AppApi.settingsStore());
@@ -66,6 +70,8 @@ public class AppApiTest {
         assertSame(second.deviceData, AppApi.deviceData());
         assertSame(second.cgm, AppApi.cgm());
         assertSame(second.cgmWorkflow, AppApi.cgmWorkflow());
+        assertSame(second.deviceGateway, AppApi.deviceGateway());
+        assertSame(second.textCodec, AppApi.textCodec());
         assertSame(second.env, AppApi.env());
         assertSame(second.sessionStore, AppApi.sessionStore());
         assertSame(second.settingsStore, AppApi.settingsStore());
@@ -79,6 +85,8 @@ public class AppApiTest {
                 contracts.deviceData,
                 contracts.cgm,
                 contracts.cgmWorkflow,
+                contracts.deviceGateway,
+                contracts.textCodec,
                 contracts.env,
                 contracts.sessionStore,
                 contracts.settingsStore,
@@ -93,6 +101,8 @@ public class AppApiTest {
         final DeviceDataService deviceData = new FakeDeviceDataService();
         final CgmService cgm = new FakeCgmService();
         final CgmWorkflow cgmWorkflow = new FakeCgmWorkflow();
+        final DeviceGateway deviceGateway = new FakeDeviceGateway();
+        final TextCodec textCodec = new FakeTextCodec();
         final EnvConfig env = new EnvConfig("dev", "http://example.test/", true, "dev", true);
         final MemoryPreferencesStore memory = new MemoryPreferencesStore();
         final SessionStore sessionStore = new EncryptedSessionStore(memory);
@@ -167,6 +177,39 @@ public class AppApiTest {
 
         @Override
         public void reset() {
+        }
+    }
+
+    private static final class FakeDeviceGateway implements DeviceGateway {
+        @Override
+        public boolean isConnected() {
+            return false;
+        }
+
+        @Override
+        public void sendText(@NonNull String text) {
+        }
+
+        @Override
+        public void sendBytes(@NonNull byte[] bytes) {
+        }
+
+        @Override
+        public void disconnect() {
+        }
+    }
+
+    private static final class FakeTextCodec implements TextCodec {
+        @NonNull
+        @Override
+        public byte[] encode(@NonNull String text, @NonNull String charsetName) {
+            return new byte[0];
+        }
+
+        @NonNull
+        @Override
+        public String decode(@NonNull byte[] bytes, @NonNull String charsetName) {
+            return "";
         }
     }
 }

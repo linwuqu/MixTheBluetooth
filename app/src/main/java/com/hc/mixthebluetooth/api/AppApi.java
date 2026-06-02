@@ -3,9 +3,11 @@ package com.hc.mixthebluetooth.api;
 import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.api.auth.AuthService;
+import com.hc.mixthebluetooth.api.codec.TextCodec;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
+import com.hc.mixthebluetooth.api.device.DeviceGateway;
 import com.hc.mixthebluetooth.api.file.FileService;
 import com.hc.mixthebluetooth.api.log.AppLogger;
 import com.hc.mixthebluetooth.api.persistence.SessionStore;
@@ -18,6 +20,8 @@ public final class AppApi {
     private static DeviceDataService deviceData;
     private static CgmService cgm;
     private static CgmWorkflow cgmWorkflow;
+    private static DeviceGateway deviceGateway;
+    private static TextCodec textCodec;
     private static EnvConfig env;
     private static SessionStore sessionStore;
     private static SettingsStore settingsStore;
@@ -31,7 +35,7 @@ public final class AppApi {
                                             @NonNull DeviceDataService deviceDataService,
                                             @NonNull CgmService cgmService,
                                             @NonNull EnvConfig envConfig) {
-        install(authService, fileService, deviceDataService, cgmService, null, envConfig, null, null, null);
+        install(authService, fileService, deviceDataService, cgmService, null, null, null, envConfig, null, null, null);
     }
 
     public static synchronized void install(@NonNull AuthService authService,
@@ -42,7 +46,7 @@ public final class AppApi {
                                             SessionStore session,
                                             SettingsStore settings,
                                             AppLogger appLogger) {
-        install(authService, fileService, deviceDataService, cgmService, null, envConfig, session, settings, appLogger);
+        install(authService, fileService, deviceDataService, cgmService, null, null, null, envConfig, session, settings, appLogger);
     }
 
     public static synchronized void install(@NonNull AuthService authService,
@@ -50,6 +54,8 @@ public final class AppApi {
                                             @NonNull DeviceDataService deviceDataService,
                                             @NonNull CgmService cgmService,
                                             CgmWorkflow workflow,
+                                            DeviceGateway gateway,
+                                            TextCodec codec,
                                             @NonNull EnvConfig envConfig,
                                             SessionStore session,
                                             SettingsStore settings,
@@ -59,6 +65,8 @@ public final class AppApi {
         deviceData = deviceDataService;
         cgm = cgmService;
         cgmWorkflow = workflow;
+        deviceGateway = gateway;
+        textCodec = codec;
         env = envConfig;
         sessionStore = session;
         settingsStore = settings;
@@ -96,6 +104,18 @@ public final class AppApi {
     }
 
     @NonNull
+    public static synchronized DeviceGateway deviceGateway() {
+        if (deviceGateway == null) throw new IllegalStateException("AppApi is not initialized");
+        return deviceGateway;
+    }
+
+    @NonNull
+    public static synchronized TextCodec textCodec() {
+        if (textCodec == null) throw new IllegalStateException("AppApi is not initialized");
+        return textCodec;
+    }
+
+    @NonNull
     public static synchronized EnvConfig env() {
         if (env == null) throw new IllegalStateException("AppApi is not initialized");
         return env;
@@ -125,6 +145,8 @@ public final class AppApi {
         deviceData = null;
         cgm = null;
         cgmWorkflow = null;
+        deviceGateway = null;
+        textCodec = null;
         env = null;
         sessionStore = null;
         settingsStore = null;
