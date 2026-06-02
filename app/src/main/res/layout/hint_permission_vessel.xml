@@ -5,11 +5,11 @@
     android:orientation="vertical"
     android:gravity="center">
 
-    <com.hc.mixthebluetooth.customView.dialog.PermissionHint
+    <com.hc.mixthebluetooth.ui.shared.dialog.PermissionHint
         android:id="@+id/hint_permission_vessel_view"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content">
 
-    </com.hc.mixthebluetooth.customView.dialog.PermissionHint>
+    </com.hc.mixthebluetooth.ui.shared.dialog.PermissionHint>
 
 </LinearLayout>

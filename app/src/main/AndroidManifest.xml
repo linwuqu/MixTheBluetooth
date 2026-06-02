@@ -25,13 +25,13 @@
         tools:replace="android:name"
         tools:ignore="GoogleAppIndexingWarning">
         <activity
-            android:name=".activity.LoginActivity"
+            android:name=".ui.auth.LoginActivity"
             android:exported="false" />
         <activity
-            android:name=".activity.AccountRegisterActivity"
+            android:name=".ui.auth.RegisterActivity"
             android:exported="false" />
         <activity
-            android:name=".activity.IntroActivity"
+            android:name=".ui.intro.IntroActivity"
             android:exported="true"
             >
             <intent-filter>
@@ -41,14 +41,10 @@
             </intent-filter>
         </activity>
 
-
-        <activity android:name=".activity.SendFileActivity" />
-        <activity android:name=".activity.HIDActivity" />
-        <activity android:name=".activity.CommunicationActivity" />
-        <activity android:name=".activity.DebugActivity" />
+        <activity android:name=".ui.cgm.CgmActivity" />
 
         <activity
-            android:name=".activity.MainActivity"
+            android:name=".ui.main.MainActivity"
             android:exported="true">
         </activity>
     </application>

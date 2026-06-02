@@ -5,12 +5,12 @@
     android:orientation="vertical"
     android:gravity="center">
 
-    <com.hc.mixthebluetooth.customView.dialog.HintHID
+    <com.hc.mixthebluetooth.ui.shared.dialog.HintHID
         android:id="@+id/hint_hid_vessel_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-    </com.hc.mixthebluetooth.customView.dialog.HintHID>
+    </com.hc.mixthebluetooth.ui.shared.dialog.HintHID>
 
 
 </LinearLayout>

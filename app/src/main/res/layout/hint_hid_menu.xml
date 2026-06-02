@@ -63,7 +63,7 @@
                     android:paddingStart="15dp"
                     android:text="@string/hint_hid_no_hint"/>
 
-                <com.hc.mixthebluetooth.customView.CheckBoxSample
+                <com.hc.mixthebluetooth.ui.shared.view.CheckBoxSample
                     android:id="@+id/hint_hid_no_show"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"

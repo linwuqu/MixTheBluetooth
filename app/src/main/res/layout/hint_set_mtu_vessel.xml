@@ -5,12 +5,12 @@
     android:orientation="vertical"
     android:gravity="center">
 
-    <com.hc.mixthebluetooth.customView.dialog.SetMtu
+    <com.hc.mixthebluetooth.ui.shared.dialog.SetMtu
         android:id="@+id/hint_set_mtu_vessel_view"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content">
 
-    </com.hc.mixthebluetooth.customView.dialog.SetMtu>
+    </com.hc.mixthebluetooth.ui.shared.dialog.SetMtu>
 
     <View
         android:layout_width="1dp"

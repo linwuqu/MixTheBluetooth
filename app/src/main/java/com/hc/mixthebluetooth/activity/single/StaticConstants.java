@@ -44,7 +44,7 @@ public final class StaticConstants {
     public static final String CH_FRAGMENT_HIDE = "CH_FRAGMENT_HIDE";
     public static final String CH_FRAGMENT_UNHIDE = "CH_FRAGMENT_UNHIDE";
 
-    // Cross-fragment event currently used by FragmentCustom and its children.
+    // Legacy custom-send event kept until the transport constants are moved.
     public static final String EV_CUSTOM_NEWLINE = "EV_CUSTOM_NEWLINE";
 
     // Legacy Fragment -> Activity command. New UnifiedMessage code should use CMD_BT_POST.
