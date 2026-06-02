@@ -14,7 +14,8 @@ import com.hc.mixthebluetooth.impl.file.DefaultFileService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.local.DeviceDataRecorder;
 import com.hc.mixthebluetooth.local.DeviceReplaySample;
-import com.hc.mixthebluetooth.local.SessionStore;
+import com.hc.mixthebluetooth.api.persistence.SessionStore;
+import com.hc.mixthebluetooth.persistence.EncryptedSessionStore;
 import com.hc.mixthebluetooth.remote.ServerClient;
 import com.hc.mixthebluetooth.remote.ServerEndpoints;
 import com.hc.mixthebluetooth.runtime.EnvConfig;
@@ -30,9 +31,9 @@ public final class AppApiBootstrap {
 
         Context app = context.getApplicationContext();
         EnvConfig env = EnvConfig.fromBuildConfig();
-        SessionStore sessionStore = new SessionStore(app);
+        SessionStore sessionStore = EncryptedSessionStore.create(app);
 
-        ServerEndpoints endpoints = ServerClient.create(env.baseUrl(), sessionStore, env.debug());
+        ServerEndpoints endpoints = ServerClient.create(env.baseUrl(), sessionStore::token, env.debug());
         FileService fileService = new DefaultFileService(endpoints);
         AuthService authService = new DefaultAuthService(endpoints, sessionStore);
         CgmService cgmService = new DefaultCgmService(endpoints);

@@ -1,92 +1,79 @@
 package com.hc.mixthebluetooth.storage;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
-import android.content.SharedPreferences;
 
-import static android.os.ParcelFileDescriptor.MODE_APPEND;
+import androidx.annotation.NonNull;
+
+import com.hc.mixthebluetooth.api.persistence.SettingsStore;
+import com.hc.mixthebluetooth.persistence.EncryptedSettingsStore;
 
 public class Storage {
     private final String widthKey = "widthKey";
-    private final String firstTimeStartKey = "firstTimeStartKey";
     private final String invalidAT = "invalidAT";
-    private final String codedFormatKey = "codedFormatKey";
     private final String saveInputDateKey = "saveInputDateKey";
     private final String saveCheckShowDataState = "saveCheckShowDataState";
-    private final SharedPreferences sp;
-    @SuppressLint("WrongConstant")
-    public Storage(Context context){
-        sp = context.getSharedPreferences("storage",
-                MODE_APPEND| Context.MODE_PRIVATE);
+    private final SettingsStore settingsStore;
+
+    public Storage(Context context) {
+        this(EncryptedSettingsStore.create(context));
     }
+
+    Storage(@NonNull SettingsStore settingsStore) {
+        this.settingsStore = settingsStore;
+    }
+
     public void saveData(String key, boolean value){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putBoolean(key,value);
-        editor.apply();
+        settingsStore.putBoolean(key, value);
     }
 
     public void saveData(String key, String value){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putString(key,value);
-        editor.apply();
+        settingsStore.putString(key, value);
     }
 
     public void saveWidth(int value){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putInt(widthKey,value);
-        editor.apply();
+        settingsStore.putInt(widthKey, value);
     }
 
     public void saveFirstTime(){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putBoolean(firstTimeStartKey,false);
-        editor.apply();
+        settingsStore.setFirstLaunch(false);
     }
 
     public void saveInvalidAT(){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putBoolean(invalidAT,false);
-        editor.apply();
+        settingsStore.putBoolean(invalidAT, false);
     }
 
     public void saveCodedFormat(String code){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putString(codedFormatKey,code);
-        editor.apply();
+        settingsStore.setTextEncoding(code);
     }
 
     public void saveInputData(String data){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putString(saveInputDateKey,data);
-        editor.apply();
+        settingsStore.putString(saveInputDateKey, data);
     }
 
     public void saveCheckShowDataState(boolean isCheck){
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putBoolean(saveCheckShowDataState,isCheck);
-        editor.apply();
+        settingsStore.putBoolean(saveCheckShowDataState, isCheck);
     }
 
     public boolean getData(String key){
-        return sp.getBoolean(key,false);
+        return settingsStore.getBoolean(key, false);
     }
 
     public String getDataString(String key){
-        return sp.getString(key,null);
+        return settingsStore.getString(key, null);
     }
 
-    public int getWidth(){return sp.getInt(widthKey,-1);}
+    public int getWidth(){return settingsStore.getInt(widthKey, -1);}
 
     public boolean getFirstTime(){
-        return sp.getBoolean(firstTimeStartKey,true);
+        return settingsStore.firstLaunch();
     }
 
-    public boolean getInvalidAT(){ return sp.getBoolean(invalidAT,true);}
+    public boolean getInvalidAT(){ return settingsStore.getBoolean(invalidAT, true);}
 
-    public String getCodedFormat(){ return sp.getString(codedFormatKey,"GBK");}
+    public String getCodedFormat(){ return settingsStore.textEncoding();}
 
-    public String getSaveInputData(){return sp.getString(saveInputDateKey,"");}
+    public String getSaveInputData(){return settingsStore.getString(saveInputDateKey, "");}
 
-    public boolean getDataCheckState(){return sp.getBoolean(saveCheckShowDataState,true);}
+    public boolean getDataCheckState(){return settingsStore.getBoolean(saveCheckShowDataState, true);}
 
 }

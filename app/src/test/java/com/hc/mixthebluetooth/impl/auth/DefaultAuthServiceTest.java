@@ -9,13 +9,13 @@ import androidx.annotation.Nullable;
 
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
-import com.hc.mixthebluetooth.local.SessionStore;
+import com.hc.mixthebluetooth.api.persistence.SessionStore;
+import com.hc.mixthebluetooth.persistence.EncryptedSessionStore;
+import com.hc.mixthebluetooth.persistence.MemoryPreferencesStore;
 import com.hc.mixthebluetooth.remote.ServerClient;
 
 import org.junit.Test;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,7 +32,7 @@ public class DefaultAuthServiceTest {
                     .setBody("{\"code\":0,\"success\":true,\"msg\":\"\",\"data\":{\"accountId\":1,\"username\":\"debug-user\",\"phone\":\"13800138000\",\"token\":\"token\"}}"));
             server.start();
 
-            SessionStore store = new SessionStore(new MemoryStore());
+            SessionStore store = new EncryptedSessionStore(new MemoryPreferencesStore());
             DefaultAuthService service = new DefaultAuthService(
                     ServerClient.create(server.url("/").toString(), () -> null, true),
                     store
@@ -53,40 +53,4 @@ public class DefaultAuthServiceTest {
         }
     }
 
-    private static final class MemoryStore implements SessionStore.Store {
-        private final Map<String, Object> values = new HashMap<>();
-
-        @Override
-        public void putString(@NonNull String key, @NonNull String value) {
-            values.put(key, value);
-        }
-
-        @Override
-        public void putLong(@NonNull String key, long value) {
-            values.put(key, value);
-        }
-
-        @Nullable
-        @Override
-        public String getString(@NonNull String key) {
-            Object value = values.get(key);
-            return value instanceof String ? (String) value : null;
-        }
-
-        @Override
-        public long getLong(@NonNull String key, long defaultValue) {
-            Object value = values.get(key);
-            return value instanceof Long ? (Long) value : defaultValue;
-        }
-
-        @Override
-        public void remove(@NonNull String key) {
-            values.remove(key);
-        }
-
-        @Override
-        public void clear() {
-            values.clear();
-        }
-    }
 }

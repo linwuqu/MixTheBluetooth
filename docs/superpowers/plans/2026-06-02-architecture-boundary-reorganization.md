@@ -418,6 +418,7 @@ implementation 'androidx.security:security-crypto:1.0.0'
 
 - [ ] Expected:
   - `androidx.security:security-crypto:1.0.0` resolves.
+  - This plan uses the stable 1.0.0 API, so `EncryptedPreferencesStore` must create the master key through `MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)`.
   - If dependency resolution fails because the repository cannot resolve this version, replace it with the nearest stable AndroidX Security Crypto version available in Google Maven and record the version in this plan file before continuing.
 
 ### Task 2.2: Create Persistence API Contracts
@@ -521,7 +522,7 @@ app/src/main/java/com/hc/mixthebluetooth/persistence/EncryptedPreferencesStore.j
 
 Implementation requirements:
 
-- Use `MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()`.
+- Use `MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)`.
 - Use `EncryptedSharedPreferences.create(...)`.
 - Use `PrefKeyEncryptionScheme.AES256_SIV`.
 - Use `PrefValueEncryptionScheme.AES256_GCM`.
