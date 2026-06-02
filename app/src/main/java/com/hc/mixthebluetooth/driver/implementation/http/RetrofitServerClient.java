@@ -1,7 +1,9 @@
-package com.hc.mixthebluetooth.remote;
+package com.hc.mixthebluetooth.driver.implementation.http;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 
 import java.util.concurrent.TimeUnit;
 
@@ -10,22 +12,22 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
-public final class ServerClient {
+public final class RetrofitServerClient {
     public interface TokenProvider {
         @Nullable
         String token();
     }
 
-    private ServerClient() {
+    private RetrofitServerClient() {
     }
 
     @NonNull
-    public static ServerEndpoints create(@NonNull String baseUrl, @NonNull TokenProvider tokenProvider) {
+    public static BioAiEndpoints create(@NonNull String baseUrl, @NonNull TokenProvider tokenProvider) {
         return create(baseUrl, tokenProvider, false);
     }
 
     @NonNull
-    public static ServerEndpoints create(@NonNull String baseUrl,
+    public static BioAiEndpoints create(@NonNull String baseUrl,
                                          @NonNull TokenProvider tokenProvider,
                                          boolean bodyLogging) {
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
@@ -50,12 +52,12 @@ public final class ServerClient {
     }
 
     @NonNull
-    public static ServerEndpoints create(@NonNull String baseUrl, @NonNull OkHttpClient client) {
+    public static BioAiEndpoints create(@NonNull String baseUrl, @NonNull OkHttpClient client) {
         return new Retrofit.Builder()
                 .baseUrl(baseUrl)
                 .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
-                .create(ServerEndpoints.class);
+                .create(BioAiEndpoints.class);
     }
 }

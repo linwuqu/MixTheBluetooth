@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.impl.cgm;
+package com.hc.mixthebluetooth.application.cgm;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -11,9 +11,9 @@ import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
-import com.hc.mixthebluetooth.remote.ServerEndpoints;
-import com.hc.mixthebluetooth.remote.ServerModels;
-import com.hc.mixthebluetooth.remote.ServerResponse;
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerResponse;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -26,26 +26,26 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public final class DefaultCgmService implements CgmService {
+public final class DefaultCgmJobService implements CgmService {
     interface PollScheduler {
         void postDelayed(@NonNull Runnable runnable, long delayMillis);
     }
 
-    private static final String OWNER = "DefaultCgmService";
+    private static final String OWNER = "DefaultCgmJobService";
     private static final String API_UPLOAD = "POST /api/test/v1/upload";
     private static final String API_CGM = "GET /api/cgm/v1/jobs/{jobId}";
     private static final int MAX_POLL_ATTEMPTS = 8;
     private static final long POLL_DELAY_MS = 1500L;
 
-    private final ServerEndpoints endpoints;
+    private final BioAiEndpoints endpoints;
     private final PollScheduler scheduler;
 
-    public DefaultCgmService(@NonNull ServerEndpoints endpoints) {
+    public DefaultCgmJobService(@NonNull BioAiEndpoints endpoints) {
         this(endpoints, (runnable, delayMillis) ->
                 new Handler(Looper.getMainLooper()).postDelayed(runnable, delayMillis));
     }
 
-    DefaultCgmService(@NonNull ServerEndpoints endpoints, @NonNull PollScheduler scheduler) {
+    DefaultCgmJobService(@NonNull BioAiEndpoints endpoints, @NonNull PollScheduler scheduler) {
         this.endpoints = endpoints;
         this.scheduler = scheduler;
     }
@@ -54,7 +54,7 @@ public final class DefaultCgmService implements CgmService {
     public void uploadAndPoll(File cacheFile,
                               ApiCallback<CallResult<CgmResult>> callback) {
         if (cacheFile == null || !cacheFile.exists() || !cacheFile.isFile()) {
-            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "CGM 缓存 txt 不存在", null));
+            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "CGM cache txt file not found", null));
             return;
         }
 
@@ -74,7 +74,7 @@ public final class DefaultCgmService implements CgmService {
 
                 Long jobId = extractJobId(server);
                 if (jobId == null) {
-                    callback.onResult(CallResult.error(CallResult.EMPTY_DATA, "上传成功但缺少 jobId", null));
+                    callback.onResult(CallResult.error(CallResult.EMPTY_DATA, "Upload succeeded but missing jobId", null));
                     return;
                 }
 
@@ -101,11 +101,11 @@ public final class DefaultCgmService implements CgmService {
                              int attempt,
                              ApiCallback<CallResult<CgmResult>> callback) {
         String api = API_CGM.replace("{jobId}", String.valueOf(jobId));
-        endpoints.cgmJob(jobId).enqueue(new Callback<ServerModels.CgmJobResp>() {
+        endpoints.cgmJob(jobId).enqueue(new Callback<ServerDtos.CgmJobResp>() {
             @Override
-            public void onResponse(@NonNull Call<ServerModels.CgmJobResp> call,
-                                   @NonNull Response<ServerModels.CgmJobResp> response) {
-                ServerModels.CgmJobResp result = response.body();
+            public void onResponse(@NonNull Call<ServerDtos.CgmJobResp> call,
+                                   @NonNull Response<ServerDtos.CgmJobResp> response) {
+                ServerDtos.CgmJobResp result = response.body();
                 ApiTraceLogger.json(OWNER, api, "response attempt=" + attempt, result);
                 if (isGenerated(response, result)) {
                     callback.onResult(CallResult.ok(toApiResult(result.data)));
@@ -120,7 +120,7 @@ public final class DefaultCgmService implements CgmService {
             }
 
             @Override
-            public void onFailure(@NonNull Call<ServerModels.CgmJobResp> call, @NonNull Throwable t) {
+            public void onFailure(@NonNull Call<ServerDtos.CgmJobResp> call, @NonNull Throwable t) {
                 ApiTraceLogger.text(OWNER, api, "failure attempt=" + attempt, failureText(t));
                 if (attempt >= MAX_POLL_ATTEMPTS) {
                     callback.onResult(CallResult.error(CallResult.NETWORK, "CGM 轮询失败", t));
@@ -147,8 +147,8 @@ public final class DefaultCgmService implements CgmService {
         return server.msg != null ? server.msg : "上传失败";
     }
 
-    private static boolean isGenerated(@NonNull Response<ServerModels.CgmJobResp> response,
-                                       @Nullable ServerModels.CgmJobResp result) {
+    private static boolean isGenerated(@NonNull Response<ServerDtos.CgmJobResp> response,
+                                       @Nullable ServerDtos.CgmJobResp result) {
         return response.isSuccessful()
                 && result != null
                 && result.code == 200
@@ -157,7 +157,7 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @NonNull
-    private static CgmResult toApiResult(@NonNull ServerModels.CgmJobData data) {
+    private static CgmResult toApiResult(@NonNull ServerDtos.CgmJobData data) {
         CgmResult result = new CgmResult();
         result.resultId = data.resultId;
         result.jobId = data.jobId;
@@ -177,7 +177,7 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @Nullable
-    private static CgmResult.Summary toApiSummary(@Nullable ServerModels.CgmSummary data) {
+    private static CgmResult.Summary toApiSummary(@Nullable ServerDtos.CgmSummary data) {
         if (data == null) return null;
         CgmResult.Summary result = new CgmResult.Summary();
         result.avgMard = data.avgMard;
@@ -187,7 +187,7 @@ public final class DefaultCgmService implements CgmService {
         result.predictionStats = toApiPredictionStats(data.predictionStats);
         if (data.units != null) {
             result.units = new ArrayList<>();
-            for (ServerModels.CgmUnit unit : data.units) {
+            for (ServerDtos.CgmUnit unit : data.units) {
                 result.units.add(toApiUnit(unit));
             }
         }
@@ -195,7 +195,7 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @Nullable
-    private static CgmResult.PredictionStats toApiPredictionStats(@Nullable ServerModels.CgmPredictionStats data) {
+    private static CgmResult.PredictionStats toApiPredictionStats(@Nullable ServerDtos.CgmPredictionStats data) {
         if (data == null) return null;
         CgmResult.PredictionStats result = new CgmResult.PredictionStats();
         result.min = data.min;
@@ -206,7 +206,7 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @NonNull
-    private static CgmResult.Unit toApiUnit(@NonNull ServerModels.CgmUnit data) {
+    private static CgmResult.Unit toApiUnit(@NonNull ServerDtos.CgmUnit data) {
         CgmResult.Unit result = new CgmResult.Unit();
         result.unit = data.unit;
         result.unitTitle = data.unitTitle;
@@ -214,7 +214,7 @@ public final class DefaultCgmService implements CgmService {
         result.mard = data.mard;
         if (data.points != null) {
             result.points = new ArrayList<>();
-            for (ServerModels.CgmPoint point : data.points) {
+            for (ServerDtos.CgmPoint point : data.points) {
                 result.points.add(toApiPoint(point));
             }
         }
@@ -222,7 +222,7 @@ public final class DefaultCgmService implements CgmService {
     }
 
     @NonNull
-    private static CgmResult.Point toApiPoint(@NonNull ServerModels.CgmPoint data) {
+    private static CgmResult.Point toApiPoint(@NonNull ServerDtos.CgmPoint data) {
         CgmResult.Point result = new CgmResult.Point();
         result.index = data.index;
         result.time = data.time;

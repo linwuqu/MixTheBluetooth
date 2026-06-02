@@ -1,10 +1,11 @@
-package com.hc.mixthebluetooth.remote;
+package com.hc.mixthebluetooth.driver.implementation.http;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 import com.google.gson.Gson;
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
 
 import org.junit.Test;
 
@@ -46,9 +47,9 @@ public class CgmJobRespParsingTest {
 
     @Test
     public void parsesConfirmedCgmJobResponseShape() {
-        ServerModels.CgmJobResp result = new Gson().fromJson(
+        ServerDtos.CgmJobResp result = new Gson().fromJson(
                 SAMPLE_JSON,
-                ServerModels.CgmJobResp.class
+                ServerDtos.CgmJobResp.class
         );
 
         assertEquals(200, result.code);

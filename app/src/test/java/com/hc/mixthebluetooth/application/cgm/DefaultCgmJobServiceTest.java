@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.impl.cgm;
+package com.hc.mixthebluetooth.application.cgm;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -7,9 +7,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
-import com.hc.mixthebluetooth.remote.CgmJobRespParsingTest;
-import com.hc.mixthebluetooth.remote.ServerClient;
-import com.hc.mixthebluetooth.remote.ServerEndpoints;
+import com.hc.mixthebluetooth.driver.implementation.http.CgmJobRespParsingTest;
+import com.hc.mixthebluetooth.driver.implementation.http.RetrofitServerClient;
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -26,7 +26,7 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 
-public class DefaultCgmServiceTest {
+public class DefaultCgmJobServiceTest {
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -46,8 +46,8 @@ public class DefaultCgmServiceTest {
                     "Start Playback\nEIS:1,1000,0.12\nPlayback all done\n"
                             .getBytes(StandardCharsets.UTF_8));
 
-            ServerEndpoints endpoints = ServerClient.create(server.url("/").toString(), () -> null, true);
-            DefaultCgmService service = new DefaultCgmService(endpoints, (runnable, delayMillis) -> runnable.run());
+            BioAiEndpoints endpoints = RetrofitServerClient.create(server.url("/").toString(), () -> null, true);
+            DefaultCgmJobService service = new DefaultCgmJobService(endpoints, (runnable, delayMillis) -> runnable.run());
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
@@ -84,7 +84,7 @@ public class DefaultCgmServiceTest {
             server.start();
 
             File file = cacheFile();
-            DefaultCgmService service = service(server);
+            DefaultCgmJobService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
@@ -113,7 +113,7 @@ public class DefaultCgmServiceTest {
             server.start();
 
             File file = cacheFile();
-            DefaultCgmService service = service(server);
+            DefaultCgmJobService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
@@ -142,7 +142,7 @@ public class DefaultCgmServiceTest {
                     .setBody(CgmJobRespParsingTest.SAMPLE_JSON));
             server.start();
 
-            DefaultCgmService service = service(server);
+            DefaultCgmJobService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
@@ -171,7 +171,7 @@ public class DefaultCgmServiceTest {
                     .setBody("{\"code\":200,\"message\":\"success\",\"data\":{\"jobId\":456,\"status\":\"GENERATED\",\"pointCount\":0,\"unitCount\":0}}"));
             server.start();
 
-            DefaultCgmService service = service(server);
+            DefaultCgmJobService service = service(server);
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<CgmResult>> result = new AtomicReference<>();
 
@@ -197,8 +197,8 @@ public class DefaultCgmServiceTest {
         return file;
     }
 
-    private DefaultCgmService service(MockWebServer server) {
-        ServerEndpoints endpoints = ServerClient.create(server.url("/").toString(), () -> null, true);
-        return new DefaultCgmService(endpoints, (runnable, delayMillis) -> runnable.run());
+    private DefaultCgmJobService service(MockWebServer server) {
+        BioAiEndpoints endpoints = RetrofitServerClient.create(server.url("/").toString(), () -> null, true);
+        return new DefaultCgmJobService(endpoints, (runnable, delayMillis) -> runnable.run());
     }
 }

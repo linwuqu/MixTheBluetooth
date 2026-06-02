@@ -1,18 +1,15 @@
-package com.hc.mixthebluetooth.impl.auth;
+package com.hc.mixthebluetooth.application.auth;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.auth.AuthUser;
 import com.hc.mixthebluetooth.api.persistence.SessionStore;
 import com.hc.mixthebluetooth.persistence.EncryptedSessionStore;
 import com.hc.mixthebluetooth.persistence.MemoryPreferencesStore;
-import com.hc.mixthebluetooth.remote.ServerClient;
+import com.hc.mixthebluetooth.driver.implementation.http.RetrofitServerClient;
 
 import org.junit.Test;
 
@@ -34,7 +31,7 @@ public class DefaultAuthServiceTest {
 
             SessionStore store = new EncryptedSessionStore(new MemoryPreferencesStore());
             DefaultAuthService service = new DefaultAuthService(
-                    ServerClient.create(server.url("/").toString(), () -> null, true),
+                    RetrofitServerClient.create(server.url("/").toString(), () -> null, true),
                     store
             );
             CountDownLatch latch = new CountDownLatch(1);

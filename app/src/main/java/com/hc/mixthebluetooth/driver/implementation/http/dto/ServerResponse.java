@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.remote;
+package com.hc.mixthebluetooth.driver.implementation.http.dto;
 
 import androidx.annotation.Nullable;
 

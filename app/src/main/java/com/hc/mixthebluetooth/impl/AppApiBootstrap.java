@@ -6,18 +6,18 @@ import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.api.auth.AuthService;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
 import com.hc.mixthebluetooth.api.device.DeviceDataService;
-import com.hc.mixthebluetooth.api.file.FileService;
-import com.hc.mixthebluetooth.impl.auth.DefaultAuthService;
-import com.hc.mixthebluetooth.impl.cgm.DefaultCgmService;
+import com.hc.mixthebluetooth.api.file.FileUploadService;
+import com.hc.mixthebluetooth.application.auth.DefaultAuthService;
+import com.hc.mixthebluetooth.application.cgm.DefaultCgmJobService;
 import com.hc.mixthebluetooth.impl.device.DefaultDeviceDataService;
-import com.hc.mixthebluetooth.impl.file.DefaultFileService;
+import com.hc.mixthebluetooth.application.file.DefaultFileUploadService;
 import com.hc.mixthebluetooth.impl.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.api.persistence.SessionStore;
 import com.hc.mixthebluetooth.driver.implementation.file.AndroidFileRecorder;
 import com.hc.mixthebluetooth.driver.implementation.file.AssetReplaySource;
 import com.hc.mixthebluetooth.persistence.EncryptedSessionStore;
-import com.hc.mixthebluetooth.remote.ServerClient;
-import com.hc.mixthebluetooth.remote.ServerEndpoints;
+import com.hc.mixthebluetooth.driver.implementation.http.RetrofitServerClient;
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 import com.hc.mixthebluetooth.runtime.EnvConfig;
 
 public final class AppApiBootstrap {
@@ -33,10 +33,10 @@ public final class AppApiBootstrap {
         EnvConfig env = EnvConfig.fromBuildConfig();
         SessionStore sessionStore = EncryptedSessionStore.create(app);
 
-        ServerEndpoints endpoints = ServerClient.create(env.baseUrl(), sessionStore::token, env.debug());
-        FileService fileService = new DefaultFileService(endpoints);
+        BioAiEndpoints endpoints = RetrofitServerClient.create(env.baseUrl(), sessionStore::token, env.debug());
+        FileUploadService fileService = new DefaultFileUploadService(endpoints);
         AuthService authService = new DefaultAuthService(endpoints, sessionStore);
-        CgmService cgmService = new DefaultCgmService(endpoints);
+        CgmService cgmService = new DefaultCgmJobService(endpoints);
 
         ApiTraceLogger.text("AppApiBootstrap", "ENV", "config",
                 "env=" + env.env()

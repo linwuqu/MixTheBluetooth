@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.remote;
+package com.hc.mixthebluetooth.driver.implementation.http.dto;
 
 import androidx.annotation.Nullable;
 
@@ -6,8 +6,8 @@ import com.google.gson.annotations.SerializedName;
 
 import java.util.List;
 
-public final class ServerModels {
-    private ServerModels() {
+public final class ServerDtos {
+    private ServerDtos() {
     }
 
     public static final class LoginReq {

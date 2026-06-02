@@ -1,7 +1,10 @@
-package com.hc.mixthebluetooth.remote;
+package com.hc.mixthebluetooth.driver.implementation.http;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -19,7 +22,7 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 
-public class ServerEndpointsContractTest {
+public class BioAiEndpointsContractTest {
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -31,13 +34,13 @@ public class ServerEndpointsContractTest {
             server.enqueue(accountResponse());
             server.start();
 
-            ServerEndpoints endpoints = ServerClient.create(
+            BioAiEndpoints endpoints = RetrofitServerClient.create(
                     server.url("/").toString(),
                     new OkHttpClient.Builder().build()
             );
 
-            endpoints.login(new ServerModels.LoginReq("13800138000", "123456")).execute();
-            endpoints.register(new ServerModels.RegisterReq("debug-user", "123456", "13800138000", null)).execute();
+            endpoints.login(new ServerDtos.LoginReq("13800138000", "123456")).execute();
+            endpoints.register(new ServerDtos.RegisterReq("debug-user", "123456", "13800138000", null)).execute();
             endpoints.detail().execute();
 
             RecordedRequest login = server.takeRequest();
@@ -66,7 +69,7 @@ public class ServerEndpointsContractTest {
             Files.write(file.toPath(),
                     "Start Playback\nEIS:1,1000,0.12\n".getBytes(StandardCharsets.UTF_8));
 
-            ServerEndpoints endpoints = ServerClient.create(
+            BioAiEndpoints endpoints = RetrofitServerClient.create(
                     server.url("/").toString(),
                     new OkHttpClient.Builder().build()
             );
@@ -108,7 +111,7 @@ public class ServerEndpointsContractTest {
             File file = temporaryFolder.newFile("cgm-cache.txt");
             Files.write(file.toPath(), "raw txt payload".getBytes(StandardCharsets.UTF_8));
 
-            ServerEndpoints endpoints = ServerClient.create(
+            BioAiEndpoints endpoints = RetrofitServerClient.create(
                     server.url("/").toString(),
                     () -> null,
                     true
@@ -139,7 +142,7 @@ public class ServerEndpointsContractTest {
                     .setBody(CgmJobRespParsingTest.SAMPLE_JSON));
             server.start();
 
-            ServerEndpoints endpoints = ServerClient.create(
+            BioAiEndpoints endpoints = RetrofitServerClient.create(
                     server.url("/").toString(),
                     () -> null,
                     true

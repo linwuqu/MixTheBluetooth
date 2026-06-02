@@ -1,14 +1,14 @@
-package com.hc.mixthebluetooth.impl.file;
+package com.hc.mixthebluetooth.application.file;
 
 import androidx.annotation.NonNull;
 
 import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
-import com.hc.mixthebluetooth.api.file.FileService;
+import com.hc.mixthebluetooth.api.file.FileUploadService;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
-import com.hc.mixthebluetooth.remote.ServerEndpoints;
-import com.hc.mixthebluetooth.remote.ServerModels;
-import com.hc.mixthebluetooth.remote.ServerResponse;
+import com.hc.mixthebluetooth.driver.implementation.http.endpoint.BioAiEndpoints;
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerDtos;
+import com.hc.mixthebluetooth.driver.implementation.http.dto.ServerResponse;
 
 import java.io.File;
 
@@ -19,17 +19,17 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public final class DefaultFileService implements FileService {
-    private final ServerEndpoints endpoints;
+public final class DefaultFileUploadService implements FileUploadService {
+    private final BioAiEndpoints endpoints;
 
-    public DefaultFileService(@NonNull ServerEndpoints endpoints) {
+    public DefaultFileUploadService(@NonNull BioAiEndpoints endpoints) {
         this.endpoints = endpoints;
     }
 
     @Override
     public void upload(File file, ApiCallback<CallResult<UploadedFile>> callback) {
         if (file == null || !file.exists() || !file.isFile()) {
-            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "文件不存在", null));
+            callback.onResult(CallResult.error(CallResult.LOCAL_FILE_NOT_FOUND, "File not found", null));
             return;
         }
 
@@ -41,37 +41,37 @@ public final class DefaultFileService implements FileService {
         MultipartBody.Part part = MultipartBody.Part.createFormData("file", file.getName(), body);
 
         endpoints.upload(fileName, identify, parentId, fileSize, part)
-                .enqueue(new Callback<ServerResponse<ServerModels.FileResp>>() {
+                .enqueue(new Callback<ServerResponse<ServerDtos.FileResp>>() {
                     @Override
-                    public void onResponse(@NonNull Call<ServerResponse<ServerModels.FileResp>> call,
-                                           @NonNull Response<ServerResponse<ServerModels.FileResp>> response) {
+                    public void onResponse(@NonNull Call<ServerResponse<ServerDtos.FileResp>> call,
+                                           @NonNull Response<ServerResponse<ServerDtos.FileResp>> response) {
                         callback.onResult(mapFileResponse(response.body()));
                     }
 
                     @Override
-                    public void onFailure(@NonNull Call<ServerResponse<ServerModels.FileResp>> call,
+                    public void onFailure(@NonNull Call<ServerResponse<ServerDtos.FileResp>> call,
                                           @NonNull Throwable t) {
-                        callback.onResult(CallResult.error(CallResult.NETWORK, "网络错误", t));
+                        callback.onResult(CallResult.error(CallResult.NETWORK, "Network error", t));
                     }
                 });
     }
 
     @NonNull
-    private static CallResult<UploadedFile> mapFileResponse(ServerResponse<ServerModels.FileResp> response) {
+    private static CallResult<UploadedFile> mapFileResponse(ServerResponse<ServerDtos.FileResp> response) {
         if (response == null) {
-            return CallResult.error(CallResult.EMPTY_RESPONSE, "服务端响应为空", null);
+            return CallResult.error(CallResult.EMPTY_RESPONSE, "Empty server response", null);
         }
         if (!response.success) {
-            return CallResult.error(response.code, response.msg != null ? response.msg : "上传失败", null);
+            return CallResult.error(response.code, response.msg != null ? response.msg : "Upload failed", null);
         }
         if (response.data == null) {
-            return CallResult.error(CallResult.EMPTY_DATA, "文件数据为空", null);
+            return CallResult.error(CallResult.EMPTY_DATA, "Empty file data", null);
         }
         return CallResult.ok(toUploadedFile(response.data));
     }
 
     @NonNull
-    private static UploadedFile toUploadedFile(@NonNull ServerModels.FileResp resp) {
+    private static UploadedFile toUploadedFile(@NonNull ServerDtos.FileResp resp) {
         UploadedFile file = new UploadedFile();
         file.fileId = resp.fileId;
         file.fileName = resp.fileName;

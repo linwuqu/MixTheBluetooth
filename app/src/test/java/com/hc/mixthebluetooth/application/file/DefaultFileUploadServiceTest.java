@@ -1,4 +1,4 @@
-package com.hc.mixthebluetooth.impl.file;
+package com.hc.mixthebluetooth.application.file;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -6,7 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.file.UploadedFile;
-import com.hc.mixthebluetooth.remote.ServerClient;
+import com.hc.mixthebluetooth.driver.implementation.http.RetrofitServerClient;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 
-public class DefaultFileServiceTest {
+public class DefaultFileUploadServiceTest {
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -36,8 +36,8 @@ public class DefaultFileServiceTest {
 
             File file = temporaryFolder.newFile("CGM_Cache_data.txt");
             Files.write(file.toPath(), "Start Playback\n".getBytes(StandardCharsets.UTF_8));
-            DefaultFileService service = new DefaultFileService(
-                    ServerClient.create(server.url("/").toString(), () -> null, true)
+            DefaultFileUploadService service = new DefaultFileUploadService(
+                    RetrofitServerClient.create(server.url("/").toString(), () -> null, true)
             );
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<CallResult<UploadedFile>> result = new AtomicReference<>();
@@ -56,8 +56,8 @@ public class DefaultFileServiceTest {
 
     @Test
     public void uploadMissingFileReturnsLocalError() {
-        DefaultFileService service = new DefaultFileService(
-                ServerClient.create("http://127.0.0.1:1/", () -> null, true)
+        DefaultFileUploadService service = new DefaultFileUploadService(
+                RetrofitServerClient.create("http://127.0.0.1:1/", () -> null, true)
         );
         AtomicReference<CallResult<UploadedFile>> result = new AtomicReference<>();
 
