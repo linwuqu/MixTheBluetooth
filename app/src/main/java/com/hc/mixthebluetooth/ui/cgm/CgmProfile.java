@@ -4,11 +4,17 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.api.AppApi;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
+import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 
 import java.util.Date;
 
 public final class CgmProfile {
+    private static final String OWNER = "CgmProfile";
+    private static final String API_BT_SEND = "BT_SEND";
+
     private CgmProfile() {
     }
 
@@ -28,8 +34,43 @@ public final class CgmProfile {
 
     private static final class CgmRawLineConsumer implements CgmController.RawLineConsumer {
         @Override
-        public void onLine(@NonNull Context context, @NonNull String line, @NonNull CgmController.Gateway gateway) {
-            AppApi.cgmWorkflow().onDeviceText(line, gateway::onCgmWorkflowResult);
+        public void onLine(@NonNull Context context,
+                           @NonNull DeviceModule module,
+                           @NonNull String text,
+                           @NonNull CgmController.Gateway gateway) {
+            CgmWorkflow.Update update = AppApi.cgmWorkflow().onDeviceText(text, result -> {
+                gateway.onCgmWorkflowResult(result);
+                if (result.isOk()) {
+                    postWorkflowText(gateway, module, "delete_cache", CgmCommands.LegacyCgm.deleteCache());
+                    gateway.onCgmWorkflowUpdate(AppApi.cgmWorkflow().onDeleteCacheSent());
+                }
+            });
+            if (update.commandText != null) {
+                postWorkflowText(gateway, module, "read_cache_retry", update.commandText);
+            }
+            gateway.onCgmWorkflowUpdate(update);
+        }
+
+        @Override
+        public void onActionPosted(@NonNull Context context,
+                                   @NonNull DeviceModule module,
+                                   @NonNull CgmController.ActionSpec action,
+                                   @NonNull String payload,
+                                   @NonNull CgmController.Gateway gateway) {
+            if ("read_cache".equals(action.id)) {
+                gateway.onCgmWorkflowUpdate(AppApi.cgmWorkflow().onReadCacheSent());
+            } else if ("delete_cache".equals(action.id)) {
+                gateway.onCgmWorkflowUpdate(AppApi.cgmWorkflow().onDeleteCacheSent());
+            }
+        }
+
+        private void postWorkflowText(@NonNull CgmController.Gateway gateway,
+                                      @NonNull DeviceModule module,
+                                      @NonNull String id,
+                                      @NonNull String payload) {
+            ApiTraceLogger.text(OWNER, API_BT_SEND, "command",
+                    "id=" + id + "\npayload=" + payload);
+            gateway.postText(module, payload);
         }
     }
 }

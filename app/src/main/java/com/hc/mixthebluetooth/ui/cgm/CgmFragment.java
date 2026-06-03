@@ -1,6 +1,7 @@
 package com.hc.mixthebluetooth.ui.cgm;
 
 import android.content.Context;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -8,11 +9,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
 
 public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
@@ -86,10 +89,43 @@ public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
     private final class FragmentGateway implements CgmController.Gateway {
         @Override
         public void postText(@NonNull DeviceModule module, @NonNull String text) {
+            if (!isAdded()) {
+                return;
+            }
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                requireActivity().runOnUiThread(() -> postText(module, text));
+                return;
+            }
             byte[] bytes = Codec.encodeText(requireContext(), text);
             sendDataToActivity(
                     StaticConstants.CMD_BT_POST,
                     new CgmBluetoothEvent.BTPost(module, bytes)
+            );
+        }
+
+        @Override
+        public void confirmDeleteCache(@NonNull Runnable onConfirm) {
+            if (!isAdded()) {
+                return;
+            }
+            new AlertDialog.Builder(requireContext())
+                    .setTitle("确认删除缓存")
+                    .setMessage("设备缓存删除后无法恢复。请确认本次数据已经保存或上传成功。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("删除", (dialog, which) -> onConfirm.run())
+                    .show();
+        }
+
+        @Override
+        public void onCgmWorkflowUpdate(@NonNull CgmWorkflow.Update update) {
+            if (!isAdded() || update.message == null || update.message.isEmpty()) {
+                return;
+            }
+            if (!update.error && update.commandText == null && !update.uploadStarted && !update.deleteConfirmed) {
+                return;
+            }
+            requireActivity().runOnUiThread(() ->
+                    Toast.makeText(requireContext(), update.message, Toast.LENGTH_SHORT).show()
             );
         }
 

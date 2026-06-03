@@ -20,6 +20,7 @@ import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.driver.implementation.codec.Analysis;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.ui.cgm.CgmWidgets.MetricWidget;
 import com.hc.mixthebluetooth.ui.cgm.CgmWidgets.WidgetSpec;
@@ -67,6 +68,13 @@ public final class CgmController {
 
     public interface Gateway {
         void postText(@NonNull DeviceModule module, @NonNull String text);
+
+        default void confirmDeleteCache(@NonNull Runnable onConfirm) {
+            onConfirm.run();
+        }
+
+        default void onCgmWorkflowUpdate(@NonNull CgmWorkflow.Update update) {
+        }
 
         default void onCgmWorkflowResult(@NonNull CallResult<CgmResult> result) {
         }
@@ -118,7 +126,17 @@ public final class CgmController {
     }
 
     public interface RawLineConsumer {
-        void onLine(@NonNull Context context, @NonNull String line, @NonNull Gateway gateway);
+        void onLine(@NonNull Context context,
+                    @NonNull DeviceModule module,
+                    @NonNull String text,
+                    @NonNull Gateway gateway);
+
+        default void onActionPosted(@NonNull Context context,
+                                    @NonNull DeviceModule module,
+                                    @NonNull ActionSpec action,
+                                    @NonNull String payload,
+                                    @NonNull Gateway gateway) {
+        }
     }
 
     public static final class ProfileSpec {
@@ -312,14 +330,28 @@ public final class CgmController {
 
     private void handleAction(@NonNull ActionSpec action) {
         if (action.route == Route.POST && action.textSupplier != null && module != null) {
-            String payload = action.textSupplier.get();
-            ApiTraceLogger.text(OWNER, API_BT_SEND, "command",
-                    "id=" + action.id + "\npayload=" + payload);
-            gateway.postText(module, payload);
+            if ("delete_cache".equals(action.id)) {
+                gateway.confirmDeleteCache(() -> postAction(action));
+                return;
+            }
+            postAction(action);
             return;
         }
         if (action.route == Route.INNER && action.builtIn != null) {
             runBuiltIn(action.builtIn);
+        }
+    }
+
+    private void postAction(@NonNull ActionSpec action) {
+        if (action.textSupplier == null || module == null) {
+            return;
+        }
+        String payload = action.textSupplier.get();
+        ApiTraceLogger.text(OWNER, API_BT_SEND, "command",
+                "id=" + action.id + "\npayload=" + payload);
+        gateway.postText(module, payload);
+        if (spec.rawLineConsumer != null) {
+            spec.rawLineConsumer.onActionPosted(context, module, action, payload, gateway);
         }
     }
 
@@ -354,30 +386,34 @@ public final class CgmController {
         readBytes += data.bytes.length;
         updateByteCounter();
 
-        Codec.Options options = new Codec.Options(
+        Codec.Options rawOptions = new Codec.Options(
                 AppApi.settingsStore().textEncoding(),
+                false,
                 false,
                 false
         );
-        String text = Codec.decode(data.bytes, options);
-        if (text == null || text.isEmpty()) {
+        String rawText = Codec.decode(data.bytes, rawOptions);
+        if (rawText == null || rawText.isEmpty()) {
             return;
         }
+        String displayText = rawText.trim();
 
         ApiTraceLogger.text(OWNER, API_BT_RECV, "data",
-                "bytes=" + data.bytes.length + "\ntext=" + text);
+                "bytes=" + data.bytes.length + "\ntext=" + rawText);
 
-        MessageItem item = new MessageItem(text, Analysis.getTime(), false, data.module, false);
-        item.setDataEndNewline(true);
-        messages.add(item);
-        adapter.notifyItemInserted(messages.size() - 1);
-        host.messageList().smoothScrollToPosition(messages.size() - 1);
-
-        if (spec.rawLineConsumer != null) {
-            spec.rawLineConsumer.onLine(context, text, gateway);
+        if (!displayText.isEmpty()) {
+            MessageItem item = new MessageItem(displayText, Analysis.getTime(), false, data.module, false);
+            item.setDataEndNewline(true);
+            messages.add(item);
+            adapter.notifyItemInserted(messages.size() - 1);
+            host.messageList().smoothScrollToPosition(messages.size() - 1);
         }
 
-        BluetoothSample sample = parse(text);
+        if (spec.rawLineConsumer != null) {
+            spec.rawLineConsumer.onLine(context, data.module, rawText, gateway);
+        }
+
+        BluetoothSample sample = parse(displayText);
         if (sample != null) {
             consume(sample);
         }
