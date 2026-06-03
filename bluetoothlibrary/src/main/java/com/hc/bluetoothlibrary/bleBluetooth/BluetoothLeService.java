@@ -151,6 +151,8 @@ public class BluetoothLeService extends Service {
 
         void disconnect(){
             //断开连接
+            mTimeHandler.removeCallbacksAndMessages(null);
+            mNeedCharacteristic = null;
             if (mBluetoothGatt != null) {
                 mBluetoothGatt.disconnect();
                 mBluetoothGatt.close();
@@ -284,16 +286,27 @@ public class BluetoothLeService extends Service {
                         mTimeHandler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                BluetoothGattDescriptor clientConfig = mNeedCharacteristic
+                                BluetoothGatt currentGatt = mBluetoothGatt;
+                                BluetoothGattCharacteristic currentCharacteristic = mNeedCharacteristic;
+                                if (currentGatt == null || currentCharacteristic == null) {
+                                    log("跳过设置监听：GATT或特征已断开", "e");
+                                    return;
+                                }
+
+                                BluetoothGattDescriptor clientConfig = currentCharacteristic
                                         .getDescriptor(UUID.fromString(SERVICE_EIGENVALUE_READ));//这个收取数据的UUID
                                 if (clientConfig != null) {
                                     //BluetoothGatt.getService(service)
                                     clientConfig.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);//设置接收模式
-                                    mBluetoothGatt.writeDescriptor(clientConfig);//必须是设置这个才能监听模块数据
+                                    currentGatt.writeDescriptor(clientConfig);//必须是设置这个才能监听模块数据
                                 }else {
                                     log("备用方法测试","w");
-                                    BluetoothGattService linkLossService = gatt.getService(servicesList.getUuid());
-                                    setNotification(mBluetoothGatt,linkLossService.getCharacteristic(UUID.fromString(SERVICE_EIGENVALUE_READ)),true);
+                                    BluetoothGattService linkLossService = currentGatt.getService(servicesList.getUuid());
+                                    if (linkLossService == null) {
+                                        log("备用方法失败：服务为空", "e");
+                                        return;
+                                    }
+                                    setNotification(currentGatt,linkLossService.getCharacteristic(UUID.fromString(SERVICE_EIGENVALUE_READ)),true);
                                 }
                             }
                         },200);

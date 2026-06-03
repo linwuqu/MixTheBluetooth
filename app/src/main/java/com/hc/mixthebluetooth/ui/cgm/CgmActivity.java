@@ -68,7 +68,14 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     protected void onDestroy() {
         super.onDestroy();
         logWarn("关闭CgmActivity...");
-        if (modules != null) mAndroidBluetoothController.disconnect(modules.get(0));
+        if (mAndroidBluetoothController == null) return;
+
+        DeviceModule module = getCurrentModule();
+        mAndroidBluetoothController.setOnReadListener(null);
+
+        if (module != null) {
+            mAndroidBluetoothController.disconnect(module);
+        }
     }
 
 
@@ -139,6 +146,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
             }
         };
         mAndroidBluetoothController.setOnReadListener(dataListener);
+        syncConnectedModule("initBluetoothListener");
     }
 
     private void initPages() {
@@ -234,7 +242,10 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     // ----------------- Bluetooth Callbacks -----------------
     private void onBluetoothData(byte[] data) {
         DeviceModule module = getCurrentModule();
-        if (module == null) return;
+        if (module == null) {
+            logWarn("收到蓝牙数据但当前连接设备为空，忽略本次数据: bytes=" + (data == null ? 0 : data.length));
+            return;
+        }
 
         publishBtData(module, data);
     }
@@ -249,11 +260,28 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         DeviceModule module = getCurrentModule();
         if (module == null) return;
 
+        applyConnectedModule(module, "callback");
+    }
+
+    private void syncConnectedModule(@NonNull String reason) {
+        if (mAndroidBluetoothController == null) return;
+
+        modules = mAndroidBluetoothController.getConnectedArray();
+        DeviceModule module = getCurrentModule();
+        log("同步蓝牙连接状态[" + reason + "]: count=" + (modules == null ? 0 : modules.size())
+                + ", current=" + (module == null ? "null" : module.getName()));
+
+        if (module == null || isConnected()) return;
+
+        applyConnectedModule(module, reason);
+    }
+
+    private void applyConnectedModule(@NonNull DeviceModule module, @NonNull String source) {
         publishBtConnected(module);
 
         setState(CONNECTED);
         mTitle.updateLeftText(module.getName());
-        log("连接成功: " + module.getName());
+        log("连接成功[" + source + "]: " + module.getName());
     }
 
     private void onBluetoothDisconnected(final DeviceModule deviceModule) {

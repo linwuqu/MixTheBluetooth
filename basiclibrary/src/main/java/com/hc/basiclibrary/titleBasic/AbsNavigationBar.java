@@ -13,13 +13,13 @@ import android.widget.TextView;
  * 头部的基类
  */
 
-public abstract class AbsNavigationBar<P extends AbsNavigationBar.Builder.AbsNavigationParams> implements INavigationbar{
+public abstract class AbsNavigationBar<P extends AbsNavigationBar.Builder.AbsNavigationParams> implements INavigationbar {
 
     private P mParams;
 
     private View mNavigationView;
 
-    public AbsNavigationBar(P params){
+    public AbsNavigationBar(P params) {
         this.mParams = params;
         createAndBindView();
     }
@@ -29,19 +29,19 @@ public abstract class AbsNavigationBar<P extends AbsNavigationBar.Builder.AbsNav
     }
 
     protected void setText(int viewId, String text) {
-        TextView tv =mNavigationView.findViewById(viewId);
-        if(!TextUtils.isEmpty(text)){
+        TextView tv = mNavigationView.findViewById(viewId);
+        if (!TextUtils.isEmpty(text)) {
             tv.setVisibility(View.VISIBLE);
             tv.setText(text);
         }
     }
 
-    public void setTextPaddingLeft(int viewId,int padding){
+    public void setTextPaddingLeft(int viewId, int padding) {
         View view = mNavigationView.findViewById(viewId);
-        view.setPadding(padding,0,0,0);
+        view.setPadding(padding, 0, 0, 0);
     }
 
-    protected View getChildView(int id){
+    protected View getChildView(int id) {
         return findViewById(id);
     }
 
@@ -49,47 +49,43 @@ public abstract class AbsNavigationBar<P extends AbsNavigationBar.Builder.AbsNav
         findViewById(viewId).setVisibility(visibility);
     }
 
-    protected void setOnClickListener(int viewId,View.OnClickListener listener){
+    protected void setOnClickListener(int viewId, View.OnClickListener listener) {
         findViewById(viewId).setOnClickListener(listener);
     }
 
-    public <T extends View> T findViewById(int viewId){
-        return (T)mNavigationView.findViewById(viewId);
+    public <T extends View> T findViewById(int viewId) {
+        return (T) mNavigationView.findViewById(viewId);
     }
 
     //绑定和创建View
     private void createAndBindView() {
         //创建View
-        mNavigationView = LayoutInflater.from(mParams.mContext).
-                inflate(bindLayoutId(),mParams.mParent,false);
+        mNavigationView = LayoutInflater.from(mParams.mContext).inflate(bindLayoutId(), mParams.mParent, false);
 
         //添加
-        if (mParams == null)
-            Log.w("AppRun","mParams == null");
-        mParams.mParent.addView(mNavigationView,0);
+        if (mParams == null) Log.w("AppRun", "mParams == null");
+        mParams.mParent.addView(mNavigationView, 0);
 
         applyView();
     }
 
 
-
-
-    public abstract static class Builder{
+    public abstract static class Builder {
 
         AbsNavigationParams p;
 
-        public Builder(Context context, ViewGroup parent){
-            p = new AbsNavigationParams(context,parent);
+        public Builder(Context context, ViewGroup parent) {
+            p = new AbsNavigationParams(context, parent);
         }
 
         public abstract AbsNavigationBar builer();
 
-        public static class AbsNavigationParams{
+        public static class AbsNavigationParams {
 
             public Context mContext;
             public ViewGroup mParent;
 
-            public AbsNavigationParams(Context context,ViewGroup parent){
+            public AbsNavigationParams(Context context, ViewGroup parent) {
                 this.mContext = context;
                 this.mParent = parent;
             }

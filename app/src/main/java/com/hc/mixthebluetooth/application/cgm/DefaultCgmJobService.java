@@ -78,9 +78,9 @@ public final class DefaultCgmJobService implements CgmService {
                     return;
                 }
 
-                boolean deleted = cacheFile.delete();
-                ApiTraceLogger.text(OWNER, API_UPLOAD, "deleteTxt",
-                        cacheFile.getAbsolutePath() + " deleted=" + deleted);
+//                boolean deleted = cacheFile.delete();
+//                ApiTraceLogger.text(OWNER, API_UPLOAD, "deleteTxt",
+//                        cacheFile.getAbsolutePath() + " deleted=" + deleted);
                 pollAttempt(jobId, 1, callback);
             }
 

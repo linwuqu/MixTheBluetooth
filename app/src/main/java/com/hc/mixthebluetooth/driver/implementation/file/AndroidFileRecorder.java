@@ -105,6 +105,7 @@ public final class AndroidFileRecorder implements DeviceReplayRecorder, FileReco
         currentFile = null;
     }
 
+    // 这里是文件默认存储位置
     @NonNull
     private static File defaultDir(@NonNull Context context) {
         File dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);

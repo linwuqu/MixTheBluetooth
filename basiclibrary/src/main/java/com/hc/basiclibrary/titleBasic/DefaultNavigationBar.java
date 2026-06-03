@@ -13,9 +13,7 @@ import com.hc.basiclibrary.R;
  *
  */
 
-public class DefaultNavigationBar extends
-        AbsNavigationBar<DefaultNavigationBar.Builder.DefaultNavigationParams>
-        {
+public class DefaultNavigationBar extends AbsNavigationBar<DefaultNavigationBar.Builder.DefaultNavigationParams> {
 
 
     public DefaultNavigationBar(Builder.DefaultNavigationParams params) {
@@ -34,71 +32,70 @@ public class DefaultNavigationBar extends
     @Override
     public void applyView() {
         //绑定效果
-        setText(R.id.title,getParams().mTitle);
-        setText(R.id.right_text,getParams().mRightText);
-        setText(R.id.left_text,getParams().mLeftText);
+        setText(R.id.title, getParams().mTitle);
+        setText(R.id.right_text, getParams().mRightText);
+        setText(R.id.left_text, getParams().mLeftText);
 
-        setOnClickListener(R.id.right_icon,getParams().mRightClickListener);
+        setOnClickListener(R.id.right_icon, getParams().mRightClickListener);
 
-        setOnClickListener(R.id.right_text,getParams().mRightClickListener);
+        setOnClickListener(R.id.right_text, getParams().mRightClickListener);
 
-        setOnClickListener(R.id.right_more,getParams().mRightClickListener);
+        setOnClickListener(R.id.right_more, getParams().mRightClickListener);
 
         //左边 要写一个默认的 finish()
-        setOnClickListener(R.id.back,getParams().mLeftClickListener);
+        setOnClickListener(R.id.back, getParams().mLeftClickListener);
 
-        setOnClickListener(R.id.left_text,getParams().mLeftClickListener);
+        setOnClickListener(R.id.left_text, getParams().mLeftClickListener);
 
-        setVisibility(R.id.back,getParams().leftIconVisible);
-        setVisibility(R.id.right_text,getParams().rightText);
-        setVisibility(R.id.right_more,getParams().rightText);
-        setVisibility(R.id.left_text,getParams().leftTextVisible);
-        setVisibility(R.id.right_icon,getParams().rightIcon);
-        setVisibility(R.id.title_loading,getParams().rightLoading);
+        setVisibility(R.id.back, getParams().leftIconVisible);
+        setVisibility(R.id.right_text, getParams().rightText);
+        setVisibility(R.id.right_more, getParams().rightText);
+        setVisibility(R.id.left_text, getParams().leftTextVisible);
+        setVisibility(R.id.right_icon, getParams().rightIcon);
+        setVisibility(R.id.title_loading, getParams().rightLoading);
 
         getParams().mLoadingView = (LoadingCircleView) getChildView(R.id.title_loading);
         getParams().mRightImageView = (ImageView) getChildView(R.id.right_icon);
 
-        setTextPaddingLeft(R.id.left_text,getParams().leftTextPaddingLeft);
+        setTextPaddingLeft(R.id.left_text, getParams().leftTextPaddingLeft);
     }
 
 
-    public void updateText(String name){
+    public void updateText(String name) {
         getParams().mTitle = name;
         applyView();
     }
 
-    public void updateRight(String data){
+    public void updateRight(String data) {
         getParams().mRightText = data;
         applyView();
     }
 
-    public void updateLeftText(String name){
+    public void updateLeftText(String name) {
         getParams().mLeftText = name;
         applyView();
     }
 
 
-
-    public void updateLoadingState(boolean state){
-        if (state){
+    public void updateLoadingState(boolean state) {
+        if (state) {
             getParams().mLoadingView.setVisibility(View.VISIBLE);
             getParams().mLoadingView.start();
-        }else {
+        } else {
             getParams().mLoadingView.setVisibility(View.GONE);
             getParams().mLoadingView.stop();
         }
     }
 
-    public void updateRightImage(boolean state){
-        if (state){
+    public void updateRightImage(boolean state) {
+        if (state) {
             getParams().mRightImageView.setImageResource(R.drawable.pop_click_icon);
-        }else {
+        } else {
             getParams().mRightImageView.setImageResource(R.drawable.pop_icon);
         }
     }
 
-    public View getView(int id){
+    public View getView(int id) {
         return getChildView(id);
     }
 
@@ -111,12 +108,10 @@ public class DefaultNavigationBar extends
         public Builder(Context context, ViewGroup parent) {
 
             super(context, parent);
-            p = new DefaultNavigationParams(context,parent);
-
+            p = new DefaultNavigationParams(context, parent);
 
 
         }
-
 
 
         @Override
@@ -125,22 +120,21 @@ public class DefaultNavigationBar extends
         }
 
         //设置所有效果
-        public Builder setTitle(String title){
+        public Builder setTitle(String title) {
             p.mTitle = title;
             return this;
         }
 
 
-
         //设置右边的文本
-        public Builder setRightText(String rightText){
+        public Builder setRightText(String rightText) {
             p.mRightText = rightText;
             p.rightText = View.VISIBLE;
             return this;
         }
 
         //设置左边的文本
-        public Builder setLeftText(String leftTextText,int paddingLeft){
+        public Builder setLeftText(String leftTextText, int paddingLeft) {
             p.mLeftText = leftTextText;
             p.leftTextPaddingLeft = paddingLeft;
             return this;
@@ -148,49 +142,47 @@ public class DefaultNavigationBar extends
 
 
         //设置左边的文本不可见
-        public Builder hideLeftText(){
+        public Builder hideLeftText() {
             p.leftTextVisible = View.INVISIBLE;
             return this;
         }
 
         //设置右边的点击事件
-        public Builder
-            setRightClickListener(View.OnClickListener rightListener){
+        public Builder setRightClickListener(View.OnClickListener rightListener) {
             p.mRightClickListener = rightListener;
             return this;
         }
 
         //设置左边的默认点击事件
-        public Builder
-        setLeftClickListener(View.OnClickListener rightListener){
+        public Builder setLeftClickListener(View.OnClickListener rightListener) {
             p.mLeftClickListener = rightListener;
             return this;
         }
 
         //设置右边的图片
-        public Builder setRightIcon(){
+        public Builder setRightIcon() {
             p.rightIcon = View.VISIBLE;
             return this;
         }
+
         //设置左边图片不可见
-        public Builder hideLeftIcon(){
+        public Builder hideLeftIcon() {
             p.leftIconVisible = View.GONE;
             return this;
         }
 
         //设置右边文本不可见
-        public Builder hideRightText(){
+        public Builder hideRightText() {
             p.rightText = View.INVISIBLE;
             return this;
         }
 
-        public Builder setFoldMenu(final int layout, final FoldMenu.OnItemClickListener listener){
-            p.mRightClickListener = v -> new FoldMenu().showPopupWindow(layout,v,listener);
+        public Builder setFoldMenu(final int layout, final FoldMenu.OnItemClickListener listener) {
+            p.mRightClickListener = v -> new FoldMenu().showPopupWindow(layout, v, listener);
             return this;
         }
 
-        public static class DefaultNavigationParams extends
-                AbsNavigationBar.Builder.AbsNavigationParams{
+        public static class DefaultNavigationParams extends AbsNavigationBar.Builder.AbsNavigationParams {
 
             //所有效果的放置
             public String mTitle;
@@ -200,7 +192,7 @@ public class DefaultNavigationBar extends
             public LoadingCircleView mLoadingView;
             public int leftTextVisible = View.VISIBLE;
             public int leftIconVisible = View.VISIBLE;
-            public int rightText =View.GONE;
+            public int rightText = View.GONE;
             public int rightIcon = View.GONE;
             public int rightLoading = View.GONE;
             public int leftTextPaddingLeft = 20;

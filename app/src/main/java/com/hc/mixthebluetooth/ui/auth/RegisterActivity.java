@@ -2,20 +2,23 @@ package com.hc.mixthebluetooth.ui.auth;
 
 import android.view.View;
 
-import com.hc.basiclibrary.titleBasic.DefaultNavigationBar;
 import com.hc.basiclibrary.viewBasic.BaseActivity;
-import com.hc.mixthebluetooth.R;
+import com.hc.mixthebluetooth.BuildConfig;
 import com.hc.mixthebluetooth.api.AppApi;
 import com.hc.mixthebluetooth.databinding.ActivityAccountRegisterBinding;
 
 public class RegisterActivity extends BaseActivity<ActivityAccountRegisterBinding> {
+    private static final String DEV_USERNAME = "bioai-dev-user";
+    private static final String DEV_PHONE = "18800000001";
+    private static final String DEV_PASSWORD = "123456";
+
     @Override
     public void initAll() {
-        new DefaultNavigationBar.Builder(this, findViewById(R.id.account_register_activity))
-                .setTitle("账号注册")
-                .hideLeftText()
-                .hideRightText()
-                .builer();
+        if (useDevPlaceholders()) {
+            viewBinding.registerPhone.setText(DEV_PHONE);
+            viewBinding.registerUsername.setText(DEV_USERNAME);
+            viewBinding.registerPassword.setText(DEV_PASSWORD);
+        }
         bindClickListener(viewBinding.registerSubmit);
     }
 
@@ -48,5 +51,10 @@ public class RegisterActivity extends BaseActivity<ActivityAccountRegisterBindin
             viewBinding.registerSubmit.setEnabled(true);
             viewBinding.registerStatus.setText(result.isOk() ? "注册成功" : result.message);
         }));
+    }
+
+    private boolean useDevPlaceholders() {
+        return BuildConfig.DEBUG
+                && ("static-lan".equals(BuildConfig.API_ENV) || "lan-static".equals(BuildConfig.API_ENV));
     }
 }
