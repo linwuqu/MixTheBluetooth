@@ -71,6 +71,14 @@ public class CodecTest {
     }
 
     @Test
+    public void rawDecodePreservesNewlineBoundariesForReplayBuffer() {
+        Codec.Options options = new Codec.Options("UTF-8", false, false, false);
+        byte[] bytes = "Start Playback\nEIS:1,1000,0.12\n".getBytes(Charset.forName("UTF-8"));
+
+        assertEquals("Start Playback\nEIS:1,1000,0.12\n", Codec.decode(bytes, options));
+    }
+
+    @Test
     public void encodeTextUsesSettingsStoreEncoding() {
         SettingsStore settings = installApiWithSettings();
         settings.setTextEncoding("UTF-8");

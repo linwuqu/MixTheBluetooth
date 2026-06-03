@@ -17,11 +17,17 @@ public final class Codec {
         public final String charset;
         public final boolean hex;
         public final boolean checkNewline;
+        public final boolean trim;
 
         public Options(@Nullable String charset, boolean hex, boolean checkNewline) {
+            this(charset, hex, checkNewline, true);
+        }
+
+        public Options(@Nullable String charset, boolean hex, boolean checkNewline, boolean trim) {
             this.charset = charset;
             this.hex = hex;
             this.checkNewline = checkNewline;
+            this.trim = trim;
         }
     }
 
@@ -38,7 +44,10 @@ public final class Codec {
         String charset = options.charset != null ? options.charset : "UTF-8";
         String text = Analysis.getByteToString(bytes.clone(), charset, options.hex, options.checkNewline);
         if (text == null) return null;
-        text = text.replace("\u0000", "").trim();
+        text = text.replace("\u0000", "");
+        if (options.trim) {
+            text = text.trim();
+        }
         return text.isEmpty() ? null : text;
     }
 }
