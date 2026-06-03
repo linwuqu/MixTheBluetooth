@@ -48,6 +48,7 @@ public final class DefaultCgmWorkflow implements CgmWorkflow {
             return;
         }
         if (event == CgmReplayCompletionDetector.Event.COMPLETED) {
+            recorder.appendLine(line);
             uploadCompletedReplay(callback);
             return;
         }

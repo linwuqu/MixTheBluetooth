@@ -32,6 +32,7 @@ public class AndroidFileRecorderTest {
         String text = new String(Files.readAllBytes(result.data.toPath()), StandardCharsets.UTF_8);
         assertTrue(text.contains("Start Playback"));
         assertTrue(text.contains("EIS:1,1000,0.12"));
+        assertTrue(text.contains("Playback all done"));
     }
 
     @Test

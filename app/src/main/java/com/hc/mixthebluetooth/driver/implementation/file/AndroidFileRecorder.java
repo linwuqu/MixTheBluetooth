@@ -53,6 +53,7 @@ public final class AndroidFileRecorder implements DeviceReplayRecorder, FileReco
         }
         if (line.contains("Playback all done")) {
             try {
+                appendLine(line);
                 return CallResult.ok(finish());
             } catch (IllegalStateException e) {
                 return CallResult.error(CallResult.DEVICE_REPLAY_INCOMPLETE, "Device replay incomplete", e);

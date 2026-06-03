@@ -62,8 +62,9 @@ public class DefaultCgmWorkflowTest {
         assertTrue(recorder.finished);
         assertTrue(cgmService.uploadCalled);
         assertSame(file, cgmService.uploadFile);
-        assertEquals(2, recorder.lines.size());
+        assertEquals(3, recorder.lines.size());
         assertEquals("EIS:1,1000,0.12", recorder.lines.get(1));
+        assertEquals("Playback all done", recorder.lines.get(2));
     }
 
     @Test
