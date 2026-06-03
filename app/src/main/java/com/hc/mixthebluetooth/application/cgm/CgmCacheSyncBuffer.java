@@ -78,6 +78,10 @@ public final class CgmCacheSyncBuffer {
         this.maxAttempts = Math.max(1, maxAttempts);
     }
 
+    public static boolean isDeleteAckText(@NonNull String text) {
+        return text.contains(DELETE_ACK);
+    }
+
     public synchronized void beginRead() {
         attempt = 1;
         clearCurrentAttempt();
@@ -180,7 +184,7 @@ public final class CgmCacheSyncBuffer {
 
     @NonNull
     public synchronized DeleteResult acceptDeviceLine(@NonNull String text) {
-        if (phase == Phase.WAITING_DELETE_CONFIRM && text.contains(DELETE_ACK)) {
+        if (phase == Phase.WAITING_DELETE_CONFIRM && isDeleteAckText(text)) {
             phase = Phase.DONE;
             return new DeleteResult(true, "cache delete confirmed");
         }

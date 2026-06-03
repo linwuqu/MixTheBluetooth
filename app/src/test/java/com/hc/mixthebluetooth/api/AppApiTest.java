@@ -171,8 +171,22 @@ public class AppApiTest {
     }
 
     private static final class FakeCgmWorkflow implements CgmWorkflow {
+        @NonNull
         @Override
-        public void onDeviceLine(@NonNull String line, @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+        public Update onReadCacheSent() {
+            return Update.message("ok");
+        }
+
+        @NonNull
+        @Override
+        public Update onDeleteCacheSent() {
+            return Update.message("ok");
+        }
+
+        @NonNull
+        @Override
+        public Update onDeviceText(@NonNull String text, @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+            return Update.message("ok");
         }
 
         @Override

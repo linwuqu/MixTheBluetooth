@@ -29,7 +29,7 @@ public final class CgmProfile {
     private static final class CgmRawLineConsumer implements CgmController.RawLineConsumer {
         @Override
         public void onLine(@NonNull Context context, @NonNull String line, @NonNull CgmController.Gateway gateway) {
-            AppApi.cgmWorkflow().onDeviceLine(line, gateway::onCgmWorkflowResult);
+            AppApi.cgmWorkflow().onDeviceText(line, gateway::onCgmWorkflowResult);
         }
     }
 }

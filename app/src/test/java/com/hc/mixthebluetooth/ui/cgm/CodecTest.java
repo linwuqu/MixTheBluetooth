@@ -163,8 +163,22 @@ public class CodecTest {
     }
 
     private static final class NoOpCgmWorkflow implements CgmWorkflow {
+        @NonNull
         @Override
-        public void onDeviceLine(@NonNull String line, @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+        public Update onReadCacheSent() {
+            return Update.message("ok");
+        }
+
+        @NonNull
+        @Override
+        public Update onDeleteCacheSent() {
+            return Update.message("ok");
+        }
+
+        @NonNull
+        @Override
+        public Update onDeviceText(@NonNull String text, @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+            return Update.message("ok");
         }
 
         @Override

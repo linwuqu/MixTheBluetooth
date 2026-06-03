@@ -12,6 +12,7 @@ import com.hc.mixthebluetooth.api.ApiCallback;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmService;
+import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.api.log.AppLogger;
 import com.hc.mixthebluetooth.driver.capability.FileRecorder;
 
@@ -29,41 +30,24 @@ public class DefaultCgmWorkflowTest {
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
-    public void incompleteLineAppendsAndReturnsPending() throws Exception {
-        FakeFileRecorder recorder = new FakeFileRecorder(existingFile());
-        FakeCgmService cgmService = new FakeCgmService();
-        DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
-        AtomicReference<CallResult<CgmResult>> callback = new AtomicReference<>();
-
-        workflow.onDeviceLine("Start Playback", callback::set);
-
-        assertNotNull(callback.get());
-        assertTrue(callback.get().isPending());
-        assertEquals(1, recorder.startCount);
-        assertEquals(1, recorder.lines.size());
-        assertEquals("Start Playback", recorder.lines.get(0));
-        assertFalse(cgmService.uploadCalled);
-    }
-
-    @Test
-    public void completionLineFinishesFileAndStartsUploadPoll() throws Exception {
+    public void validReplayWritesFileAndStartsUploadPoll() throws Exception {
         File file = existingFile();
         FakeFileRecorder recorder = new FakeFileRecorder(file);
         FakeCgmService cgmService = new FakeCgmService();
         DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
 
-        workflow.onDeviceLine("Start Playback", ignored -> {
-        });
-        workflow.onDeviceLine("EIS:1,1000,0.12", ignored -> {
-        });
-        workflow.onDeviceLine("Playback all done", ignored -> {
-        });
+        workflow.onReadCacheSent();
+        CgmWorkflow.Update update = workflow.onDeviceText(
+                "Start Playback\nEIS:1,1000,0.12\nPlayback all done\n",
+                ignored -> {
+                }
+        );
 
+        assertTrue(update.uploadStarted);
         assertTrue(recorder.finished);
         assertTrue(cgmService.uploadCalled);
         assertSame(file, cgmService.uploadFile);
         assertEquals(3, recorder.lines.size());
-        assertEquals("EIS:1,1000,0.12", recorder.lines.get(1));
         assertEquals("Playback all done", recorder.lines.get(2));
     }
 
@@ -77,9 +61,8 @@ public class DefaultCgmWorkflowTest {
         result.jobId = 456L;
         result.status = "GENERATED";
 
-        workflow.onDeviceLine("Start Playback", ignored -> {
-        });
-        workflow.onDeviceLine("Playback all done", callback::set);
+        workflow.onReadCacheSent();
+        workflow.onDeviceText("Start Playback\nEIS:1,1000,0.12\nPlayback all done\n", callback::set);
         cgmService.complete(CallResult.ok(result));
 
         assertNotNull(callback.get());
@@ -88,40 +71,67 @@ public class DefaultCgmWorkflowTest {
     }
 
     @Test
-    public void resetClearsRecorderAndCompletionState() throws Exception {
+    public void invalidReplayRequestsReadCacheRetryWithoutUploading() throws Exception {
+        FakeFileRecorder recorder = new FakeFileRecorder(existingFile());
+        FakeCgmService cgmService = new FakeCgmService();
+        DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
+
+        workflow.onReadCacheSent();
+        CgmWorkflow.Update update = workflow.onDeviceText(
+                "Start Playback\n@@@\nPlayback all done\n",
+                ignored -> {
+                }
+        );
+
+        assertEquals(CgmCacheSyncBuffer.READ_CACHE_COMMAND, update.commandText);
+        assertFalse(update.error);
+        assertFalse(cgmService.uploadCalled);
+        assertFalse(recorder.finished);
+    }
+
+    @Test
+    public void uploadFailureReturnsErrorAndDoesNotConfirmDelete() throws Exception {
         FakeFileRecorder recorder = new FakeFileRecorder(existingFile());
         FakeCgmService cgmService = new FakeCgmService();
         DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
         AtomicReference<CallResult<CgmResult>> callback = new AtomicReference<>();
 
-        workflow.onDeviceLine("Start Playback", ignored -> {
-        });
-        workflow.reset();
-        workflow.onDeviceLine("Playback all done", callback::set);
+        workflow.onReadCacheSent();
+        workflow.onDeviceText("Start Playback\nEIS:1,1000,0.12\nPlayback all done\n", callback::set);
+        cgmService.complete(CallResult.error(CallResult.NETWORK, "network failed", null));
 
-        assertTrue(recorder.resetCalled);
         assertNotNull(callback.get());
         assertTrue(callback.get().isError());
-        assertEquals(CallResult.DEVICE_REPLAY_INCOMPLETE, callback.get().code);
-        assertFalse(cgmService.uploadCalled);
+        assertFalse(workflow.onDeviceText("Log Cleared\n", ignored -> {
+        }).deleteConfirmed);
     }
 
     @Test
-    public void recorderFailureReturnsLocalFileError() throws Exception {
-        File missing = new File(temporaryFolder.getRoot(), "missing.txt");
-        FakeFileRecorder recorder = new FakeFileRecorder(missing);
+    public void logClearedConfirmsDeleteOnlyAfterDeleteSent() throws Exception {
+        FakeFileRecorder recorder = new FakeFileRecorder(existingFile());
         FakeCgmService cgmService = new FakeCgmService();
         DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
-        AtomicReference<CallResult<CgmResult>> callback = new AtomicReference<>();
 
-        workflow.onDeviceLine("Start Playback", ignored -> {
+        assertFalse(workflow.onDeviceText("Log Cleared\n", ignored -> {
+        }).deleteConfirmed);
+
+        workflow.onDeleteCacheSent();
+        CgmWorkflow.Update update = workflow.onDeviceText("Log Cleared\n", ignored -> {
         });
-        workflow.onDeviceLine("Playback all done", callback::set);
 
-        assertNotNull(callback.get());
-        assertTrue(callback.get().isError());
-        assertEquals(CallResult.LOCAL_FILE_NOT_FOUND, callback.get().code);
-        assertFalse(cgmService.uploadCalled);
+        assertTrue(update.deleteConfirmed);
+    }
+
+    @Test
+    public void resetClearsRecorderAndSession() throws Exception {
+        FakeFileRecorder recorder = new FakeFileRecorder(existingFile());
+        FakeCgmService cgmService = new FakeCgmService();
+        DefaultCgmWorkflow workflow = workflow(recorder, cgmService);
+
+        workflow.onReadCacheSent();
+        workflow.reset();
+
+        assertTrue(recorder.resetCalled);
     }
 
     private DefaultCgmWorkflow workflow(FakeFileRecorder recorder, FakeCgmService cgmService) {
@@ -165,6 +175,7 @@ public class DefaultCgmWorkflowTest {
         @Override
         public void reset() {
             resetCalled = true;
+            lines.clear();
         }
     }
 

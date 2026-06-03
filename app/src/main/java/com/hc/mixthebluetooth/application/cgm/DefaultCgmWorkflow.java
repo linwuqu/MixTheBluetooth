@@ -20,7 +20,7 @@ public final class DefaultCgmWorkflow implements CgmWorkflow {
     private final FileRecorder recorder;
     private final CgmService cgmJobService;
     private final AppLogger logger;
-    private final CgmReplayCompletionDetector detector = new CgmReplayCompletionDetector();
+    private final CgmCacheSyncBuffer buffer = new CgmCacheSyncBuffer();
 
     public DefaultCgmWorkflow(@NonNull FileRecorder recorder,
                               @NonNull CgmService cgmJobService,
@@ -30,70 +30,102 @@ public final class DefaultCgmWorkflow implements CgmWorkflow {
         this.logger = logger;
     }
 
+    @NonNull
     @Override
-    public synchronized void onDeviceLine(@NonNull String line,
-                                          @NonNull ApiCallback<CallResult<CgmResult>> callback) {
-        CgmReplayCompletionDetector.Event event = detector.consume(line);
-        logger.text(OWNER, API_REPLAY, "event", event.name());
+    public synchronized Update onReadCacheSent() {
+        buffer.beginRead();
+        logger.text(OWNER, API_REPLAY, "read", "cache read started");
+        return Update.message("cache read started");
+    }
 
-        if (event == CgmReplayCompletionDetector.Event.STARTED) {
-            recorder.start();
-            recorder.appendLine(line);
-            callback.onResult(CallResult.pending("device replay pending"));
-            return;
+    @NonNull
+    @Override
+    public synchronized Update onDeleteCacheSent() {
+        buffer.markDeleteSent();
+        logger.text(OWNER, API_REPLAY, "delete", "cache delete sent");
+        return Update.message("cache delete sent");
+    }
+
+    @NonNull
+    @Override
+    public synchronized Update onDeviceText(@NonNull String text,
+                                            @NonNull ApiCallback<CallResult<CgmResult>> callback) {
+        CgmCacheSyncBuffer.DeleteResult delete = buffer.acceptDeviceLine(text);
+        if (delete.confirmed) {
+            logger.text(OWNER, API_REPLAY, "delete", delete.message);
+            return Update.deleteConfirmed(delete.message);
         }
-        if (event == CgmReplayCompletionDetector.Event.RECORDING_LINE) {
-            recorder.appendLine(line);
-            callback.onResult(CallResult.pending("device replay pending"));
-            return;
+        if (CgmCacheSyncBuffer.isDeleteAckText(text)) {
+            logger.text(OWNER, API_REPLAY, "delete", delete.message);
+            return Update.message(delete.message);
         }
-        if (event == CgmReplayCompletionDetector.Event.COMPLETED) {
-            recorder.appendLine(line);
-            uploadCompletedReplay(callback);
-            return;
+
+        CgmCacheSyncBuffer.SyncResult sync = buffer.acceptChunk(text);
+        if (!sync.sawEnd) {
+            return Update.message("cache text accepted");
         }
-        if (event == CgmReplayCompletionDetector.Event.INCOMPLETE) {
+
+        CgmCacheSyncBuffer.ValidationResult validation = buffer.validate();
+        if (!validation.valid) {
+            if (validation.retryable && buffer.canRetry()) {
+                buffer.beginRetry();
+                logger.text(OWNER, API_REPLAY, "retry", validation.message);
+                return Update.command(validation.message, CgmCacheSyncBuffer.READ_CACHE_COMMAND);
+            }
+            buffer.markError();
             callback.onResult(CallResult.error(
                     CallResult.DEVICE_REPLAY_INCOMPLETE,
-                    "Device replay incomplete",
+                    validation.message,
                     null
             ));
-            return;
+            return Update.error(validation.message);
         }
 
-        callback.onResult(CallResult.pending("device replay pending"));
+        return uploadValidatedReplay(callback);
     }
 
     @Override
     public synchronized void reset() {
-        detector.reset();
+        buffer.reset();
         recorder.reset();
         logger.text(OWNER, API_REPLAY, "reset", "ok");
     }
 
-    private void uploadCompletedReplay(@NonNull ApiCallback<CallResult<CgmResult>> callback) {
+    @NonNull
+    private Update uploadValidatedReplay(@NonNull ApiCallback<CallResult<CgmResult>> callback) {
         File file;
         try {
-            file = recorder.finish();
+            file = buffer.writeTo(recorder);
         } catch (IllegalStateException e) {
+            buffer.markError();
             callback.onResult(CallResult.error(
                     CallResult.DEVICE_REPLAY_INCOMPLETE,
                     "Device replay incomplete",
                     e
             ));
-            return;
+            return Update.error("Device replay incomplete");
         }
 
         if (!file.exists() || !file.isFile()) {
+            buffer.markError();
             callback.onResult(CallResult.error(
                     CallResult.LOCAL_FILE_NOT_FOUND,
                     "CGM cache txt file not found",
                     null
             ));
-            return;
+            return Update.error("CGM cache txt file not found");
         }
 
+        buffer.markUploading();
         logger.text(OWNER, API_UPLOAD_POLL, "file", file.getAbsolutePath());
-        cgmJobService.uploadAndPoll(file, callback);
+        cgmJobService.uploadAndPoll(file, result -> {
+            synchronized (DefaultCgmWorkflow.this) {
+                if (result.isError()) {
+                    buffer.markError();
+                }
+            }
+            callback.onResult(result);
+        });
+        return Update.uploadStarted("upload started");
     }
 }
