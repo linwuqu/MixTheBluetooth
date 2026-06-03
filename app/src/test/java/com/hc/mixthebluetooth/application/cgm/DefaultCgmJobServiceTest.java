@@ -31,7 +31,7 @@ public class DefaultCgmJobServiceTest {
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
-    public void uploadAndPollDeletesFileAndReturnsGeneratedJobData() throws Exception {
+    public void uploadAndPollKeepsFileAndReturnsGeneratedJobData() throws Exception {
         try (MockWebServer server = new MockWebServer()) {
             server.enqueue(new MockResponse()
                     .setResponseCode(200)
@@ -62,7 +62,7 @@ public class DefaultCgmJobServiceTest {
             assertNotNull(result.get().data);
             assertEquals(456L, result.get().data.jobId);
             assertEquals("GENERATED", result.get().data.status);
-            assertFalse(file.exists());
+            assertTrue(file.exists());
 
             RecordedRequest upload = server.takeRequest();
             assertEquals("POST", upload.getMethod());
