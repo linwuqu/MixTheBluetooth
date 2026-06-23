@@ -72,7 +72,7 @@
                     android:layout_height="wrap_content"
                     android:inputType="text"
                     android:maxLines="1"
-                    tools:text="18800000001" />
+                    tools:text="18170358508" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <!-- 密码输入框 -->

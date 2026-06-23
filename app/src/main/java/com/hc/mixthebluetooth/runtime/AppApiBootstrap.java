@@ -18,6 +18,7 @@ import com.hc.mixthebluetooth.api.persistence.SessionStore;
 import com.hc.mixthebluetooth.api.persistence.SettingsStore;
 import com.hc.mixthebluetooth.driver.implementation.bluetooth.AndroidBluetoothController;
 import com.hc.mixthebluetooth.application.auth.DefaultAuthService;
+import com.hc.mixthebluetooth.application.auth.SessionAuthInterceptor;
 import com.hc.mixthebluetooth.application.cgm.DefaultCgmWorkflow;
 import com.hc.mixthebluetooth.application.cgm.DefaultCgmJobService;
 import com.hc.mixthebluetooth.application.device.DefaultDeviceGateway;
@@ -107,7 +108,11 @@ public final class AppApiBootstrap {
         SettingsStore settingsStore = EncryptedSettingsStore.create(app);
         AppLogger logger = new AndroidAppLogger();
         AndroidFileRecorder recorder = new AndroidFileRecorder(app);
-        HttpTransport httpTransport = RetrofitServerClient.transport(env.baseUrl(), sessionStore::token, env.debug());
+        HttpTransport httpTransport = RetrofitServerClient.transport(
+                env.baseUrl(),
+                sessionStore::token,
+                new SessionAuthInterceptor(sessionStore),
+                env.debug());
         BluetoothTransport bluetoothTransport = new AndroidBluetoothTransport(AndroidBluetoothController.getInstance());
         TextCodec textCodec = new AnalysisTextCodec();
 

@@ -9,18 +9,21 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.hc.bluetoothlibrary.DeviceModule;
+import com.hc.mixthebluetooth.application.auth.LogoutHelper;
 import com.hc.mixthebluetooth.api.CallResult;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.api.cgm.CgmWorkflow;
 import com.hc.mixthebluetooth.databinding.FragmentUnifiedMessageBinding;
 
 public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
-
     private CgmController controller;
+    private boolean streamExpanded = false;
 
     @Override
     protected void initChannels() {
@@ -32,10 +35,36 @@ public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
         controller = new CgmController(
                 requireContext(),
                 Profiles.cgm(),
-                new BindingHost(viewBinding),
+                new BindingHost(viewBinding, requireContext()),
                 new FragmentGateway()
         );
         controller.init();
+        viewBinding.btnLogout.setOnClickListener(v -> showLogoutConfirm());
+
+        // 点击数据流卡片头部展开/收起
+        viewBinding.streamCardHeader.setOnClickListener(v -> {
+            streamExpanded = !streamExpanded;
+            if (streamExpanded) {
+                viewBinding.recyclerMessage.setVisibility(View.VISIBLE);
+                viewBinding.streamCardArrow.setRotation(90f);
+            } else {
+                viewBinding.recyclerMessage.setVisibility(View.GONE);
+                viewBinding.streamCardArrow.setRotation(0f);
+            }
+        });
+    }
+
+    private void showLogoutConfirm() {
+        if (!isAdded()) return;
+        new AlertDialog.Builder(requireContext())
+                .setTitle("退出登录")
+                .setMessage("确定要退出当前账号吗？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("退出", (d, w) -> {
+                    Toast.makeText(requireContext(), "已退出登录", Toast.LENGTH_SHORT).show();
+                    LogoutHelper.performLogout();
+                })
+                .show();
     }
 
     @Override
@@ -60,9 +89,12 @@ public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
     private static final class BindingHost implements CgmController.HostView {
         private final FragmentUnifiedMessageBinding binding;
+        private final Context hostContext;
 
-        BindingHost(@NonNull FragmentUnifiedMessageBinding binding) {
+        BindingHost(@NonNull FragmentUnifiedMessageBinding binding,
+                    @NonNull Context hostContext) {
             this.binding = binding;
+            this.hostContext = hostContext;
         }
 
         @Override
@@ -77,12 +109,28 @@ public class CgmFragment extends BTFragment<FragmentUnifiedMessageBinding> {
 
         @Override
         public RecyclerView messageList() {
-            return binding.recyclerMessage;
+            RecyclerView rv = binding.recyclerMessage;
+            rv.setLayoutManager(new LinearLayoutManager(hostContext));
+            return rv;
+        }
+
+        @Override
+        public void configureMessageList(@NonNull RecyclerView.Adapter<?> adapter) {
+            RecyclerView rv = binding.recyclerMessage;
+            rv.setLayoutManager(new LinearLayoutManager(hostContext));
+            rv.setAdapter(adapter);
+        }
+
+        @Override
+        public ViewGroup header() {
+            return null;
         }
 
         @Override
         public TextView bottomInfo() {
-            return binding.tvBottomInfo;
+            TextView tv = new TextView(hostContext);
+            tv.setVisibility(View.GONE);
+            return tv;
         }
     }
 

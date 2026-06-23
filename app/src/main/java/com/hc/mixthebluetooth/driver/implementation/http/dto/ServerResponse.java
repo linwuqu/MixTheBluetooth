@@ -18,4 +18,8 @@ public final class ServerResponse<T> {
         response.data = data;
         return response;
     }
+
+    public boolean isOk() {
+        return success || code == 0 || code == 200;
+    }
 }

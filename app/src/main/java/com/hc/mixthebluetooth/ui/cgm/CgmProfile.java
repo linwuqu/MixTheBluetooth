@@ -28,6 +28,10 @@ public final class CgmProfile {
                         .title("CGM mmol/L")
                         .order(0)
                         .build())
+                .widget(CgmWidgets.WidgetSpec.pointList("cgm_point_list")
+                        .title("血糖数据明细")
+                        .order(1)
+                        .build())
                 .rawLineConsumer(new CgmRawLineConsumer())
                 .build();
     }
@@ -41,11 +45,13 @@ public final class CgmProfile {
             CgmWorkflow.Update update = AppApi.cgmWorkflow().onDeviceText(text, result -> {
                 gateway.onCgmWorkflowResult(result);
                 if (result.isOk()) {
+                    // 读取缓存成功并上传成功后，自动清设备缓存
                     postWorkflowText(gateway, module, "delete_cache", CgmCommands.LegacyCgm.deleteCache());
                     gateway.onCgmWorkflowUpdate(AppApi.cgmWorkflow().onDeleteCacheSent());
                 }
             });
             if (update.commandText != null) {
+                // 缺失重传
                 postWorkflowText(gateway, module, "read_cache_retry", update.commandText);
             }
             gateway.onCgmWorkflowUpdate(update);

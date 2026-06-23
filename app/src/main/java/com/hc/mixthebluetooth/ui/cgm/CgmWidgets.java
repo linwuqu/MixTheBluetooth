@@ -13,19 +13,25 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.LimitLine;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
+import com.github.mikephil.charting.highlight.Highlight;
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
 import com.hc.mixthebluetooth.api.cgm.CgmResult;
 import com.hc.mixthebluetooth.ui.shared.view.CircleProgressView;
 import com.hc.mixthebluetooth.driver.implementation.log.ApiTraceLogger;
 import com.hc.mixthebluetooth.ui.cgm.CgmController.Region;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +48,8 @@ public final class CgmWidgets {
         GAUGE,
         VALUE,
         STATS,
-        CGM_RESULT
+        CGM_RESULT,
+        POINT_LIST
     }
 
     public enum WidgetStyle {
@@ -70,6 +77,7 @@ public final class CgmWidgets {
         if (spec.kind == WidgetKind.VALUE) return new ValueMetricWidget(context, spec);
         if (spec.kind == WidgetKind.STATS) return new StatsMetricWidget(context, spec);
         if (spec.kind == WidgetKind.CGM_RESULT) return new CgmResultMetricWidget(context, spec);
+        if (spec.kind == WidgetKind.POINT_LIST) return new PointListMetricWidget(context, spec);
         return new ValueMetricWidget(context, spec);
     }
 
@@ -150,6 +158,11 @@ public final class CgmWidgets {
         @NonNull
         public static Builder cgmResult(@NonNull String id) {
             return new Builder(id, WidgetKind.CGM_RESULT).region(Region.MAIN).style(WidgetStyle.CARD);
+        }
+
+        @NonNull
+        public static Builder pointList(@NonNull String id) {
+            return new Builder(id, WidgetKind.POINT_LIST).region(Region.MAIN).style(WidgetStyle.CARD);
         }
     }
 
@@ -406,7 +419,7 @@ public final class CgmWidgets {
                 private int maxPoints = 500;
                 private float visibleWindowSeconds = 60f;
                 private float lineWidth = 1.2f;
-                private String xAxisTimeFormat = "HH:mm:ss";
+                private String xAxisTimeFormat = "HH:mm";
                 @Nullable
                 private Float yMin = null;
                 @Nullable
@@ -582,28 +595,219 @@ public final class CgmWidgets {
     }
 
     private static final class CgmResultMetricWidget implements MetricWidget {
+        private final Context context;
         private final LinearLayout root;
-        private final LineChart chart;
-        private final TextView summary;
-        private final TextView units;
+        private final LinearLayout tabContainer;
+        private final CgmGlucoseChart chart;
+
+        // Hero header fields
+        private final TextView heroValue;
+        private final TextView heroUnit;
+        private final TextView heroBadge;
+        private final TextView heroSubtitle;
+        private final TextView heroStatus;
+
+        // Stat cells
+        private final TextView statAverage;
+        private final TextView statHigh;
+        private final TextView statLow;
+        private final TextView statSpan;
+        private final TextView statHighSub;
+        private final TextView statLowSub;
+        private final TextView statSpanSub;
+        private final TextView statAverageSub;
+
+        // Bottom info
+        private final TextView info;
+
+        @Nullable private CgmResult result;
+        private int selectedUnitIndex = 0;
 
         CgmResultMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
-            root = card(context, LinearLayout.VERTICAL);
-            root.addView(title(context, spec.title), matchWrap());
+            this.context = context;
 
-            chart = new LineChart(context);
-            setupCgmChart(chart);
-            root.addView(chart, new LinearLayout.LayoutParams(
+            // Outer container with warm cream background to host the hero card
+            root = new LinearLayout(context);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setBackgroundColor(Color.parseColor("#FFF5EFE6"));
+            int pad = dp(context, 12);
+            root.setPadding(pad, pad, pad, pad);
+
+            // ---- Hero header card (dark, rounded) ----
+            LinearLayout hero = new LinearLayout(context);
+            hero.setOrientation(LinearLayout.VERTICAL);
+            GradientDrawable heroBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    new int[]{Color.parseColor("#FF2C2620"), Color.parseColor("#FF3B2E24")});
+            heroBg.setCornerRadius(dp(context, 18));
+            hero.setBackground(heroBg);
+            int hp = dp(context, 18);
+            hero.setPadding(hp, dp(context, 16), hp, dp(context, 16));
+
+            // Top row: badge + subtitle + status
+            LinearLayout heroTop = new LinearLayout(context);
+            heroTop.setOrientation(LinearLayout.HORIZONTAL);
+            heroTop.setGravity(Gravity.CENTER_VERTICAL);
+
+            heroBadge = new TextView(context);
+            heroBadge.setTextSize(11f);
+            heroBadge.setTextColor(Color.parseColor("#FFB7E8C2"));
+            heroBadge.setPadding(dp(context, 8), dp(context, 3),
+                    dp(context, 8), dp(context, 3));
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setColor(Color.parseColor("#33FFFFFF"));
+            badgeBg.setCornerRadius(dp(context, 8));
+            heroBadge.setBackground(badgeBg);
+            heroBadge.setTypeface(Typeface.DEFAULT_BOLD);
+            heroBadge.setText("NORMAL");
+            heroTop.addView(heroBadge);
+
+            heroSubtitle = new TextView(context);
+            heroSubtitle.setTextSize(12f);
+            heroSubtitle.setTextColor(Color.parseColor("#CCCBBBA8"));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            sp.setMarginStart(dp(context, 8));
+            heroSubtitle.setLayoutParams(sp);
+            heroSubtitle.setText("--");
+            heroTop.addView(heroSubtitle);
+
+            heroStatus = new TextView(context);
+            heroStatus.setTextSize(11f);
+            heroStatus.setTextColor(Color.parseColor("#FFB39A7A"));
+            heroStatus.setText("");
+            heroTop.addView(heroStatus);
+
+            hero.addView(heroTop);
+
+            // Big value row
+            LinearLayout valueRow = new LinearLayout(context);
+            valueRow.setOrientation(LinearLayout.HORIZONTAL);
+            valueRow.setGravity(Gravity.BOTTOM);
+            valueRow.setPadding(0, dp(context, 14), 0, 0);
+
+            heroValue = new TextView(context);
+            heroValue.setTextSize(56f);
+            heroValue.setTextColor(Color.parseColor("#FFFFFAF0"));
+            heroValue.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+            heroValue.setText("--");
+            valueRow.addView(heroValue);
+
+            heroUnit = new TextView(context);
+            heroUnit.setTextSize(14f);
+            heroUnit.setTextColor(Color.parseColor("#FFB39A7A"));
+            heroUnit.setPadding(dp(context, 6), 0, 0, dp(context, 14));
+            heroUnit.setText("mmol/L");
+            valueRow.addView(heroUnit);
+
+            hero.addView(valueRow);
+
+            LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(context, 230)
-            ));
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            heroLp.setMargins(0, 0, 0, dp(context, 12));
+            root.addView(hero, heroLp);
 
-            summary = statBlock(context);
-            units = statBlock(context);
-            summary.setText("等待 CGM 结果");
-            units.setText("units=[]");
-            root.addView(summary, matchWrap());
-            root.addView(units, matchWrap());
+            // ---- Time range tabs (1H / 3H / 6H / 12H / 24H) ----
+            tabContainer = new LinearLayout(context);
+            tabContainer.setOrientation(LinearLayout.HORIZONTAL);
+            tabContainer.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams tabsLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            tabsLp.setMargins(0, 0, 0, dp(context, 8));
+            tabContainer.setLayoutParams(tabsLp);
+            root.addView(tabContainer);
+
+            // ---- Custom CGM-style chart ----
+            chart = new CgmGlucoseChart(context);
+            LinearLayout.LayoutParams chartLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(context, 220));
+            chartLp.setMargins(0, 0, 0, dp(context, 12));
+            chart.setLayoutParams(chartLp);
+            root.addView(chart);
+
+            // ---- Stats grid (2x2) ----
+            LinearLayout row1 = new LinearLayout(context);
+            row1.setOrientation(LinearLayout.HORIZONTAL);
+            android.util.Pair<TextView, TextView> avgCard =
+                    makeStatCard(row1, "Average", "--", "mmol/L");
+            android.util.Pair<TextView, TextView> highCard =
+                    makeStatCard(row1, "Time High", "--", "above 7.8");
+            statAverage = avgCard.first;
+            statAverageSub = avgCard.second;
+            statHigh = highCard.first;
+            statHighSub = highCard.second;
+
+            LinearLayout row2 = new LinearLayout(context);
+            row2.setOrientation(LinearLayout.HORIZONTAL);
+            android.util.Pair<TextView, TextView> lowCard =
+                    makeStatCard(row2, "Time Low", "--", "below 3.9");
+            android.util.Pair<TextView, TextView> spanCard =
+                    makeStatCard(row2, "Range", "--", "duration");
+            statLow = lowCard.first;
+            statLowSub = lowCard.second;
+            statSpan = spanCard.first;
+            statSpanSub = spanCard.second;
+
+            LinearLayout statsGrid = new LinearLayout(context);
+            statsGrid.setOrientation(LinearLayout.VERTICAL);
+            statsGrid.addView(row1);
+            statsGrid.addView(row2);
+            root.addView(statsGrid);
+
+            // ---- Footer info ----
+            info = new TextView(context);
+            info.setTextSize(11f);
+            info.setTextColor(Color.parseColor("#FF8A7A60"));
+            info.setPadding(dp(context, 4), dp(context, 6), dp(context, 4), 0);
+            info.setText("等待 CGM 结果");
+            root.addView(info);
+        }
+
+        @NonNull
+        private android.util.Pair<TextView, TextView> makeStatCard(@NonNull LinearLayout row,
+                                                                   @NonNull String label,
+                                                                   @NonNull String value,
+                                                                   @NonNull String sub) {
+            LinearLayout card = new LinearLayout(context);
+            card.setOrientation(LinearLayout.VERTICAL);
+            GradientDrawable cardBg = new GradientDrawable();
+            cardBg.setColor(Color.WHITE);
+            cardBg.setCornerRadius(dp(context, 14));
+            cardBg.setStroke(dp(context, 1), Color.parseColor("#FFE0D6C8"));
+            card.setBackground(cardBg);
+
+            int cp = dp(context, 14);
+            card.setPadding(cp, cp, cp, cp);
+            card.setElevation(dp(context, 1));
+
+            TextView titleView = new TextView(context);
+            titleView.setText(label);
+            titleView.setTextSize(11f);
+            titleView.setTextColor(Color.parseColor("#FF8A7060"));
+            card.addView(titleView);
+
+            TextView valueView = new TextView(context);
+            valueView.setText(value);
+            valueView.setTextSize(22f);
+            valueView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            valueView.setTextColor(Color.parseColor("#FF1E1A14"));
+            valueView.setPadding(0, dp(context, 4), 0, dp(context, 2));
+            card.addView(valueView);
+
+            TextView subView = new TextView(context);
+            subView.setText(sub);
+            subView.setTextSize(10f);
+            subView.setTextColor(Color.parseColor("#FFB39A7A"));
+            card.addView(subView);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(context, 5), 0, dp(context, 5), dp(context, 8));
+            card.setLayoutParams(lp);
+            row.addView(card);
+            return new android.util.Pair<>(valueView, subView);
         }
 
         @NonNull
@@ -618,127 +822,553 @@ public final class CgmWidgets {
 
         @Override
         public void onCgmResult(@NonNull CgmResult result) {
-            ArrayList<Entry> predicted = new ArrayList<>();
-            ArrayList<Entry> actual = new ArrayList<>();
-            for (CgmResult.Point point : allPoints(result)) {
-                predicted.add(new Entry(point.time, (float) point.predicted));
-                if (point.actual != null) {
-                    actual.add(new Entry(point.time, point.actual.floatValue()));
-                }
-            }
+            this.result = result;
+            this.selectedUnitIndex = 0;
 
             ApiTraceLogger.text("CgmWidgetBinder", "RENDER", "result",
                     "jobId=" + result.jobId
                             + "\nstatus=" + result.status
-                            + "\npoints=" + predicted.size()
-                            + "\npredicted=" + predicted.size()
-                            + "\nactual=" + actual.size()
+                            + "\npoints=" + result.pointCount
                             + "\nunitCount=" + result.unitCount);
 
-            LineData data = new LineData();
-            data.addDataSet(cgmSet(predicted, "Predicted mmol/L", Color.rgb(45, 99, 155)));
-            if (!actual.isEmpty()) {
-                data.addDataSet(cgmSet(actual, "Actual mmol/L", Color.rgb(245, 158, 11)));
-            }
-            chart.setData(data);
-            chart.invalidate();
+            buildTabs(result);
+            drawSelectedUnit();
 
-            summary.setText(String.format(Locale.getDefault(),
-                    "status=%s  points=%d  units=%d\nprediction[min=%s max=%s mean=%s std=%s]  avgMard=%s  mardStd=%s\nids[result=%d job=%d dataset=%d]  created=%s",
-                    textOrDash(result.status),
-                    result.pointCount,
-                    result.unitCount,
-                    formatDouble(result.predictionMin),
-                    formatDouble(result.predictionMax),
-                    formatDouble(result.predictionMean),
-                    formatDouble(result.predictionStd),
-                    formatDouble(result.avgMard),
-                    result.mardStd == null ? "--" : formatDouble(result.mardStd),
-                    result.resultId,
-                    result.jobId,
-                    result.datasetId,
-                    textOrDash(result.gmtCreate)));
-            units.setText(formatUnits(result.summaryJson == null ? null : result.summaryJson.units));
+            info.setText(String.format(Locale.getDefault(),
+                    "Result #%d · Job %d · Dataset %d",
+                    result.resultId, result.jobId, result.datasetId));
+        }
+
+        private void buildTabs(@NonNull CgmResult result) {
+            tabContainer.removeAllViews();
+            List<CgmResult.Unit> units = result.summaryJson == null
+                    ? Collections.emptyList()
+                    : (result.summaryJson.units == null
+                        ? Collections.emptyList()
+                        : result.summaryJson.units);
+
+            if (units.isEmpty()) {
+                tabContainer.addView(makeRangeTab(context, "无数据", 0, true));
+                return;
+            }
+
+            for (int i = 0; i < units.size(); i++) {
+                CgmResult.Unit u = units.get(i);
+                String label = u.unitTitle != null && !u.unitTitle.isEmpty()
+                        ? u.unitTitle
+                        : ("Unit " + u.unit);
+                boolean selected = (i == selectedUnitIndex);
+                tabContainer.addView(makeRangeTab(context, label, i, selected));
+            }
+        }
+
+        @NonNull
+        private TextView makeRangeTab(@NonNull Context ctx, @NonNull String label,
+                                      int index, boolean selected) {
+            TextView tab = new TextView(ctx);
+            tab.setText(label);
+            tab.setTextSize(13f);
+            tab.setGravity(Gravity.CENTER);
+            tab.setTypeface(Typeface.create(selected ? "sans-serif-medium" : "sans-serif",
+                    Typeface.NORMAL));
+            int padH = dp(ctx, 16);
+            int padV = dp(ctx, 8);
+            tab.setPadding(padH, padV, padH, padV);
+
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(ctx, 10));
+            if (selected) {
+                bg.setColor(Color.parseColor("#FF1E1A14"));
+                bg.setStroke(0, Color.TRANSPARENT);
+                tab.setTextColor(Color.parseColor("#FFFFFAF0"));
+            } else {
+                bg.setColor(Color.parseColor("#FFFFFFFF"));
+                bg.setStroke(dp(ctx, 1), Color.parseColor("#FFE6DED0"));
+                tab.setTextColor(Color.parseColor("#FF6B5C4A"));
+            }
+            tab.setBackground(bg);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f);
+            lp.setMargins(dp(ctx, 3), 0, dp(ctx, 3), 0);
+            tab.setLayoutParams(lp);
+
+            tab.setOnClickListener(v -> {
+                if (index == selectedUnitIndex) return;
+                selectedUnitIndex = index;
+                if (result != null) {
+                    buildTabs(result);
+                    drawSelectedUnit();
+                }
+            });
+            return tab;
+        }
+
+        private void drawSelectedUnit() {
+            if (result == null) return;
+            List<CgmResult.Unit> units = result.summaryJson == null
+                    ? Collections.emptyList()
+                    : (result.summaryJson.units == null
+                        ? Collections.emptyList()
+                        : result.summaryJson.units);
+            if (selectedUnitIndex < 0 || selectedUnitIndex >= units.size()) return;
+
+            CgmResult.Unit unit = units.get(selectedUnitIndex);
+            if (unit.points == null || unit.points.isEmpty()) {
+                chart.clear();
+                return;
+            }
+
+            chart.setData(unit.points);
+
+            // Hero: show last predicted value (most recent)
+            CgmResult.Point first = null;
+            CgmResult.Point last = null;
+            for (CgmResult.Point p : unit.points) {
+                if (first == null) first = p;
+                last = p;
+            }
+            if (last != null) {
+                float v = (float) last.predicted;
+                heroValue.setText(String.format(Locale.getDefault(), "%.2f", v));
+                if (v >= 7.8f) {
+                    heroBadge.setText("HIGH");
+                    heroBadge.setTextColor(Color.parseColor("#FFFFC1A6"));
+                } else if (v <= 3.9f) {
+                    heroBadge.setText("LOW");
+                    heroBadge.setTextColor(Color.parseColor("#FFFFE7B0"));
+                } else {
+                    heroBadge.setText("NORMAL");
+                    heroBadge.setTextColor(Color.parseColor("#FFB7E8C2"));
+                }
+                heroSubtitle.setText(unit.unitTitle == null ? "Unit" : unit.unitTitle);
+            }
+
+            // Range / duration
+            if (first != null && last != null) {
+                long spanMs = parseTimestamp(last.rawTime) - parseTimestamp(first.rawTime);
+                if (spanMs > 0L) {
+                    long mins = spanMs / 60_000L;
+                    long hrs = mins / 60;
+                    long remMins = mins % 60;
+                    statSpan.setText(String.format(Locale.getDefault(),
+                            "%dh %02dm", hrs, remMins));
+                } else {
+                    statSpan.setText("--");
+                }
+            }
+
+            // Average + Time High + Time Low
+            double sum = 0;
+            int n = 0;
+            int highCount = 0, lowCount = 0;
+            for (CgmResult.Point p : unit.points) {
+                double v = p.predicted;
+                sum += v;
+                n++;
+                if (v >= 7.8f) highCount++;
+                else if (v <= 3.9f) lowCount++;
+            }
+            if (n > 0) {
+                statAverage.setText(String.format(Locale.getDefault(), "%.2f", sum / n));
+                int total = unit.points.size();
+                statHigh.setText(String.format(Locale.getDefault(), "%d%%",
+                        (int) Math.round(100.0 * highCount / total)));
+                statLow.setText(String.format(Locale.getDefault(), "%d%%",
+                        (int) Math.round(100.0 * lowCount / total)));
+            }
+        }
+
+        private long parseTimestamp(@Nullable String rawTime) {
+            if (rawTime == null || rawTime.isEmpty()) return 0L;
+            try {
+                if (rawTime.length() == 19) {
+                    return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                            .parse(rawTime).getTime();
+                }
+                if (rawTime.length() == 16) {
+                    return new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+                            .parse(rawTime).getTime();
+                }
+            } catch (ParseException ignored) {
+            }
+            return 0L;
         }
 
         @Override
         public void reset() {
             chart.clear();
-            summary.setText("等待 CGM 结果");
-            units.setText("units=[]");
+            tabContainer.removeAllViews();
+            heroValue.setText("--");
+            heroBadge.setText("NORMAL");
+            heroBadge.setTextColor(Color.parseColor("#FFB7E8C2"));
+            heroSubtitle.setText("--");
+            statAverage.setText("--");
+            statHigh.setText("--");
+            statLow.setText("--");
+            statSpan.setText("--");
+            info.setText("等待 CGM 结果");
+            result = null;
+            selectedUnitIndex = 0;
         }
+    }
 
-        private void setupCgmChart(@NonNull LineChart chart) {
-            chart.getDescription().setEnabled(false);
-            chart.setTouchEnabled(true);
-            chart.setDragEnabled(true);
-            chart.setScaleEnabled(true);
-            chart.setPinchZoom(true);
-            chart.setDrawGridBackground(false);
-            chart.getAxisRight().setEnabled(false);
+    /**
+     * Collapsible card listing every predicted glucose point as "rawTime · value".
+     * Sourced from the same {@link CgmResult.Unit#points} as {@link CgmResultMetricWidget}'s
+     * chart, so values stay in sync regardless of which time-range tab is active.
+     */
+    private static final class PointListMetricWidget implements MetricWidget {
+        // Same band edges as CgmGlucoseChart (mmol/L).
+        private static final float RANGE_LOW  = 3.9f;
+        private static final float RANGE_HIGH = 7.8f;
 
-            XAxis xAxis = chart.getXAxis();
-            xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-            xAxis.setGranularity(1f);
-            xAxis.setDrawGridLines(false);
-            xAxis.setValueFormatter(new ValueFormatter() {
-                @Override
-                public String getFormattedValue(float value) {
-                    return String.format(Locale.getDefault(), "%.0f", value);
-                }
+        private static final int COLOR_BG          = Color.parseColor("#FFFAF6EE");
+        private static final int COLOR_BORDER      = Color.parseColor("#FFE0D6C8");
+        private static final int COLOR_HEADER_BG   = Color.parseColor("#FFF8F2EC");
+        private static final int COLOR_TITLE       = Color.parseColor("#FF3D2E24");
+        private static final int COLOR_SUBTITLE    = Color.parseColor("#FF8A7060");
+        private static final int COLOR_ARROW       = Color.parseColor("#FFA0A8B0");
+        private static final int COLOR_BAR         = Color.parseColor("#FFA0A8B0");
+        private static final int COLOR_DIVIDER     = Color.parseColor("#FFF0E8DC");
+        private static final int COLOR_TIME        = Color.parseColor("#FF6B5C4A");
+        private static final int COLOR_VALUE_NORMAL = Color.parseColor("#FF1E1A14");
+        private static final int COLOR_VALUE_HIGH   = Color.parseColor("#FFC0352B");
+        private static final int COLOR_VALUE_LOW    = Color.parseColor("#FFB07A1F");
+        private static final int COLOR_EMPTY        = Color.parseColor("#FFA09080");
+
+        private final Context context;
+        private final LinearLayout root;
+        private final LinearLayout headerRow;
+        private final TextView titleView;
+        private final TextView subtitleView;
+        private final TextView arrowView;
+        private final LinearLayout body;
+        private final TextView emptyView;
+        private final PointAdapter adapter;
+
+        @Nullable private CgmResult result;
+        private int selectedUnitIndex = 0;
+        private boolean expanded = false;
+
+        PointListMetricWidget(@NonNull Context context, @NonNull WidgetSpec spec) {
+            this.context = context;
+
+            root = new LinearLayout(context);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setBackgroundColor(Color.TRANSPARENT);
+
+            // Margin between this card and the previous one in the same region.
+            LinearLayout.LayoutParams rootLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            rootLp.setMargins(dp(context, 10), dp(context, 6),
+                    dp(context, 10), dp(context, 6));
+            root.setLayoutParams(rootLp);
+            root.setTag("cgm_point_list_card");
+
+            // ---- Header (clickable, mirrors stream-card style: cream bg, 14dp radius,
+            //      1dp #E0D6C8 border). The rounded background also covers the body
+            //      by being applied to root, but body paints over it later. ----
+            headerRow = new LinearLayout(context);
+            headerRow.setOrientation(LinearLayout.HORIZONTAL);
+            headerRow.setGravity(Gravity.CENTER_VERTICAL);
+            GradientDrawable headerBg = new GradientDrawable();
+            headerBg.setColor(COLOR_HEADER_BG);
+            headerBg.setCornerRadius(dp(context, 14));
+            headerBg.setStroke(dp(context, 1), COLOR_BORDER);
+            headerRow.setBackground(headerBg);
+            int hp = dp(context, 14);
+            headerRow.setPadding(hp, dp(context, 10), hp, dp(context, 10));
+
+            View bar = new View(context);
+            LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                    dp(context, 3), dp(context, 14));
+            bar.setBackgroundColor(COLOR_BAR);
+            bar.setLayoutParams(barLp);
+            headerRow.addView(bar);
+
+            titleView = new TextView(context);
+            titleView.setText(spec.title == null || spec.title.isEmpty()
+                    ? "血糖数据明细" : spec.title);
+            titleView.setTextColor(COLOR_TITLE);
+            titleView.setTextSize(14f);
+            titleView.setMaxLines(1);
+            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            titleView.setTypeface(Typeface.DEFAULT_BOLD);
+            LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            titleLp.setMarginStart(dp(context, 8));
+            titleView.setLayoutParams(titleLp);
+            headerRow.addView(titleView);
+
+            subtitleView = new TextView(context);
+            subtitleView.setTextColor(COLOR_SUBTITLE);
+            subtitleView.setTextSize(11f);
+            headerRow.addView(subtitleView);
+
+            arrowView = new TextView(context);
+            arrowView.setText("›");
+            arrowView.setTextColor(COLOR_ARROW);
+            arrowView.setTextSize(16f);
+            LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            arrowLp.setMarginStart(dp(context, 6));
+            arrowView.setLayoutParams(arrowLp);
+            arrowView.setRotation(0f);
+            headerRow.addView(arrowView);
+
+            root.addView(headerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            // ---- Body (RecyclerView with bounded height) ----
+            body = new LinearLayout(context);
+            body.setOrientation(LinearLayout.VERTICAL);
+            // Match the fragment background so the expanded list visually "flows"
+            // out of the header the same way the stream card does.
+            body.setBackgroundColor(Color.parseColor("#FFF5EFE6"));
+            int bp = dp(context, 10);
+            body.setPadding(bp, dp(context, 8), bp, dp(context, 8));
+            // Bounded height so the parent ScrollView scrolls the page, not just this list.
+            LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(context, 280));
+            body.setLayoutParams(bodyLp);
+            body.setVisibility(View.GONE);
+            root.addView(body);
+
+            adapter = new PointAdapter();
+            RecyclerView rv = new RecyclerView(context);
+            rv.setLayoutManager(new LinearLayoutManager(context));
+            rv.setAdapter(adapter);
+            rv.setNestedScrollingEnabled(true);
+            body.addView(rv, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+
+            emptyView = new TextView(context);
+            emptyView.setText("暂无数据");
+            emptyView.setTextColor(COLOR_EMPTY);
+            emptyView.setTextSize(12f);
+            emptyView.setGravity(Gravity.CENTER);
+            emptyView.setPadding(0, dp(context, 24), 0, dp(context, 24));
+            emptyView.setVisibility(View.GONE);
+            body.addView(emptyView);
+
+            // Toggle expand/collapse. Always clickable: empty body shows "暂无数据".
+            headerRow.setOnClickListener(v -> {
+                expanded = !expanded;
+                applyExpandedState();
             });
 
-            YAxis yAxis = chart.getAxisLeft();
-            yAxis.setAxisMinimum(0f);
-            yAxis.setAxisMaximum(15f);
-            yAxis.setGranularity(3f);
-            yAxis.setDrawGridLines(true);
+            // Initial placeholder state: header visible, subtitle reads "等待 CGM 结果",
+            // body hidden. Once onCgmResult() runs with real data it updates these.
+            subtitleView.setText("等待 CGM 结果");
+            arrowView.setTextColor(COLOR_ARROW);
+            headerRow.setClickable(true);
+            emptyView.setVisibility(View.GONE);
+            root.setVisibility(View.VISIBLE);
+            applyExpandedState();
         }
 
         @NonNull
-        private LineDataSet cgmSet(@NonNull List<Entry> entries, @NonNull String label, int color) {
-            LineDataSet set = new LineDataSet(entries, label);
-            set.setColor(color);
-            set.setCircleColor(color);
-            set.setLineWidth(1.4f);
-            set.setCircleRadius(3f);
-            set.setDrawCircles(true);
-            set.setDrawValues(false);
-            return set;
+        @Override
+        public View view() {
+            return root;
         }
 
-        @NonNull
-        private List<CgmResult.Point> allPoints(@NonNull CgmResult data) {
-            ArrayList<CgmResult.Point> points = new ArrayList<>();
-            if (data.summaryJson == null || data.summaryJson.units == null) {
-                return points;
+        @Override
+        public void onSample(@NonNull BluetoothSample sample) {
+        }
+
+        @Override
+        public void onCgmResult(@NonNull CgmResult result) {
+            this.result = result;
+            this.selectedUnitIndex = 0;
+            renderForSelectedUnit();
+        }
+
+        private void renderForSelectedUnit() {
+            if (result == null) return;
+            List<CgmResult.Unit> units = unitsOf(result);
+            if (units.isEmpty()) {
+                adapter.submit(new ArrayList<>());
+                subtitleView.setText("0 条");
+                emptyView.setVisibility(View.VISIBLE);
+                arrowView.setTextColor(COLOR_ARROW);
+                headerRow.setClickable(true);
+                return;
             }
-            for (CgmResult.Unit unit : data.summaryJson.units) {
-                if (unit.points != null) {
-                    points.addAll(unit.points);
+            if (selectedUnitIndex < 0 || selectedUnitIndex >= units.size()) {
+                selectedUnitIndex = 0;
+            }
+            CgmResult.Unit unit = units.get(selectedUnitIndex);
+            String label = unit.unitTitle != null && !unit.unitTitle.isEmpty()
+                    ? unit.unitTitle : ("Unit " + unit.unit);
+            List<CgmResult.Point> src = unit.points;
+            if (src == null) src = Collections.emptyList();
+
+            // Sort ascending by time so the list reads earliest → latest.
+            ArrayList<CgmResult.Point> sorted = new ArrayList<>(src.size());
+            for (CgmResult.Point p : src) sorted.add(p);
+            Collections.sort(sorted, (a, b) -> {
+                long ta = parseTimestamp(a.rawTime);
+                long tb = parseTimestamp(b.rawTime);
+                if (ta == 0L && tb == 0L) return 0;
+                if (ta == 0L) return 1;
+                if (tb == 0L) return -1;
+                return Long.compare(ta, tb);
+            });
+
+            adapter.submit(sorted);
+            subtitleView.setText(label + " · " + sorted.size() + " 条");
+            emptyView.setVisibility(View.GONE);
+            arrowView.setTextColor(COLOR_ARROW);
+            headerRow.setClickable(true);
+            // If data is now available and we previously had no header action, leave
+            // current expanded state alone — preserves the user's preference.
+        }
+
+        private void applyExpandedState() {
+            List<CgmResult.Unit> units = result == null ? null : unitsOf(result);
+            // body contains either the point list or the emptyView placeholder; both
+            // are valid in expanded state. We just need to know whether a unit was
+            // resolved so we don't try to index into an empty list.
+            boolean resolved = units != null && !units.isEmpty();
+            if (!resolved) {
+                // No data yet (or no units). Still allow expanding — emptyView shows "暂无数据".
+                body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+                arrowView.setRotation(expanded ? 90f : 0f);
+                emptyView.setVisibility(View.VISIBLE);
+                return;
+            }
+            CgmResult.Unit unit = units.get(selectedUnitIndex < units.size() ? selectedUnitIndex : 0);
+            boolean hasData = unit.points != null && !unit.points.isEmpty();
+            emptyView.setVisibility(hasData ? View.GONE : View.VISIBLE);
+            body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            arrowView.setRotation(expanded ? 90f : 0f);
+        }
+
+        private static List<CgmResult.Unit> unitsOf(@NonNull CgmResult result) {
+            if (result.summaryJson == null || result.summaryJson.units == null) {
+                return Collections.emptyList();
+            }
+            return result.summaryJson.units;
+        }
+
+        private static int colorForValue(double v) {
+            if (v >= RANGE_HIGH) return COLOR_VALUE_HIGH;
+            if (v <= RANGE_LOW)  return COLOR_VALUE_LOW;
+            return COLOR_VALUE_NORMAL;
+        }
+
+        @Override
+        public void reset() {
+            result = null;
+            selectedUnitIndex = 0;
+            expanded = false;
+            adapter.submit(new ArrayList<>());
+            subtitleView.setText("");
+            emptyView.setVisibility(View.GONE);
+            applyExpandedState();
+        }
+
+        private long parseTimestamp(@Nullable String rawTime) {
+            if (rawTime == null || rawTime.isEmpty()) return 0L;
+            try {
+                if (rawTime.length() == 19) {
+                    return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                            .parse(rawTime).getTime();
+                }
+                if (rawTime.length() == 16) {
+                    return new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+                            .parse(rawTime).getTime();
+                }
+            } catch (ParseException ignored) {
+            }
+            return 0L;
+        }
+
+        private static int dp(@NonNull Context context, int dp) {
+            return Math.round(dp * context.getResources().getDisplayMetrics().density);
+        }
+
+        // ---- Adapter ----
+        private static final class PointAdapter
+                extends RecyclerView.Adapter<PointAdapter.VH> {
+
+            private final ArrayList<CgmResult.Point> data = new ArrayList<>();
+
+            void submit(@NonNull List<CgmResult.Point> next) {
+                data.clear();
+                data.addAll(next);
+                notifyDataSetChanged();
+            }
+
+            @NonNull
+            @Override
+            public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                Context ctx = parent.getContext();
+                LinearLayout row = new LinearLayout(ctx);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(ctx, 12), dp(ctx, 6), dp(ctx, 12), dp(ctx, 6));
+
+                TextView time = new TextView(ctx);
+                time.setTextSize(11f);
+                time.setTextColor(COLOR_TIME);
+                row.addView(time, new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                TextView value = new TextView(ctx);
+                value.setTextSize(13f);
+                value.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                value.setGravity(Gravity.END);
+                value.setMinWidth(dp(ctx, 64));
+                row.addView(value, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                // Thin divider.
+                View divider = new View(ctx);
+                divider.setBackgroundColor(COLOR_DIVIDER);
+                LinearLayout container = new LinearLayout(ctx);
+                container.setOrientation(LinearLayout.VERTICAL);
+                container.addView(row, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+                container.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 1));
+                return new VH(container, time, value);
+            }
+
+            @Override
+            public void onBindViewHolder(@NonNull VH h, int position) {
+                CgmResult.Point p = data.get(position);
+                h.time.setText(p.rawTime == null || p.rawTime.isEmpty() ? "--" : p.rawTime);
+                String v = String.format(Locale.getDefault(), "%.2f", p.predicted);
+                h.value.setText(v);
+                h.value.setTextColor(colorForValue(p.predicted));
+            }
+
+            @Override
+            public int getItemCount() {
+                return data.size();
+            }
+
+            static final class VH extends RecyclerView.ViewHolder {
+                final TextView time;
+                final TextView value;
+                VH(@NonNull View itemView, @NonNull TextView time, @NonNull TextView value) {
+                    super(itemView);
+                    this.time = time;
+                    this.value = value;
                 }
             }
-            return points;
-        }
-
-        @NonNull
-        private String formatUnits(@Nullable List<CgmResult.Unit> unitList) {
-            if (unitList == null || unitList.isEmpty()) {
-                return "units=[]";
-            }
-            StringBuilder builder = new StringBuilder();
-            for (CgmResult.Unit unit : unitList) {
-                if (builder.length() > 0) {
-                    builder.append('\n');
-                }
-                builder.append(String.format(Locale.getDefault(),
-                        "unit=%d  title=%s  points=%d  mard=%s",
-                        unit.unit,
-                        textOrDash(unit.unitTitle),
-                        unit.pointCount,
-                        formatDouble(unit.mard)));
-            }
-            return builder.toString();
         }
     }
 

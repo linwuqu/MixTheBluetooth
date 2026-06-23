@@ -1,52 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:id="@+id/communication_name"
     android:orientation="vertical"
     tools:context=".ui.cgm.CgmActivity">
-
-
-    <HorizontalScrollView
-        android:scrollbars="none"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="6dp"
-            android:paddingLeft="15dp"
-            android:paddingRight="15dp"
-            android:paddingBottom="10dp"
-            android:orientation="horizontal">
-            <com.hc.mixthebluetooth.ui.shared.view.UnderlineTextView
-                android:id="@+id/tab_message"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="5dp"
-                android:layout_marginRight="5dp"
-                android:layout_marginLeft="5dp"
-                app:UTextColor="@color/frenchGrey"
-                app:UTextWidth="3dp"
-                app:UTextOriginalColor="@color/menuBack"
-                app:UTextLineColor="@color/skyBlue"
-                android:text="@string/message_fragment"/>
-            <com.hc.mixthebluetooth.ui.shared.view.UnderlineTextView
-                android:id="@+id/tab_message_new"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="5dp"
-                android:layout_marginRight="5dp"
-                android:layout_marginLeft="5dp"
-                app:UTextColor="@color/frenchGrey"
-                app:UTextWidth="3dp"
-                app:UTextOriginalColor="@color/menuBack"
-                app:UTextLineColor="@color/skyBlue"
-                android:text="@string/new_message"/>
-        </LinearLayout>
-    </HorizontalScrollView>
 
     <androidx.viewpager.widget.ViewPager
         android:id="@+id/communication_fragment"

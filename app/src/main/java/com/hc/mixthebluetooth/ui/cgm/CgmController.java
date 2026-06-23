@@ -3,9 +3,11 @@ package com.hc.mixthebluetooth.ui.cgm;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -62,6 +64,10 @@ public final class CgmController {
         ViewGroup region(@NonNull Region region);
 
         RecyclerView messageList();
+
+        void configureMessageList(@NonNull RecyclerView.Adapter<?> adapter);
+
+        ViewGroup header();
 
         TextView bottomInfo();
     }
@@ -236,8 +242,9 @@ public final class CgmController {
 
     public void init() {
         adapter = new MessageAdapter(context, messages, R.layout.item_message_fragment);
-        host.messageList().setLayoutManager(new LinearLayoutManager(context));
-        host.messageList().setAdapter(adapter);
+        // configureMessageList() is deferred via pendingAdapter if BottomSheet hasn't been shown yet,
+        // which happens during ViewPager onMeasure before the fragment view is inflated.
+        host.configureMessageList(adapter);
         createActions();
         createSystemIndicators();
         createWidgets();
@@ -250,7 +257,7 @@ public final class CgmController {
         } else if (event instanceof CgmBluetoothEvent.Connected) {
             module = ((CgmBluetoothEvent.Connected) event).module;
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state",
-                    "connected=true\ndevice=" + (module == null ? "" : module.getName()));
+                    "connected=true\ndevice=" + module.getName());
         } else if (event instanceof CgmBluetoothEvent.Disconnected) {
             module = null;
             ApiTraceLogger.text(OWNER, API_DEVICE_CONNECT, "state", "connected=false");
@@ -280,33 +287,61 @@ public final class CgmController {
 
     private void createActions() {
         for (ActionSpec action : spec.actions) {
-            Button button = new Button(context);
-            button.setAllCaps(false);
+            TextView button = new TextView(context);
             button.setText(action.label);
-            button.setOnClickListener(v -> handleAction(action));
-            host.region(Region.ACTION).addView(button, new LinearLayout.LayoutParams(
+            button.setTextSize(13f);
+            button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            button.setGravity(Gravity.CENTER);
+            button.setPadding(dp(18), dp(9), dp(18), dp(9));
+
+            // Light card style: cream background, dark warm text
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(22));
+            bg.setColor(Color.parseColor("#FFF8F2EC"));
+            bg.setStroke(dp(1), Color.parseColor("#FFE0D6C8"));
+            button.setBackground(bg);
+            button.setTextColor(Color.parseColor("#3D2E24"));
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-            ));
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, 0, dp(8), 0);
+            button.setLayoutParams(lp);
+
+            button.setOnClickListener(v -> handleAction(action));
+            host.region(Region.ACTION).addView(button);
         }
     }
 
     private void createSystemIndicators() {
-        addIndicatorText("record_state", "Record: OFF");
-        addIndicatorText("byte_counter", "Read: 0 B    Sent: 0 B");
+        addIndicatorChip("record_state", "Record: OFF", false);
+        addIndicatorChip("byte_counter", "Read: 0 B  ·  Sent: 0 B", true);
     }
 
-    private TextView addIndicatorText(@NonNull String id, @NonNull String text) {
+    private void addIndicatorChip(@NonNull String id, @NonNull String text, boolean append) {
         TextView tv = new TextView(context);
         tv.setText(text);
-        tv.setTextColor(Color.rgb(96, 96, 96));
-        tv.setTextSize(15f);
+        tv.setTextSize(11f);
+        tv.setPadding(dp(10), dp(4), dp(10), dp(4));
+
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(Color.parseColor("#FFE8EDF2"));
+        tv.setBackground(bg);
+        tv.setTextColor(Color.parseColor("#FF5C6670"));
+
         indicators.put(id, tv);
-        host.region(Region.DEBUG).addView(tv, new LinearLayout.LayoutParams(
+
+        ViewGroup container = host.region(Region.DEBUG);
+        if (append && !indicators.isEmpty()) {
+            android.widget.Space sp = new android.widget.Space(context);
+            sp.setLayoutParams(new LinearLayout.LayoutParams(dp(8), 1));
+            container.addView(sp);
+        }
+        container.addView(tv, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
-        return tv;
     }
 
     private void createWidgets() {
@@ -459,6 +494,11 @@ public final class CgmController {
         TextView tv = indicators.get("record_state");
         if (tv != null) {
             tv.setText(recording ? "Record: ON" : "Record: OFF");
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setCornerRadius(dp(12));
+            bg.setColor(recording ? Color.parseColor("#FFE3F5E9") : Color.parseColor("#FFE8EDF2"));
+            tv.setBackground(bg);
+            tv.setTextColor(recording ? Color.parseColor("#FF2E7D32") : Color.parseColor("#FF5C6670"));
         }
     }
 

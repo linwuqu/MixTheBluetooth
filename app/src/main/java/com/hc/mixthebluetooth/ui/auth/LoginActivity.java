@@ -23,7 +23,7 @@ import com.hc.mixthebluetooth.ui.main.MainActivity;
 import java.util.Objects;
 
 public class LoginActivity extends AppCompatActivity {
-    private static final String DEV_PHONE = "18800000001";
+    private static final String DEV_PHONE = "18170358508";
     private static final String DEV_PASSWORD = "123456";
 
     private ActivityLoginBinding viewBinding;
@@ -39,6 +39,13 @@ public class LoginActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         viewBinding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(viewBinding.getRoot());
+
+        if (AppApi.sessionStore().isTokenValid()) {
+            // 已经有有效 session，直接跳主页
+            navigateToMain();
+            return;
+        }
+
         initView();
         setupAnimations();
         setupInputValidation();
@@ -140,6 +147,7 @@ public class LoginActivity extends AppCompatActivity {
             AppApi.auth().login(username, password, result -> runOnUiThread(() -> {
                 setFormEnabled(true);
                 if (result.isOk()) {
+                    // 【后续】在这里考虑添加特权用户/普通用户的判别 在DefaultService中
                     homeApplication.setLimits("ordinary");
                     homeApplication.setIsLogin("true");
                     navigateToMain();

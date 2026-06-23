@@ -18,6 +18,7 @@ public final class EncryptedSessionStore implements SessionStore {
     private static final String KEY_USERNAME = "username";
     private static final String KEY_PHONE = "phone";
     private static final String KEY_LAST_LOGIN_AT = "last_login_at";
+    private static final String KEY_EXPIRES_AT = "expires_at";
 
     private final Store store;
 
@@ -36,12 +37,18 @@ public final class EncryptedSessionStore implements SessionStore {
 
     @Override
     public void save(@Nullable AuthUser user) {
+        save(user, System.currentTimeMillis() + LOCAL_TOKEN_TTL_MS);
+    }
+
+    @Override
+    public void save(@Nullable AuthUser user, long expiresAtMillis) {
         if (user == null) return;
         store.putLong(KEY_ACCOUNT_ID, user.accountId);
         putString(KEY_USERNAME, user.username);
         putString(KEY_PHONE, user.phone);
         putString(KEY_TOKEN, user.token);
         store.putLong(KEY_LAST_LOGIN_AT, System.currentTimeMillis());
+        store.putLong(KEY_EXPIRES_AT, expiresAtMillis);
     }
 
     @NonNull
@@ -59,6 +66,15 @@ public final class EncryptedSessionStore implements SessionStore {
     @Override
     public String token() {
         return store.getString(KEY_TOKEN);
+    }
+
+    @Override
+    public boolean isTokenValid() {
+        String t = token();
+        if (t == null || t.trim().isEmpty()) return false;
+        long expiresAt = store.getLong(KEY_EXPIRES_AT, 0L);
+        if (expiresAt <= 0L) return false;
+        return System.currentTimeMillis() < expiresAt;
     }
 
     @Override

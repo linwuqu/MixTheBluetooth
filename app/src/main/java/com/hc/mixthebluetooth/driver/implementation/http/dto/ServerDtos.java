@@ -36,15 +36,20 @@ public final class ServerDtos {
     }
 
     public static final class AccountResp {
-        public long accountId;
+        public long id;
         @Nullable
         public String username;
         @Nullable
         public String phone;
         @Nullable
         public String avatarUrl;
+        // 【后续】在这里考虑添加特权用户/普通用户的判别 在DefaultService中
         @Nullable
-        public String token;
+        public String role;
+        @Nullable
+        public Long rootFileId;
+        @Nullable
+        public String rootFileName;
     }
 
     public static final class FileResp {
@@ -57,57 +62,74 @@ public final class ServerDtos {
         public String url;
     }
 
-    public static final class CgmJobResp {
-        public int code;
+    public static final class CgmUploadResp {
         @Nullable
-        public String message;
+        public Long datasetId;
         @Nullable
-        public CgmJobData data;
+        public String datasetStatus;
+        @Nullable
+        public Long rawAccountFileId;
+        @Nullable
+        public Integer rowCount;
+        @Nullable
+        public Integer unitCount;
+        @Nullable
+        public Long jobId;
+        @Nullable
+        public String jobNo;
+        @Nullable
+        public String jobStatus;
+        @Nullable
+        public Long resultId;
+        @Nullable
+        public String errorMsg;
+        @Nullable
+        public List<String> parseWarnings;
     }
 
     public static final class CgmJobData {
-        public long resultId;
-        public long jobId;
-        public long datasetId;
-        public int pointCount;
-        public int unitCount;
-        public double predictionMin;
-        public double predictionMax;
-        public double predictionMean;
-        public double predictionStd;
-        public double avgMard;
         @Nullable
-        public Double mardStd;
+        public Long jobId;
         @Nullable
-        public CgmSummary summaryJson;
+        public String jobNo;
         @Nullable
         public String status;
         @Nullable
-        public String gmtCreate;
+        public Long datasetId;
+        @Nullable
+        public Long resultId;
+        @Nullable
+        public String errorMsg;
+        @Nullable
+        public String startedAt;
+        @Nullable
+        public String finishedAt;
     }
 
-    public static final class CgmSummary {
-        @SerializedName("avg_mard")
-        public double avgMard;
-        @SerializedName("mard_std")
+    public static final class CgmResultInfo {
         @Nullable
-        public Double mardStd;
-        @SerializedName("point_count")
-        public int pointCount;
-        @SerializedName("unit_count")
-        public int unitCount;
-        @SerializedName("prediction_stats")
+        public Double min;
         @Nullable
-        public CgmPredictionStats predictionStats;
+        public Double max;
+        @Nullable
+        public Double mean;
+        @Nullable
+        public Double std;
+        @Nullable
+        public Double tir;
+        @Nullable
+        public Double tirLow;
+        @Nullable
+        public Double tirHigh;
+    }
+
+    public static final class CgmCurveResp {
+        @Nullable
+        public Long resultId;
+        @Nullable
+        public Integer unitCount;
         @Nullable
         public List<CgmUnit> units;
-    }
-
-    public static final class CgmPredictionStats {
-        public double min;
-        public double max;
-        public double mean;
-        public double std;
     }
 
     public static final class CgmUnit {
@@ -125,6 +147,9 @@ public final class ServerDtos {
     public static final class CgmPoint {
         public int index;
         public int time;
+        @SerializedName("rawTime")
+        @Nullable
+        public String rawTime;
         public double predicted;
         @Nullable
         public Double actual;

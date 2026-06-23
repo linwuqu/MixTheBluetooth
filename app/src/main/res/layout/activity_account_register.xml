@@ -33,6 +33,15 @@
         android:inputType="textPassword"
         tools:text="123456" />
 
+    <EditText
+        android:id="@+id/register_avatar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="头像 URL（可选）"
+        android:inputType="textUri"
+        tools:text="https://example.com/avatar.jpg" />
+
     <Button
         android:id="@+id/register_submit"
         android:layout_width="match_parent"

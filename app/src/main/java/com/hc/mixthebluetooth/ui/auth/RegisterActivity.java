@@ -1,6 +1,8 @@
 package com.hc.mixthebluetooth.ui.auth;
 
+import android.content.Intent;
 import android.view.View;
+import android.widget.Toast;
 
 import com.hc.basiclibrary.viewBasic.BaseActivity;
 import com.hc.mixthebluetooth.BuildConfig;
@@ -9,7 +11,7 @@ import com.hc.mixthebluetooth.databinding.ActivityAccountRegisterBinding;
 
 public class RegisterActivity extends BaseActivity<ActivityAccountRegisterBinding> {
     private static final String DEV_USERNAME = "bioai-dev-user";
-    private static final String DEV_PHONE = "18800000001";
+    private static final String DEV_PHONE = "18170358508";
     private static final String DEV_PASSWORD = "123456";
 
     @Override
@@ -38,18 +40,31 @@ public class RegisterActivity extends BaseActivity<ActivityAccountRegisterBindin
         String phone = viewBinding.registerPhone.getText().toString().trim();
         String username = viewBinding.registerUsername.getText().toString().trim();
         String password = viewBinding.registerPassword.getText().toString().trim();
+        String avatarUrl = viewBinding.registerAvatar.getText().toString().trim();
 
         if (phone.isEmpty() || username.isEmpty() || password.isEmpty()) {
             viewBinding.registerStatus.setText("手机号、用户名和密码不能为空");
             return;
         }
+        if (avatarUrl.isEmpty()) {
+            avatarUrl = null;
+        }
 
         viewBinding.registerSubmit.setEnabled(false);
         viewBinding.registerStatus.setText("注册中...");
 
-        AppApi.auth().register(username, password, phone, result -> runOnUiThread(() -> {
+        AppApi.auth().register(username, password, phone, avatarUrl, result -> runOnUiThread(() -> {
             viewBinding.registerSubmit.setEnabled(true);
-            viewBinding.registerStatus.setText(result.isOk() ? "注册成功" : result.message);
+            if (result.isOk()) {
+                viewBinding.registerStatus.setText("注册成功，正在跳转登录页...");
+                Toast.makeText(this, "注册成功", Toast.LENGTH_SHORT).show();
+                viewBinding.registerSubmit.postDelayed(() -> {
+                    startActivity(new Intent(this, LoginActivity.class));
+                    finish();
+                }, 800);
+            } else {
+                viewBinding.registerStatus.setText(result.message);
+            }
         }));
     }
 

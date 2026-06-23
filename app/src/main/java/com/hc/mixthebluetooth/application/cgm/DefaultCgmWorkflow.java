@@ -95,6 +95,7 @@ public final class DefaultCgmWorkflow implements CgmWorkflow {
     private Update uploadValidatedReplay(@NonNull ApiCallback<CallResult<CgmResult>> callback) {
         File file;
         try {
+            // 写入本地
             file = buffer.writeTo(recorder);
         } catch (IllegalStateException e) {
             buffer.markError();
@@ -118,7 +119,9 @@ public final class DefaultCgmWorkflow implements CgmWorkflow {
 
         buffer.markUploading();
         logger.text(OWNER, API_UPLOAD_POLL, "file", file.getAbsolutePath());
+        // 上传至服务器
         cgmJobService.uploadAndPoll(file, result -> {
+
             synchronized (DefaultCgmWorkflow.this) {
                 if (result.isError()) {
                     buffer.markError();

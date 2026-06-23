@@ -7,95 +7,124 @@ from urllib.parse import urlparse
 
 
 ACCOUNT = {
-    "accountId": 10001,
+    "id": 10001,
     "username": "bioai-dev-user",
     "phone": "18800000001",
     "avatarUrl": None,
-    "token": "static-token-job-64",
+    "role": "USER",
+    "rootFileId": 0,
+    "rootFileName": "root",
 }
 
-CGM_JOB_64 = {
-    "code": 200,
-    "message": "success",
-    "data": {
-        "resultId": 64001,
-        "jobId": 64,
-        "datasetId": 640,
-        "pointCount": 6,
-        "unitCount": 1,
-        "predictionMin": 4.12,
-        "predictionMax": 9.87,
-        "predictionMean": 6.54,
-        "predictionStd": 1.23,
-        "avgMard": 16.3,
-        "mardStd": None,
-        "summaryJson": {
-            "avg_mard": 16.3,
-            "mard_std": None,
-            "point_count": 6,
-            "unit_count": 1,
-            "prediction_stats": {
-                "min": 4.12,
-                "max": 9.87,
-                "mean": 6.54,
-                "std": 1.23,
-            },
+TOKEN = "static-token-job-64"
+
+CGM_POINTS = [
+    {"index": 0, "time": 0, "predicted": 5.21, "actual": 5.0},
+    {"index": 1, "time": 60, "predicted": 6.18, "actual": 5.7},
+    {"index": 2, "time": 120, "predicted": 6.85, "actual": 6.4},
+    {"index": 3, "time": 180, "predicted": 7.43, "actual": 7.0},
+    {"index": 4, "time": 240, "predicted": 8.10, "actual": 7.8},
+    {"index": 5, "time": 300, "predicted": 9.02, "actual": 8.6},
+]
+
+
+def success_response(data, code=0, msg=""):
+    return {
+        "code": code,
+        "success": True,
+        "msg": msg,
+        "data": data,
+    }
+
+
+def account_response():
+    return success_response(ACCOUNT)
+
+
+def cgm_upload_response():
+    return success_response(
+        {
+            "datasetId": 640,
+            "datasetStatus": "VALID",
+            "rawAccountFileId": 64001,
+            "rowCount": 6,
+            "unitCount": 1,
+            "jobId": 64,
+            "jobNo": "static-job-64",
+            "jobStatus": "SUCCESS",
+            "resultId": 64001,
+            "errorMsg": None,
+            "parseWarnings": [],
+        },
+        code=200,
+        msg="static CGM upload ok",
+    )
+
+
+def cgm_job_response():
+    return success_response(
+        {
+            "jobId": 64,
+            "jobNo": "static-job-64",
+            "status": "SUCCESS",
+            "datasetId": 640,
+            "resultId": 64001,
+            "errorMsg": None,
+            "startedAt": "2026-06-01T10:00:00",
+            "finishedAt": "2026-06-01T10:00:01",
+        },
+        code=200,
+        msg="success",
+    )
+
+
+def cgm_result_info_response():
+    return success_response(
+        {
+            "min": 4.12,
+            "max": 9.87,
+            "mean": 6.54,
+            "std": 1.23,
+            "tir": 83.3,
+            "tirLow": 0.0,
+            "tirHigh": 16.7,
+        },
+        code=200,
+        msg="success",
+    )
+
+
+def cgm_result_curve_response():
+    return success_response(
+        {
+            "resultId": 64001,
+            "unitCount": 1,
             "units": [
                 {
                     "unit": 1,
                     "unit_title": "static-job-64",
-                    "point_count": 6,
+                    "point_count": len(CGM_POINTS),
                     "mard": 16.3,
-                    "points": [
-                        {"index": 0, "time": 0, "predicted": 5.21, "actual": 5.0},
-                        {"index": 1, "time": 60, "predicted": 6.18, "actual": 5.7},
-                        {"index": 2, "time": 120, "predicted": 6.85, "actual": 6.4},
-                        {"index": 3, "time": 180, "predicted": 7.43, "actual": 7.0},
-                        {"index": 4, "time": 240, "predicted": 8.10, "actual": 7.8},
-                        {"index": 5, "time": 300, "predicted": 9.02, "actual": 8.6},
-                    ],
+                    "points": CGM_POINTS,
                 }
             ],
         },
-        "status": "GENERATED",
-        "gmtCreate": "2026-06-01T10:00:00",
-    },
-}
-
-
-def account_response():
-    return {
-        "code": 0,
-        "success": True,
-        "msg": "",
-        "data": ACCOUNT,
-    }
-
-
-def upload_response(file_name="cgm-cache.txt"):
-    return {
-        "code": 200,
-        "success": True,
-        "msg": "static upload ok",
-        "data": {
-            "jobId": 64,
-            "fileName": file_name,
-        },
-    }
+        code=200,
+        msg="success",
+    )
 
 
 def file_upload_response(file_name="cgm-cache.txt"):
-    return {
-        "code": 200,
-        "success": True,
-        "msg": "static file upload ok",
-        "data": {
+    return success_response(
+        {
             "fileId": 64001,
             "fileName": file_name,
             "path": f"/static/{file_name}",
             "url": f"http://lan-static-backend/static/{file_name}",
         },
-    }
+        code=200,
+        msg="static file upload ok",
+    )
 
 
 def health_response():
@@ -129,13 +158,13 @@ class LanStaticBackendHandler(BaseHTTPRequestHandler):
         elif path == "/api/account/v1/detail":
             self.send_json(200, account_response())
         elif path == "/api/cgm/v1/jobs/64":
-            self.send_json(200, CGM_JOB_64)
+            self.send_json(200, cgm_job_response())
         elif path.startswith("/api/cgm/v1/jobs/"):
-            self.send_json(404, {
-                "code": 404,
-                "message": "static CGM job not found",
-                "data": None,
-            })
+            self.send_json(404, error_response(404, "static CGM job not found"))
+        elif path == "/api/cgm/v1/predictions/64001/info":
+            self.send_json(200, cgm_result_info_response())
+        elif path == "/api/cgm/v1/predictions/64001/curve":
+            self.send_json(200, cgm_result_curve_response())
         else:
             self.send_json(404, error_response(404, "not found"))
 
@@ -143,10 +172,12 @@ class LanStaticBackendHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         body = self.read_body()
         file_name = self.extract_file_name(body)
-        if path in ("/api/account/v1/register", "/api/account/v1/login"):
-            self.send_json(200, account_response(), request_body_length=len(body))
-        elif path == "/api/test/v1/upload":
-            self.send_json(200, upload_response(file_name), request_body_length=len(body))
+        if path == "/api/account/v1/register":
+            self.send_json(200, success_response(None), request_body_length=len(body))
+        elif path == "/api/account/v1/login":
+            self.send_json(200, success_response(TOKEN), request_body_length=len(body))
+        elif path == "/api/cgm/v1/dataset/upload":
+            self.send_json(200, cgm_upload_response(), request_body_length=len(body))
         elif path == "/api/file/v1/upload":
             self.send_json(200, file_upload_response(file_name), request_body_length=len(body))
         else:

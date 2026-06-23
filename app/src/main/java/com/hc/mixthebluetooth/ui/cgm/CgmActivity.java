@@ -20,21 +20,18 @@ import com.hc.basiclibrary.viewBasic.manage.ViewPagerManage;
 import com.hc.bluetoothlibrary.DeviceModule;
 import com.hc.mixthebluetooth.R;
 import com.hc.mixthebluetooth.driver.implementation.bluetooth.AndroidBluetoothController;
-import com.hc.mixthebluetooth.ui.shared.view.UnderlineTextView;
 import com.hc.mixthebluetooth.ui.shared.dialog.SetMtu;
 import com.hc.mixthebluetooth.databinding.ActivityCommunicationBinding;
 
 import java.util.List;
+import android.util.Log;
 
 public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     private static final String CONNECTED = "已连接";
     private static final String CONNECTING = "连接中";
     private static final String DISCONNECT = "断线了";
 
-    private static final int PAGE_MESSAGE_NEW = 0;
-
     private DefaultNavigationBar mTitle;
-    private UnderlineTextView mUnderlineTV;
     private ViewPagerManage viewPagerManage;
 
     private AndroidBluetoothController mAndroidBluetoothController;
@@ -55,7 +52,6 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         initTitle();
         initBluetoothListener();
         initPages();
-        initTabs();
         initSubscription();
     }
 
@@ -66,6 +62,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
     @Override
     protected void onDestroy() {
+        Log.d("CgmActivity", ">>> onDestroy called");
         super.onDestroy();
         logWarn("关闭CgmActivity...");
         if (mAndroidBluetoothController == null) return;
@@ -76,6 +73,19 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
         if (module != null) {
             mAndroidBluetoothController.disconnect(module);
         }
+    }
+
+
+    @Override
+    protected void onPause() {
+        Log.d("CgmActivity", ">>> onPause called");
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        Log.d("CgmActivity", ">>> onResume called");
+        super.onResume();
     }
 
 
@@ -152,17 +162,7 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
     private void initPages() {
         viewPagerManage = new ViewPagerManage(viewBinding.communicationFragment);
         viewPagerManage.addFragment(new CgmFragment());
-
-        viewBinding.tabMessage.setVisibility(View.GONE);
-
         viewBinding.communicationFragment.setAdapter(viewPagerManage.getAdapter());
-        viewPagerManage.setPositionListener(this::updateTabSelection);
-
-        showPage(PAGE_MESSAGE_NEW);
-    }
-
-    private void initTabs() {
-        bindClickListener(viewBinding.tabMessage, viewBinding.tabMessageNew);
     }
 
     private void initSubscription() {
@@ -211,31 +211,6 @@ public class CgmActivity extends BaseActivity<ActivityCommunicationBinding> {
 
         CgmBluetoothEvent.BTPost post = (CgmBluetoothEvent.BTPost) data;
         mAndroidBluetoothController.sendData(post.module, post.bytes.clone());
-    }
-
-    // ----------------- Page Navigation -----------------
-    @Override
-    public void onClickView(View view) {
-        if (isCheck(viewBinding.tabMessage) || isCheck(viewBinding.tabMessageNew)) {
-            showPage(PAGE_MESSAGE_NEW);
-        }
-    }
-
-    private void showPage(int page) {
-        viewBinding.communicationFragment.setCurrentItem(page);
-        updateTabSelection(page);
-    }
-
-    private void updateTabSelection(int position) {
-        if (mUnderlineTV != null) {
-            mUnderlineTV.setState(false);
-        }
-
-        switch (position) {
-            case PAGE_MESSAGE_NEW:
-                mUnderlineTV = viewBinding.tabMessageNew.setState(true);
-                break;
-        }
     }
 
 

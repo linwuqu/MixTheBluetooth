@@ -6,6 +6,7 @@ import java.util.List;
 
 public final class CgmResult {
     public long resultId;
+
     public long jobId;
     public long datasetId;
     public int pointCount;
@@ -59,5 +60,7 @@ public final class CgmResult {
         public double predicted;
         @Nullable
         public Double actual;
+        @Nullable
+        public String rawTime;
     }
 }

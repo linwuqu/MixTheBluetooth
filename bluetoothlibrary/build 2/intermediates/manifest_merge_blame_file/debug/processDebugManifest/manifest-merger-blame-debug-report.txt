@@ -1,0 +1,27 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.hc.bluetoothlibrary" >
+4
+5    <uses-sdk android:minSdkVersion="18" />
+6
+7    <uses-permission android:name="android.permission.BLUETOOTH" />
+7-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:3:5-68
+7-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:3:22-65
+8    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+8-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:4:5-74
+8-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:4:22-71
+9    <uses-permission android:name="android.Manifest.permission#BLUETOOTH" />
+9-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:5:5-76
+9-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:5:22-74
+10    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+10-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:6:5-81
+10-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:6:22-78
+11
+12    <application>
+12-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:8:5-10:19
+13        <service android:name="com.hc.bluetoothlibrary.bleBluetooth.BluetoothLeService" />
+13-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:9:9-67
+13-->/Users/ucasbiosensorslab/Library/Mobile Documents/com~apple~CloudDocs/Project/MixTheBluetooth/bluetoothlibrary/src/main/AndroidManifest.xml:9:18-65
+14    </application>
+15
+16</manifest>

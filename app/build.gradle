@@ -35,7 +35,7 @@ android {
     }
     buildTypes {
         debug {
-            applyApiEnv(delegate, "static-lan")
+            applyApiEnv(delegate, "dev")
         }
         release {
             applyApiEnv(delegate, "dev")

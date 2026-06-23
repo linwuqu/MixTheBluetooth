@@ -1,89 +1,161 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F7F8FA"
-    android:keepScreenOn="true">
+    android:background="#FFF5EFE6"
+    android:keepScreenOn="true"
+    android:orientation="vertical">
 
-    <LinearLayout
-        android:id="@+id/actionRegion"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="10dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="6dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+            <!-- ===== Action 按钮区 (浅色卡片,合并到内容区) ===== -->
+            <LinearLayout
+                android:id="@+id/actionRegion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/stream_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="10dp" />
 
+    <!-- ===== Scrollable 内容区 ===== -->
     <ScrollView
         android:id="@+id/contentScroll"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:layout_weight="1"
         android:fillViewport="false"
-        app:layout_constraintBottom_toTopOf="@id/recyclerMessage"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/actionRegion">
+        android:background="#FFF5EFE6">
 
         <LinearLayout
             android:id="@+id/contentRoot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingBottom="8dp">
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="6dp">
 
+            <!-- Summary 区 (gauge 等小部件) -->
             <LinearLayout
                 android:id="@+id/summaryRegion"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp" />
+                android:orientation="horizontal" />
 
+            <!-- Main 区 (CGM 结果卡等主部件) -->
             <LinearLayout
                 android:id="@+id/mainRegion"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
 
+            <!-- Secondary 区 -->
             <LinearLayout
                 android:id="@+id/secondaryRegion"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
 
+            <!-- Debug 状态指示 chips -->
             <LinearLayout
                 android:id="@+id/debugRegion"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingTop="6dp"
+                android:paddingBottom="4dp" />
+
+            <!-- ===== 数据流可展开卡片 ===== -->
+            <LinearLayout
+                android:id="@+id/streamTriggerCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="vertical">
+
+                <!-- 卡片头部 (点击展开/收起) -->
+                <LinearLayout
+                    android:id="@+id/streamCardHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/stream_trigger_bg"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="10dp">
+
+                <View
+                    android:layout_width="3dp"
+                    android:layout_height="14dp"
+                    android:background="#A0A8B0" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="数据流"
+                    android:textColor="#3D2E24"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="设备通信记录"
+                    android:textColor="#8A7060"
+                    android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/streamCardArrow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="›"
+                        android:textColor="#A0A8B0"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <!-- 展开后的消息列表 -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="380dp"
+                    android:background="#FFF5EFE6"
+                    android:clipToPadding="false"
+                    android:paddingStart="10dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="8dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
         </LinearLayout>
     </ScrollView>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerMessage"
-        android:layout_width="0dp"
-        android:layout_height="72dp"
-        android:clipToPadding="false"
-        android:paddingBottom="6dp"
-        app:layout_constraintBottom_toTopOf="@id/tvBottomInfo"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
+    <!-- ===== 退出登录 ===== -->
     <TextView
-        android:id="@+id/tvBottomInfo"
-        android:layout_width="0dp"
+        android:id="@+id/btnLogout"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="@drawable/window_back"
-        android:padding="10dp"
-        android:text="Ready"
-        android:textColor="@color/black"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:layout_gravity="end"
+        android:layout_marginEnd="14dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="10dp"
+        android:paddingStart="10dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="6dp"
+        android:text="退出登录"
+        android:textColor="#D32F2F"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

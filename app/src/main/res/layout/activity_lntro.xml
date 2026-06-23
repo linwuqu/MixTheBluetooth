@@ -67,4 +67,16 @@
             android:gravity="center"/>
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/autoLoginHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:text="正在自动登录..."
+        android:textColor="#CCFFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:gravity="center"/>
+
 </FrameLayout>
