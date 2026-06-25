@@ -4,52 +4,63 @@ Date: 2026-06-25
 
 Status: Draft for review.
 
-## 核心修正
+## 分层定位
 
-这版按你的反馈重新收束：`promise` 不再承接底层驱动能力。`promise` 是用户层能要求系统兑现的高级能力；`driver` 是文件、网络、蓝牙、二维码、日志、时间这些底层 IO 能力。`business/cgm` 夹在中间，像设备无关业务软件，只关心 CGM 业务如何流动。
-
-更准确的分层是：
+这版按“高级承诺 + 设备无关业务 + 底层驱动”的思路收束。
 
 ```text
-presentation     前端适配层，Activity/Fragment/Compose/ViewModel 都在这里
+presentation     前端适配层，负责 Activity / Fragment / Compose / ViewModel
 promise          高级承诺，告诉前端 CGM 能做什么
-business         设备无关业务软件，包含 domain/application/data
+business         设备无关业务软件，包含 domain / application / data
 driver           底层 IO 能力合同和实现
 Android/Network  真实设备、文件系统、HTTP、系统能力
 ```
 
-CGM 后端的目标不是自己发送蓝牙字节、自己拼 Retrofit、自己碰 Android 文件 API，而是通过状态和 effect 组织工作流：
+这里的 `presentation` 是概念层，不一定要做成一个巨大的顶层 UI 包。我的 Android 经验建议是：**UI 按业务聚合，公共 UI 再抽共享层**。
 
 ```text
-设备文本/用户意图
-  -> domain 状态机判断下一步
-  -> application 解释 effect
-  -> data/driver 执行必要 IO
-  -> 新事件回灌 domain
-  -> 对前端输出 state + effect
+business/
+  cgm/
+    domain/
+    application/
+    data/
+    presentation/
+  account/
+    domain/
+    application/
+    data/
+    presentation/
+
+presentation/
+  app/        // 导航壳、AppScaffold、跨业务入口
+  shared/     // 纯 UI 组件、主题、通用 dialog
 ```
 
-## 总依赖图
+原因是 Android 的页面通常跟业务流绑定很深：CGM 页面会依赖 CGM state/effect，Account 页面会依赖 Account state/effect。如果把所有 UI 都堆到顶层 `presentation/cgm`、`presentation/account` 也能做，但长期更容易出现“UI 跨业务乱调”。放在 `business/cgm/presentation` 的好处是边界很近：这个页面属于哪个业务，它能碰哪个 promise，一眼能看出来。
+
+跨业务页面不要让 UI 互相调用，例如 CGM 页面不要直接调 account repository。跨业务协作放到更高层的 application/service 或 app-level ViewModel 里，UI 只消费组合后的状态。
+
+## 依赖图
 
 ```mermaid
 flowchart TD
-  UI["presentation / legacy bridge / ViewModel"] --> Promise["promise.CGMPromise"]
+  UI["business/cgm/presentation"] --> Promise["promise.CGMPromise"]
   Service["application.CgmService implements CGMPromise"] --> Promise
-  Service --> Sync["application.CgmSyncWorkflow"]
-  Service --> Jobs["application.CgmJobWorkflow"]
-  Service --> Connection["application.CgmConnectionWorkflow"]
+  Service --> SyncWorkflow["application.CgmSyncWorkflow"]
+  Service --> ConnectionWorkflow["application.CgmConnectionWorkflow"]
 
-  Sync --> Machine["domain.CgmSyncMachine"]
-  Sync --> CacheRepo["data.CgmCacheRepository"]
-  Sync --> Jobs
-  Jobs --> JobRepo["data.CgmJobRepository"]
-  Connection --> IdentityPolicy["domain.CgmIdentityPolicy"]
+  SyncWorkflow --> Machine["domain.CgmSyncMachine"]
+  SyncWorkflow --> CacheData["data.CgmCacheRepository"]
+  SyncWorkflow --> JobWorkflow["application.CgmJobWorkflow"]
+  JobWorkflow --> JobData["data.CgmJobRepository"]
 
-  CacheRepo --> FileDriver["driver.file.FileDriver"]
-  JobRepo --> Remote["data.CgmRemoteDataSource"]
+  ConnectionWorkflow --> IdentityPolicy["domain.CgmIdentityPolicy"]
+  ConnectionWorkflow --> BluetoothDriver["driver.bluetooth.BluetoothDriver"]
+  ConnectionWorkflow --> QrDriver["driver.qr.QrScannerDriver"]
+
+  CacheData --> FileDriver["driver.file.FileDriver"]
+  JobData --> Remote["data.CgmRemoteDataSource"]
   Remote --> NetworkDriver["driver.network.NetworkDriver"]
-  Connection --> BluetoothDriver["driver.bluetooth.BluetoothDriver"]
-  Connection --> QrDriver["driver.qr.QrScannerDriver"]
   Service --> LogDriver["driver.log.LogDriver"]
   Service --> ClockDriver["driver.time.ClockDriver"]
 ```
@@ -58,9 +69,10 @@ flowchart TD
 
 ```text
 presentation -> promise
+promise -> business/cgm/domain model
 application -> promise + domain + data + driver capability
-domain -> promise/domain model 或纯 Kotlin model
-data -> promise/domain model + driver capability
+domain -> 纯 Kotlin model
+data -> domain/promise model + driver capability
 driver implementation -> Android SDK / Retrofit / OkHttp / Bluetooth library
 runtime/di -> 所有具体实现，只负责装配
 ```
@@ -75,19 +87,14 @@ presentation -> data repository / driver implementation / Retrofit DTO
 driver -> business/cgm
 ```
 
-这里的关键是：`driver` 可以有很多底层能力文件，但这些能力不放进 `CommonPromise` 里。`CommonPromise` 如果保留，也应该是高层通用承诺，不是 `Logger/Clock/File/Network/Bluetooth` 的大杂烩。
+## promise 层
 
-## 各层职责
-
-### promise
-
-`promise` 回答“前端可以要求 CGM 做什么”。它不回答“文件怎么写、HTTP 怎么发、蓝牙怎么连”。
+`CGMPromise` 应该短，只把握大方向。state/effect/event 的详细定义下放到 `business/cgm/domain`，promise 只是把这些业务模型暴露给前端使用。
 
 ```kotlin
 interface CGMPromise {
     val connection: CgmConnection
     val sync: CgmSync
-    val jobs: CgmJobs
 }
 
 interface CgmConnection {
@@ -101,27 +108,24 @@ interface CgmConnection {
 interface CgmSync {
     val state: StateFlow<CgmSyncState>
 
-    suspend fun readCache(): CgmWorkflowOutput
-    suspend fun onDeviceText(text: String): CgmWorkflowOutput
-    suspend fun deleteCache(): CgmWorkflowOutput
+    suspend fun startCacheSync(): CgmWorkflowOutput
+    suspend fun acceptDeviceText(text: String): CgmWorkflowOutput
+    suspend fun requestDeleteCache(): CgmWorkflowOutput
     suspend fun reset(): CgmWorkflowOutput
-}
-
-interface CgmJobs {
-    suspend fun uploadCache(file: CgmCacheFile): CgmJobId
-    suspend fun pollResult(jobId: CgmJobId): CgmJobResult
-    suspend fun uploadAndPoll(file: CgmCacheFile): CgmJobResult
 }
 ```
 
-我仍然建议把 `verifyCache(text)` 改成 `onDeviceText(text)`。这一步不是纯校验，它会处理缓存行、结束标记、delete ack、重试、上传、结果发布。
+这里不把 `CgmJobs` 挂到 `CGMPromise`。上传缓存和拉取结果是 CGM 同步流程里的内部节点，不是前端日常要直接调用的高级承诺。后续如果真的出现独立的“任务管理页”或“手动输入 jobId 拉结果”的需求，再新增 `CgmJobPromise`，不要现在预留。
 
-### domain
+我也建议把 `verifyCache(text)` 改成 `acceptDeviceText(text)`。这一步不是纯校验，它会接收设备文本、拼接缓存、识别结束标记、处理 delete ack、触发重试、触发上传和发布结果。
 
-`domain` 是 CGM 知识层：协议规则、状态、事件、effect、校验规则。它不做 IO。
+## domain 层
+
+`domain` 汇总 CGM 知识：协议规则、状态、事件、effect、校验规则。它不调用文件、网络、蓝牙，也不关心 Activity/Fragment/Compose。
 
 ```text
 domain/
+  CgmModels.kt
   CgmDeviceProtocol.kt
   CgmSyncMachine.kt
   CgmCacheSession.kt
@@ -129,7 +133,59 @@ domain/
   CgmIdentityPolicy.kt
 ```
 
-`domain` 的核心形态应该是状态机：
+`CgmModels.kt` 放 state/effect/event 这些业务模型。这样 `CGMPromise.kt` 会变短，前端也能通过 promise 拿到统一模型。
+
+```kotlin
+sealed interface CgmSyncEvent {
+    data object ReadRequested : CgmSyncEvent
+    data class DeviceTextReceived(val text: String) : CgmSyncEvent
+    data class CacheFileSaved(val file: CgmCacheFile) : CgmSyncEvent
+    data class CacheUploaded(val jobId: CgmJobId) : CgmSyncEvent
+    data class JobPolled(val result: CgmJobResult) : CgmSyncEvent
+    data object DeleteRequested : CgmSyncEvent
+    data object DeleteAckReceived : CgmSyncEvent
+    data object ResetRequested : CgmSyncEvent
+}
+
+sealed interface CgmDomainEffect {
+    data class SendDeviceCommand(val command: CgmDeviceCommand) : CgmDomainEffect
+    data class SaveCacheFile(val lines: List<String>) : CgmDomainEffect
+    data class UploadCache(val file: CgmCacheFile) : CgmDomainEffect
+    data class PollJob(val jobId: CgmJobId) : CgmDomainEffect
+    data class PublishResult(val result: CgmJobResult) : CgmDomainEffect
+    data class ShowMessage(val message: String) : CgmDomainEffect
+}
+
+data class CgmTransition(
+    val state: CgmSyncState,
+    val effects: List<CgmDomainEffect>
+)
+
+data class CgmWorkflowOutput(
+    val state: CgmSyncState,
+    val effects: List<CgmDomainEffect> = emptyList()
+)
+```
+
+状态要携带 UI 会展示的数据，但仍然是业务状态，不是 UI 文案。
+
+```kotlin
+sealed interface CgmSyncState {
+    data object Idle : CgmSyncState
+    data object ReadingCache : CgmSyncState
+    data class ReceivingCache(val lineCount: Int) : CgmSyncState
+    data object ValidatingCache : CgmSyncState
+    data class RetryingRead(val attempt: Int, val reason: String) : CgmSyncState
+    data class CacheReady(val file: CgmCacheFile) : CgmSyncState
+    data class Uploading(val file: CgmCacheFile) : CgmSyncState
+    data class PollingJob(val jobId: CgmJobId) : CgmSyncState
+    data class WaitingDeleteConfirm(val result: CgmJobResult?) : CgmSyncState
+    data class Done(val result: CgmJobResult?) : CgmSyncState
+    data class Failed(val reason: String) : CgmSyncState
+}
+```
+
+`CgmSyncMachine` 是纯状态机。它看见节点 event，决定新的 state 和下一批 effect。
 
 ```kotlin
 class CgmSyncMachine(
@@ -145,7 +201,8 @@ class CgmSyncMachine(
             CgmSyncEvent.ReadRequested -> onReadRequested()
             is CgmSyncEvent.DeviceTextReceived -> onDeviceText(event.text)
             is CgmSyncEvent.CacheFileSaved -> onCacheFileSaved(event.file)
-            is CgmSyncEvent.JobFinished -> onJobFinished(event.result)
+            is CgmSyncEvent.CacheUploaded -> onCacheUploaded(event.jobId)
+            is CgmSyncEvent.JobPolled -> onJobPolled(event.result)
             CgmSyncEvent.DeleteRequested -> onDeleteRequested()
             CgmSyncEvent.DeleteAckReceived -> onDeleteAck()
             CgmSyncEvent.ResetRequested -> onReset()
@@ -174,10 +231,15 @@ class CgmSyncMachine(
 
     private fun onCacheFileSaved(file: CgmCacheFile): CgmTransition {
         state = CgmSyncState.Uploading(file)
-        return transition(CgmDomainEffect.UploadAndPoll(file))
+        return transition(CgmDomainEffect.UploadCache(file))
     }
 
-    private fun onJobFinished(result: CgmJobResult): CgmTransition {
+    private fun onCacheUploaded(jobId: CgmJobId): CgmTransition {
+        state = CgmSyncState.PollingJob(jobId)
+        return transition(CgmDomainEffect.PollJob(jobId))
+    }
+
+    private fun onJobPolled(result: CgmJobResult): CgmTransition {
         state = CgmSyncState.WaitingDeleteConfirm(result)
         return transition(
             CgmDomainEffect.PublishResult(result),
@@ -203,8 +265,8 @@ class CgmSyncMachine(
     }
 
     private fun onDeleteAck(): CgmTransition {
-        if (state !is CgmSyncState.WaitingDeleteConfirm) return transition()
-        state = CgmSyncState.Done((state as CgmSyncState.WaitingDeleteConfirm).result)
+        val current = state as? CgmSyncState.WaitingDeleteConfirm ?: return transition()
+        state = CgmSyncState.Done(current.result)
         return transition(CgmDomainEffect.ShowMessage("cache delete confirmed"))
     }
 
@@ -220,38 +282,9 @@ class CgmSyncMachine(
 }
 ```
 
-对应的事件和 effect：
+## application 层
 
-```kotlin
-sealed interface CgmSyncEvent {
-    data object ReadRequested : CgmSyncEvent
-    data class DeviceTextReceived(val text: String) : CgmSyncEvent
-    data class CacheFileSaved(val file: CgmCacheFile) : CgmSyncEvent
-    data class JobFinished(val result: CgmJobResult) : CgmSyncEvent
-    data object DeleteRequested : CgmSyncEvent
-    data object DeleteAckReceived : CgmSyncEvent
-    data object ResetRequested : CgmSyncEvent
-}
-
-sealed interface CgmDomainEffect {
-    data class SendDeviceCommand(val command: CgmDeviceCommand) : CgmDomainEffect
-    data class SaveCacheFile(val lines: List<String>) : CgmDomainEffect
-    data class UploadAndPoll(val file: CgmCacheFile) : CgmDomainEffect
-    data class PublishResult(val result: CgmJobResult) : CgmDomainEffect
-    data class ShowMessage(val message: String) : CgmDomainEffect
-}
-
-data class CgmTransition(
-    val state: CgmSyncState,
-    val effects: List<CgmDomainEffect>
-)
-```
-
-这样理解会更清楚：`domain` 负责“根据 CGM 知识判断下一步应该是什么”，但它不负责“下一步怎么执行”。
-
-### application
-
-`application` 是 workflow runner / effect interpreter。它实现 `promise`，驱动 domain 状态机跑起来。
+`application` 是 workflow runner / effect interpreter。`CgmService` 负责装配并实现 `CGMPromise`，但它不直接操纵状态流转；具体跑流程的是 workflow，状态判断来自 domain machine。
 
 ```text
 application/
@@ -261,24 +294,24 @@ application/
   CgmJobWorkflow.kt
 ```
 
-`CgmService` 是 CGM 后端入口：
+`CgmService` 很薄：
 
 ```kotlin
 class CgmService(
-    private val log: LogDriver,
-    private val clock: ClockDriver,
     bluetooth: BluetoothDriver,
     qrScanner: QrScannerDriver,
+    clock: ClockDriver,
+    log: LogDriver,
     cacheRepository: CgmCacheRepository,
     jobRepository: CgmJobRepository,
     protocol: CgmDeviceProtocol
 ) : CGMPromise {
-    override val jobs: CgmJobs = CgmJobWorkflow(jobRepository)
     override val connection: CgmConnection = CgmConnectionWorkflow(
         bluetooth = bluetooth,
         qrScanner = qrScanner,
         clock = clock
     )
+
     override val sync: CgmSync = CgmSyncWorkflow(
         machine = CgmSyncMachine(
             protocol = protocol,
@@ -286,35 +319,49 @@ class CgmService(
             validator = CgmCacheValidator(protocol)
         ),
         cacheRepository = cacheRepository,
-        jobs = jobs,
+        jobWorkflow = CgmJobWorkflow(jobRepository),
         log = log
     )
 }
 ```
 
-这里 `application` 知道 driver capability 和 data repository，因为它负责把 effect 执行掉；但 `domain` 不知道这些东西。
+`CgmJobWorkflow` 不需要 `uploadAndPoll`。上传和轮询是两个节点，状态机也应该能看见 `Uploading -> PollingJob` 的变化。
 
-`CgmSyncWorkflow` 的重点是解释 domain effect：
+```kotlin
+class CgmJobWorkflow(
+    private val repository: CgmJobRepository
+) {
+    suspend fun uploadCache(file: CgmCacheFile): CgmJobId {
+        return repository.uploadCache(file)
+    }
+
+    suspend fun pollResult(jobId: CgmJobId): CgmJobResult {
+        return repository.pollUntilFinished(jobId)
+    }
+}
+```
+
+`CgmSyncWorkflow` 解释 domain effect。外部 effect 直接返回给 presentation，内部 effect 调 data/application 后再回灌 event。
 
 ```kotlin
 class CgmSyncWorkflow(
     private val machine: CgmSyncMachine,
     private val cacheRepository: CgmCacheRepository,
-    private val jobs: CgmJobs,
+    private val jobWorkflow: CgmJobWorkflow,
     private val log: LogDriver
 ) : CgmSync {
     private val mutableState = MutableStateFlow<CgmSyncState>(machine.state)
     override val state: StateFlow<CgmSyncState> = mutableState
 
-    override suspend fun readCache(): CgmWorkflowOutput {
+    override suspend fun startCacheSync(): CgmWorkflowOutput {
         return runMachine(CgmSyncEvent.ReadRequested)
     }
 
-    override suspend fun onDeviceText(text: String): CgmWorkflowOutput {
+    override suspend fun acceptDeviceText(text: String): CgmWorkflowOutput {
         return runMachine(CgmSyncEvent.DeviceTextReceived(text))
     }
 
-    override suspend fun deleteCache(): CgmWorkflowOutput {
+    override suspend fun requestDeleteCache(): CgmWorkflowOutput {
         return runMachine(CgmSyncEvent.DeleteRequested)
     }
 
@@ -323,21 +370,21 @@ class CgmSyncWorkflow(
     }
 
     private suspend fun runMachine(firstEvent: CgmSyncEvent): CgmWorkflowOutput {
-        val outputEffects = mutableListOf<CgmWorkflowEffect>()
+        val outputEffects = mutableListOf<CgmDomainEffect>()
         var transition = machine.dispatch(firstEvent)
 
         while (true) {
             mutableState.value = transition.state
-            val internalEffect = transition.effects.firstOrNull { it.needsApplicationExecution() } ?: break
-            transition.effects.filterNot { it.needsApplicationExecution() }
-                .mapTo(outputEffects, ::toWorkflowEffect)
-
-            transition = executeInternalEffect(internalEffect)
+            val internal = transition.effects.firstOrNull { it.isInternalEffect() } ?: break
+            outputEffects += transition.effects.filter { it.isExternalEffect() }
+            transition = executeInternalEffect(internal)
         }
 
-        transition.effects.mapTo(outputEffects, ::toWorkflowEffect)
         mutableState.value = transition.state
-        return CgmWorkflowOutput(state = mutableState.value, effects = outputEffects)
+        return CgmWorkflowOutput(
+            state = mutableState.value,
+            effects = outputEffects + transition.effects.filter { it.isExternalEffect() }
+        )
     }
 
     private suspend fun executeInternalEffect(effect: CgmDomainEffect): CgmTransition {
@@ -346,50 +393,45 @@ class CgmSyncWorkflow(
                 val file = cacheRepository.saveReplay(effect.lines)
                 machine.dispatch(CgmSyncEvent.CacheFileSaved(file))
             }
-            is CgmDomainEffect.UploadAndPoll -> {
-                val result = jobs.uploadAndPoll(effect.file)
-                machine.dispatch(CgmSyncEvent.JobFinished(result))
+            is CgmDomainEffect.UploadCache -> {
+                val jobId = jobWorkflow.uploadCache(effect.file)
+                machine.dispatch(CgmSyncEvent.CacheUploaded(jobId))
+            }
+            is CgmDomainEffect.PollJob -> {
+                val result = jobWorkflow.pollResult(effect.jobId)
+                machine.dispatch(CgmSyncEvent.JobPolled(result))
             }
             else -> error("external effect should not be executed here")
         }
     }
 
-    private fun CgmDomainEffect.needsApplicationExecution(): Boolean {
-        return this is CgmDomainEffect.SaveCacheFile || this is CgmDomainEffect.UploadAndPoll
+    private fun CgmDomainEffect.isInternalEffect(): Boolean {
+        return this is CgmDomainEffect.SaveCacheFile ||
+            this is CgmDomainEffect.UploadCache ||
+            this is CgmDomainEffect.PollJob
     }
 
-    private fun toWorkflowEffect(effect: CgmDomainEffect): CgmWorkflowEffect {
-        return when (effect) {
-            is CgmDomainEffect.SendDeviceCommand -> CgmWorkflowEffect.SendCommand(effect.command)
-            is CgmDomainEffect.PublishResult -> CgmWorkflowEffect.PublishResult(effect.result)
-            is CgmDomainEffect.ShowMessage -> CgmWorkflowEffect.ShowMessage(effect.message)
-            is CgmDomainEffect.SaveCacheFile,
-            is CgmDomainEffect.UploadAndPoll -> error("internal effect should be executed before output")
-        }
+    private fun CgmDomainEffect.isExternalEffect(): Boolean {
+        return !isInternalEffect()
     }
 }
 ```
 
-这段草图要表达的是：`CgmSyncWorkflow` 本身不是规则库，它只是把 domain effect 翻译成 data/driver 调用，或者翻译成给前端执行的一次性 effect。
+这里的重点是：`CgmSyncWorkflow` 管 StateFlow 和 effect 执行，`CgmSyncMachine` 管业务判断，`CgmService` 管装配。
 
-### data
+## data 层
 
-`data` 不是架空层。它回答“CGM 业务数据怎么落地、怎么从远端回来、怎么从外部格式映射成内部模型”。
+`data` 不架空。它负责业务数据怎么落地、怎么从远端回来、怎么从外部格式映射成内部模型。
 
-它不做状态机决策，不知道 `CgmSyncState` 怎么流转，也不发蓝牙命令。
+因为第一版代码量不大，接口和实现可以先写在同一个文件里，等膨胀后再拆。
 
 ```text
 data/
-  CgmCacheRepository.kt
-  DefaultCgmCacheRepository.kt
-  CgmJobRepository.kt
-  DefaultCgmJobRepository.kt
-  CgmRemoteDataSource.kt
-  endpoint/CgmEndpoints.kt
-  dto/CgmDtos.kt
+  CgmCacheData.kt
+  CgmJobData.kt
 ```
 
-本地缓存文件属于 data，因为它是 CGM 业务数据的持久化形态；文件 API 属于 driver，因为它是底层 IO。
+`CgmCacheData.kt`：
 
 ```kotlin
 interface CgmCacheRepository {
@@ -413,12 +455,18 @@ class DefaultCgmCacheRepository(
 }
 ```
 
-服务器 job 也属于 data，因为它负责 endpoint、DTO、状态字符串、result artifact 映射。
+`CgmJobData.kt`：
 
 ```kotlin
 interface CgmJobRepository {
     suspend fun uploadCache(file: CgmCacheFile): CgmJobId
     suspend fun pollUntilFinished(jobId: CgmJobId): CgmJobResult
+}
+
+interface CgmRemoteDataSource {
+    fun uploadDataset(file: CgmCacheFile): NetworkEndpoint<CgmUploadResponse>
+    fun getJob(jobId: CgmJobId): NetworkEndpoint<CgmJobResponse>
+    fun getArtifacts(resultId: Long): NetworkEndpoint<List<CgmResultArtifact>>
 }
 
 class DefaultCgmJobRepository(
@@ -455,14 +503,13 @@ class DefaultCgmJobRepository(
 }
 ```
 
-所以 data 的有效性在于：
+data 层的边界价值：
 
-- 把文件命名、txt 内容、保存位置这些本地数据策略收起来。
-- 把 endpoint、DTO、服务器状态码、artifact 映射收起来。
-- 给 application 一个稳定的 repository，而不是让 workflow 碰 driver 细节。
-- 后续贴片编号、设备绑定、历史结果、用户本地配置，也可以继续放在 data repository 后面。
+- 本地缓存文件命名、txt 内容、保存位置属于 `CgmCacheRepository`。
+- HTTP endpoint、DTO、服务器状态、artifact 映射属于 `CgmJobRepository` / `CgmRemoteDataSource`。
+- workflow 只看到 `CgmCacheFile`、`CgmJobId`、`CgmJobResult`，不看到 Retrofit、File API、DTO。
 
-### driver
+## driver 层
 
 `driver` 是底层能力，不属于 `promise`。
 
@@ -476,7 +523,7 @@ driver/
   time/ClockDriver.kt
 ```
 
-driver contract 可以很细，因为这里确实是组件库思路。CGM 不重写文件、网络、日志、蓝牙，只调用这些稳定能力。
+driver contract 可以细，因为这是组件库思路。CGM 不重写文件、网络、日志、蓝牙，只调用这些稳定能力。
 
 ```kotlin
 interface FileDriver {
@@ -496,88 +543,164 @@ interface BluetoothDriver {
 }
 ```
 
-这些接口后面可以由 Android 文件系统、Retrofit、蓝牙库分别实现。`business/cgm` 只依赖 driver contract，不依赖 implementation。
+## data 到 presentation 的完整示例
 
-## data 和 presentation 的关系
-
-前端以后一定会展示“数据”，但 presentation 不应该直接依赖 `business/cgm/data`。UI 要看的数据应该被放进 state，或者通过新的高级 promise 暴露。
-
-也就是说：
+链路是：
 
 ```text
-data repository -> application workflow -> promise state -> presentation ui-state
+data repository -> application workflow -> promise/domain state -> presentation ui-state
 ```
 
-而不是：
+presentation 不直接依赖 repository。UI 要展示的数据必须从 state/effect 里出来。
 
-```text
-presentation -> data repository
-```
-
-`CgmSyncState` 不能只是几个空状态，它需要带上 UI 会关心的业务数据：
+示例：job poll 成功后，data 返回 `CgmJobResult`：
 
 ```kotlin
-sealed interface CgmSyncState {
-    data object Idle : CgmSyncState
-    data object ReadingCache : CgmSyncState
-    data class ReceivingCache(val lineCount: Int) : CgmSyncState
-    data object ValidatingCache : CgmSyncState
-    data class RetryingRead(val attempt: Int, val reason: String) : CgmSyncState
-    data class CacheReady(val file: CgmCacheFile) : CgmSyncState
-    data class Uploading(val file: CgmCacheFile) : CgmSyncState
-    data class PollingJob(val jobId: CgmJobId, val attempt: Int) : CgmSyncState
-    data class WaitingDeleteConfirm(val result: CgmJobResult?) : CgmSyncState
-    data class Done(val result: CgmJobResult?) : CgmSyncState
-    data class Failed(val reason: String) : CgmSyncState
+val result = CgmJobResult(
+    jobId = 42,
+    status = "GENERATED",
+    primary = CgmResultArtifact.GlucosePrediction(...),
+    artifacts = artifacts
+)
+```
+
+application 把它回灌给 domain：
+
+```kotlin
+machine.dispatch(CgmSyncEvent.JobPolled(result))
+```
+
+domain 产出状态和 effect：
+
+```kotlin
+state = CgmSyncState.WaitingDeleteConfirm(result)
+effects = listOf(
+    CgmDomainEffect.PublishResult(result),
+    CgmDomainEffect.SendDeviceCommand(protocol.deleteCacheCommand())
+)
+```
+
+ViewModel 只依赖 `CGMPromise`：
+
+```kotlin
+class CgmViewModel(
+    private val cgm: CGMPromise
+) : ViewModel() {
+    private val mutableState = MutableStateFlow(CgmUiState())
+    val state: StateFlow<CgmUiState> = mutableState
+
+    private val mutableEffects = MutableSharedFlow<CgmUiEffect>()
+    val effects: SharedFlow<CgmUiEffect> = mutableEffects
+
+    fun onIntent(intent: CgmIntent) {
+        viewModelScope.launch {
+            val output = when (intent) {
+                CgmIntent.ReadCache -> cgm.sync.startCacheSync()
+                is CgmIntent.DeviceTextReceived -> cgm.sync.acceptDeviceText(intent.text)
+                CgmIntent.DeleteCache -> cgm.sync.requestDeleteCache()
+                CgmIntent.Reset -> cgm.sync.reset()
+            }
+
+            mutableState.value = CgmUiState.from(output.state)
+            output.effects.forEach { effect ->
+                effect.toUiEffect()?.let { mutableEffects.emit(it) }
+            }
+        }
+    }
 }
 ```
 
-如果 UI 要展示历史结果，不让 UI 直接查 `CgmJobRepository`，而是后续扩展高级能力：
+UI state 从业务 state 映射，不从 repository 查：
 
 ```kotlin
-interface CgmHistory {
-    val results: StateFlow<List<CgmResultSummary>>
-    suspend fun refresh()
+data class CgmUiState(
+    val busy: Boolean = false,
+    val lineCount: Int = 0,
+    val cacheFileName: String? = null,
+    val jobId: Long? = null,
+    val result: CgmJobResult? = null,
+    val error: String? = null
+) {
+    companion object {
+        fun from(state: CgmSyncState): CgmUiState {
+            return when (state) {
+                CgmSyncState.Idle -> CgmUiState()
+                CgmSyncState.ReadingCache -> CgmUiState(busy = true)
+                is CgmSyncState.ReceivingCache -> CgmUiState(busy = true, lineCount = state.lineCount)
+                CgmSyncState.ValidatingCache -> CgmUiState(busy = true)
+                is CgmSyncState.RetryingRead -> CgmUiState(busy = true, error = state.reason)
+                is CgmSyncState.CacheReady -> CgmUiState(cacheFileName = state.file.file.name)
+                is CgmSyncState.Uploading -> CgmUiState(busy = true, cacheFileName = state.file.file.name)
+                is CgmSyncState.PollingJob -> CgmUiState(busy = true, jobId = state.jobId.value)
+                is CgmSyncState.WaitingDeleteConfirm -> CgmUiState(result = state.result)
+                is CgmSyncState.Done -> CgmUiState(result = state.result)
+                is CgmSyncState.Failed -> CgmUiState(error = state.reason)
+            }
+        }
+    }
 }
 ```
 
-这个能力仍然挂在 `CGMPromise` 或独立 promise 下，由 application/data 实现。前端拿到的是“可展示状态”，不是底层数据源。
+UI effect 从 domain effect 映射，真正执行蓝牙发送仍然在 host/driver bridge：
 
-## 一条完整数据流
+```kotlin
+sealed interface CgmUiEffect {
+    data class SendCommand(val command: CgmDeviceCommand) : CgmUiEffect
+    data class ShowMessage(val message: String) : CgmUiEffect
+}
+
+fun CgmDomainEffect.toUiEffect(): CgmUiEffect? {
+    return when (effect) {
+        is CgmDomainEffect.SendDeviceCommand -> CgmUiEffect.SendCommand(command)
+        is CgmDomainEffect.ShowMessage -> CgmUiEffect.ShowMessage(message)
+        is CgmDomainEffect.PublishResult -> null
+        is CgmDomainEffect.SaveCacheFile,
+        is CgmDomainEffect.UploadCache,
+        is CgmDomainEffect.PollJob -> null
+    }
+}
+```
+
+这就是 data 到 UI 的完整链路：`DefaultCgmJobRepository` 产生 result，workflow 把 result 交给 machine，machine 把 result 放进 `CgmSyncState.WaitingDeleteConfirm`，ViewModel 映射成 `CgmUiState.result`。UI 没有理由也没有入口去直接碰 `CgmJobRepository`。
+
+## 完整流程
 
 ```text
 用户点读取缓存
-  -> presentation 调 cgm.sync.readCache()
-  -> application 投递 ReadRequested 给 domain
-  -> domain state = ReadingCache, effect = SendDeviceCommand(read_cache)
-  -> application 把 SendCommand 作为 CgmWorkflowEffect 返回
+  -> presentation 调 cgm.sync.startCacheSync()
+  -> workflow 投递 ReadRequested 给 machine
+  -> machine state = ReadingCache, effect = SendDeviceCommand(read_cache)
+  -> workflow 返回 SendCommand
   -> presentation/host 执行真实蓝牙发送
 
 设备文本进入
   -> presentation/host 解码 text
-  -> cgm.sync.onDeviceText(text)
-  -> domain 拼接缓存、判断 end marker、校验
-  -> 如果缺失，domain effect = SendDeviceCommand(read_cache_retry)
-  -> 如果完整，domain effect = SaveCacheFile(lines)
+  -> cgm.sync.acceptDeviceText(text)
+  -> machine 拼接缓存、判断 end marker、校验
+  -> 缺失则 effect = SendDeviceCommand(read_cache_retry)
+  -> 完整则 effect = SaveCacheFile(lines)
 
-保存和上传
-  -> application 解释 SaveCacheFile，调用 CgmCacheRepository
+保存、上传、轮询
+  -> workflow 解释 SaveCacheFile，调用 CgmCacheRepository
   -> data 调 FileDriver 写 txt，返回 CgmCacheFile
-  -> application 回灌 CacheFileSaved(file)
-  -> domain effect = UploadAndPoll(file)
-  -> application 调 CgmJobWorkflow.uploadAndPoll(file)
-  -> CgmJobWorkflow 调 CgmJobRepository
-  -> data 调 NetworkDriver + endpoint，返回 CgmJobResult
-  -> application 回灌 JobFinished(result)
+  -> workflow 回灌 CacheFileSaved(file)
+  -> machine effect = UploadCache(file)
+  -> workflow 调 CgmJobWorkflow.uploadCache(file)
+  -> data 调 NetworkDriver + upload endpoint，返回 CgmJobId
+  -> workflow 回灌 CacheUploaded(jobId)
+  -> machine state = PollingJob(jobId), effect = PollJob(jobId)
+  -> workflow 调 CgmJobWorkflow.pollResult(jobId)
+  -> data 调 NetworkDriver + poll/artifact endpoint，返回 CgmJobResult
+  -> workflow 回灌 JobPolled(result)
 
 结果和删除
-  -> domain state = WaitingDeleteConfirm
-  -> domain effects = PublishResult(result), SendDeviceCommand(delete_cache)
-  -> application 返回给 presentation
+  -> machine state = WaitingDeleteConfirm(result)
+  -> machine effects = PublishResult(result), SendDeviceCommand(delete_cache)
+  -> workflow 返回给 presentation
   -> presentation 展示 result，并执行蓝牙 delete 命令
   -> 设备回 Log Cleared
-  -> onDeviceText(text)
-  -> domain state = Done
+  -> cgm.sync.acceptDeviceText(text)
+  -> machine state = Done(result)
 ```
 
 ## 文件级落点
@@ -589,6 +712,7 @@ promise/
   CGMPromise.kt
 
 business/cgm/domain/
+  CgmModels.kt
   CgmDeviceProtocol.kt
   CgmSyncMachine.kt
   CgmCacheSession.kt
@@ -602,11 +726,11 @@ business/cgm/application/
   CgmJobWorkflow.kt
 
 business/cgm/data/
-  CgmCacheRepository.kt
-  CgmJobRepository.kt
-  CgmRemoteDataSource.kt
-  DefaultCgmCacheRepository.kt
-  DefaultCgmJobRepository.kt
+  CgmCacheData.kt
+  CgmJobData.kt
+
+business/cgm/presentation/
+  // 后续再展开 Compose/ViewModel，当前只保留方向
 
 driver/
   bluetooth/
@@ -627,8 +751,6 @@ driver/
 
 ## 测试切口
 
-第一轮测试应该能证明 domain 节点和 application 解释器是分开的：
-
 ```text
 CgmSyncMachineTest
   read requested emits read command
@@ -636,21 +758,20 @@ CgmSyncMachineTest
   invalid cache emits retry command
   retry limit enters Failed
   valid cache emits SaveCacheFile
-  cache file saved emits UploadAndPoll
-  job finished emits PublishResult and delete command
-  delete ack enters Done
+  cache file saved emits UploadCache
+  cache uploaded emits PollJob
+  job polled emits PublishResult and delete command
+  delete ack enters Done(result)
 
 CgmSyncWorkflowTest
   SaveCacheFile effect calls CgmCacheRepository
-  UploadAndPoll effect calls CgmJobs
-  external SendCommand effect is returned, not executed internally
+  UploadCache effect calls CgmJobWorkflow.uploadCache
+  PollJob effect calls CgmJobWorkflow.pollResult
+  external SendDeviceCommand effect is returned, not executed internally
 
 CgmCacheRepositoryTest
   saveReplay writes txt through FileDriver
   readReplay reads txt through FileDriver
-
-CgmJobWorkflowTest
-  uploadAndPoll calls upload then poll
 
 CgmJobRepositoryTest
   upload maps response to CgmJobId
@@ -660,8 +781,8 @@ CgmJobRepositoryTest
 
 ## 当前需要你继续审的点
 
-1. `CommonPromise` 是否只保留高层通用承诺，不再承载 driver 能力。
-2. `domain` 是否按状态机 + domain effect 的方式落地。
-3. `application` 是否作为 effect interpreter，负责调用 data/driver。
-4. `data` 是否按本地缓存 repository + 远端 job repository 这样保留。
-5. UI 需要的数据是否统一放进 promise/domain state，而不是让 presentation 直接依赖 data。
+1. UI 物理包是否采用业务聚合：`business/cgm/presentation`，共享 UI 才放顶层 `presentation/shared`。
+2. `CGMPromise` 是否只保留 `connection + sync`，不公开 `jobs`。
+3. 上传和轮询是否拆成 `UploadCache -> CacheUploaded -> PollJob -> JobPolled` 四个节点。
+4. data 是否先压成 `CgmCacheData.kt`、`CgmJobData.kt` 两个文件。
+5. data 到 UI 的链路示例是否足够具体。
