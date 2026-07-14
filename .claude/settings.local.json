@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//Users/kh/Library/Android/sdk/cmdline-tools/latest/bin/**)",
-      "Read(//Users/kh/Library/Android/sdk/**)"
-    ]
-  }
-}

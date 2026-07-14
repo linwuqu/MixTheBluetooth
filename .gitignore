@@ -12,6 +12,8 @@
 /captures
 .externalNativeBuild
 .cursorrules
-.cursor
+.cursor/
+.claude/
+.codegraph/
 .idea/
 tools/
