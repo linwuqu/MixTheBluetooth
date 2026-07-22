@@ -7,10 +7,10 @@
 <安全性 非明文传输>
 发指令A
 <生产段>
-读缓存B 流式数据
-解码GBK C 不区分
+读缓存B :流式数据
+解码GBK C :不区分
 <消费段>
-解析 “Start Playback ... Playback all Done” 校验 eeprom相对静止 蓝牙不可靠 请求重传 D 整体的信息
+解析 “Start Playback ... Playback all Done” 校验 eeprom相对静止 蓝牙不可靠 请求重传 D :整体信息
 
 硬件：扫描数据点 缓存到rom 并发/队列
 

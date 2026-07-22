@@ -144,7 +144,7 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
     //刷新的具体实现
     private void refresh() {
         popDialog();
-        if (mAndroidBluetoothController.scan(settingsStore.getBoolean(DeviceFilterDialog.BLE_KEY, false))) {
+        if (mAndroidBluetoothController.scan(true)) {
             mModuleArray.clear();
             mFilterModuleArray.clear();
             mTitle.updateLoadingState(true);
@@ -154,6 +154,19 @@ public class MainActivity extends BaseActivity<ActivityMainBinding> {
 
     //根据条件过滤列表，并选择是否更新列表
     private void addFilterList(DeviceModule deviceModule, boolean isRefresh) {
+        Bt24AdvertisementFilter.Result bt24Match = Bt24AdvertisementFilter.evaluate(
+                deviceModule.isBLE(),
+                deviceModule.getName(),
+                deviceModule.isHcModule(true, Bt24AdvertisementFilter.SERVICE_UUID),
+                deviceModule.hasManufacturerData(Bt24AdvertisementFilter.MANUFACTURER_ID)
+        );
+        if (bt24Match != Bt24AdvertisementFilter.Result.MATCH) {
+            log("BT24广播过滤: reject=" + bt24Match
+                    + ", name=" + deviceModule.getName()
+                    + ", mac=" + deviceModule.getMac());
+            return;
+        }
+
         if (settingsStore.getBoolean(DeviceFilterDialog.NAME_KEY, false) && deviceModule.getName().equals("N/A"))
             return;
 

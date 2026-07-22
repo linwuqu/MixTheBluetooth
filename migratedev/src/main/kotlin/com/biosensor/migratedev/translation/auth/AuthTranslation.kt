@@ -38,8 +38,12 @@ class AuthTranslation(
     scope: CoroutineScope
 ) : Translation<AuthIntent, AuthUiState> {
 
-    override val uiState: StateFlow<AuthUiState> = orchestrator.state
-        .map { it.toUiState() }
+    /** 将状态机的热流 (StateFlow<AuthState>) 映射为 UI 专用热流 (StateFlow<AuthUiState>)。
+    1. orchestrator.state 本身是热流，始终持有最新 AuthState。
+    2. .map { it.toUiState() } 生成一个冷流，仅在收集时按需转换。
+    3. .stateIn(scope, Eagerly, 初始值) 立刻启动收集，使冷流变热，
+    并确保任意时刻订阅 uiState 都能立即拿到当前 UI 状态（初始值就是当前状态机的值转换后的结果）。*/
+    override val uiState: StateFlow<AuthUiState> = orchestrator.state.map { it.toUiState() }
         .stateIn(scope, SharingStarted.Eagerly, orchestrator.state.value.toUiState())
 
     override fun submit(intent: AuthIntent) {
@@ -50,10 +54,7 @@ class AuthTranslation(
         return when (this) {
             is AuthIntent.SubmitLogin -> AuthEvent.SubmitLogin(account, password)
             is AuthIntent.SubmitRegister -> AuthEvent.SubmitRegister(
-                account,
-                password,
-                telephone,
-                avatarUrl
+                account, password, telephone, avatarUrl
             )
 
             AuthIntent.Logout -> AuthEvent.Logout
@@ -66,6 +67,7 @@ class AuthTranslation(
             AuthState.Idle -> AuthUiState.Idle
             AuthState.Loading -> AuthUiState.Loading
             is AuthState.SavingSession -> AuthUiState.SavingSession
+            // 故意隐藏了 session.token 这些 UI 不该知道的敏感信息
             is AuthState.Authenticated -> AuthUiState.Authenticated(session.user)
             is AuthState.Error -> AuthUiState.Error(message)
         }

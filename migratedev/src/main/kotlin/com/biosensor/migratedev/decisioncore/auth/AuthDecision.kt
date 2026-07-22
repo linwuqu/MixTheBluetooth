@@ -10,11 +10,13 @@ data class User(
     val avatarUrl: String? = null
 )
 
+
 data class AuthSession(
     val user: User,
     val token: String,
     val expiresAtMillis: Long? = null
 )
+
 
 sealed interface AuthState {
     data object Idle : AuthState
@@ -67,7 +69,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
                     newState = AuthState.Loading,
                     effects = listOf(AuthEffect.LoginRemote(event.account, event.password))
                 )
-
+                // 非 Idle/Error 状态下忽略 SubmitLogin，保持现状且无副作用
                 else -> Transition(newState = currentState)
             }
 

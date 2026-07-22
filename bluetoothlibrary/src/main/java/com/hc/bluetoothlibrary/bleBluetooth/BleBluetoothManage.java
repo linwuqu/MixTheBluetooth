@@ -39,16 +39,16 @@ import cn.hutool.core.util.ArrayUtil;
 
 
 /*
-* 蓝牙的管理类
-* 这个类的实现，最好放在设计为单例模式
-* downloadBinder 通过这个成员变量控制服务
-*
-* 使用此类很简单:
-* 扫描模块  -->  void scanBlueTooth()
-* 连接模块  -->  void connectBluetooth(BluetoothDevice bluetoothDevice, Handler mDataHandler)
-* 发送数据  -->  void sendData(String data)
-* 断开模块  -->  void disConnectBluetooth()
-* */
+ * 蓝牙的管理类
+ * 这个类的实现，最好放在设计为单例模式
+ * downloadBinder 通过这个成员变量控制服务
+ *
+ * 使用此类很简单:
+ * 扫描模块  -->  void scanBlueTooth()
+ * 连接模块  -->  void connectBluetooth(BluetoothDevice bluetoothDevice, Handler mDataHandler)
+ * 发送数据  -->  void sendData(String data)
+ * 断开模块  -->  void disConnectBluetooth()
+ * */
 public class BleBluetoothManage {
 
     static final int SERVICE_CALLBACK = 0x00;
@@ -62,15 +62,15 @@ public class BleBluetoothManage {
 
     static final int SERVICE_READ_MTU = 0x08;//设置MTU的回调
 
-    static final String SERVICE_SEPARATOR ="/**separator**/";
+    static final String SERVICE_SEPARATOR = "/**separator**/";
 
     private BluetoothAdapter mBluetoothAdapter;// 蓝牙适配器
 
-    private ScanCallback mScanCallback,mScanCallbackMessyCode;//Android5.0以上的扫描回调
+    private ScanCallback mScanCallback, mScanCallbackMessyCode;//Android5.0以上的扫描回调
 
     private BluetoothLeScanner mBluetoothLeScanner;//Android5.0以上的扫描方式
 
-    private static final long SCAN_PERIOD = 20*1000;//扫描时间
+    private static final long SCAN_PERIOD = 20 * 1000;//扫描时间
 
     private final Handler mTimeHandler = new Handler();//延时执行
 
@@ -85,6 +85,8 @@ public class BleBluetoothManage {
     //服务的控制类：1.setHandler() 设置handler 2.connect() 初步连接模块
     //             3.send() 发送数据          4.disconnect() 断开连接
     private BluetoothLeService.DownloadBinder downloadBinder;
+    private final DeferredConnector<DeviceModule> deferredConnector = new DeferredConnector<>();
+    private boolean isServiceBound;
 
     private IScanCallback mIScanCallback;//扫描回调
     private IDataCallback mIDataCallback;//连接数据回调
@@ -94,15 +96,14 @@ public class BleBluetoothManage {
     private Handler mDataHandler;
 
     private final List<byte[]> mDataArray = new ArrayList<>();
-    
+
     private final List<byte[]> mDataBuffArray = new ArrayList<>();//检测换行时，所保留上一次的缓存数据
 
     private int mModuleMtu = 20;
 
 
-
     //唯一指定构造方法
-    public BleBluetoothManage(Context context){
+    public BleBluetoothManage(Context context) {
         this.mContext = context;
 
         init_ble();//初始化ble，打开蓝牙
@@ -123,11 +124,11 @@ public class BleBluetoothManage {
         mDataHandler = new Handler(new Handler.Callback() {
             @Override
             public boolean handleMessage(@NonNull Message msg) {
-                if (mIDataCallback == null){
-                    Log.e("AppRun"+getClass().getSimpleName(),"mIDataCallback is null");
+                if (mIDataCallback == null) {
+                    Log.e("AppRun" + getClass().getSimpleName(), "mIDataCallback is null");
                     return false;
                 }
-                switch (msg.what){
+                switch (msg.what) {
                     case SERVICE_CALLBACK:
                         splicingData((byte[]) msg.obj);
                         break;
@@ -135,8 +136,9 @@ public class BleBluetoothManage {
                         if (getAddress() != null) mIDataCallback.connectionSucceed(getAddress());
                         break;
                     case SERVICE_CONNECT_FAIL:
-                        if (getAddress() != null) mIDataCallback.connectionFail(getAddress(),msg.obj.toString());
-                        log("service connect fail "+getAddress());
+                        if (getAddress() != null)
+                            mIDataCallback.connectionFail(getAddress(), msg.obj.toString());
+                        log("service connect fail " + getAddress());
                         //disConnectBluetooth();
                         break;
                     case SERVICE_ERROR_DISCONNECT:
@@ -151,7 +153,7 @@ public class BleBluetoothManage {
                             mIDataCallback.readLog(ToolClass.analysis(data, 0, SERVICE_SEPARATOR),
                                     ToolClass.analysis(data, 1, SERVICE_SEPARATOR), ToolClass.analysis(data, 2, SERVICE_SEPARATOR));
                             //Log.e("AppRun" + getClass().getSimpleName(), "接收到，发送往AllBlue");
-                        }catch (Exception e){
+                        } catch (Exception e) {
                             e.printStackTrace();
                         }
                         break;
@@ -168,11 +170,11 @@ public class BleBluetoothManage {
 
     }
 
-    private String getAddress(){
-        String address ;
+    private String getAddress() {
+        String address;
         try {
             address = downloadBinder.getDevice().getAddress();
-        }catch (Exception e){
+        } catch (Exception e) {
             address = mConnectedMac;
             e.printStackTrace();
         }
@@ -180,23 +182,20 @@ public class BleBluetoothManage {
     }
 
 
-
-
-
     //搜索蓝牙 --> 调用此方法会五秒内持续搜索蓝牙，五秒后自动停止，五秒内再调用会直接停止扫描
-    public void scanBluetooth(IScanCallback iScanCallback){
+    public void scanBluetooth(IScanCallback iScanCallback) {
 
         this.mIScanCallback = iScanCallback;
 
-        if (mBluetoothAdapter == null){
+        if (mBluetoothAdapter == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-            }else {
+            } else {
                 BluetoothManager bluetoothManager = (BluetoothManager) mContext.getSystemService(Context.BLUETOOTH_SERVICE);
                 mBluetoothAdapter = bluetoothManager.getAdapter();
             }
         }
-        if (mBluetoothLeScanner == null){
+        if (mBluetoothLeScanner == null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 mBluetoothLeScanner = mBluetoothAdapter.getBluetoothLeScanner();
             }
@@ -205,10 +204,11 @@ public class BleBluetoothManage {
         if (isOffScan) {
             isOffScan = false;
             isTimeScan = true;
+            // :启动了一个20s的定时器
             mTimeHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    if (!isTimeScan){
+                    if (!isTimeScan) {
                         log("时间到，已提前停止扫描");
                         return;
                     }
@@ -217,12 +217,12 @@ public class BleBluetoothManage {
                     mIScanCallback.stopScan();
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         mBluetoothLeScanner.stopScan(mScanCallback);
-                    }else {
+                    } else {
                         mBluetoothAdapter.stopLeScan(mLeScanCallback);
                     }
-                    log("搜索到个数: "+mListDevices.size());
+                    log("搜索到个数: " + mListDevices.size());
                 }
-            },SCAN_PERIOD);
+            }, SCAN_PERIOD);
 
             log("开始扫描...");
             mListDevices.clear();
@@ -231,44 +231,45 @@ public class BleBluetoothManage {
                     log("高功耗扫描模式..");
                     ScanSettings.Builder builder = new ScanSettings.Builder()
                             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY);
-                    mBluetoothLeScanner.startScan(null,builder.build(),mScanCallback);
-                }else {
+                    // :调用系统API开始扫描
+                    mBluetoothLeScanner.startScan(null, builder.build(), mScanCallback);
+                } else {
                     mBluetoothLeScanner.startScan(mScanCallback);
                 }
-            }else {
+            } else {
                 mBluetoothAdapter.startLeScan(mLeScanCallback);
             }
         }
     }
 
-    public void stopScan() throws Exception{
-        if (!isOffScan){
+    public void stopScan() throws Exception {
+        if (!isOffScan) {
             isOffScan = true;
             isTimeScan = false;
             log("手动停止扫描");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 mBluetoothLeScanner.stopScan(mScanCallback);
-            }else {
+            } else {
                 mBluetoothAdapter.stopLeScan(mLeScanCallback);
             }
             mTimeHandler.removeMessages(0);
-            log("搜索到个数: "+mListDevices.size());
+            log("搜索到个数: " + mListDevices.size());
         }
     }
 
     //搜索蓝牙 --> 此方法用于蓝牙的名称转码，使其不会乱码
-    public void scanBluetooth(List<DeviceModule> list, boolean isStart,final IScanCallback iScanCallback){
+    public void scanBluetooth(List<DeviceModule> list, boolean isStart, final IScanCallback iScanCallback) {
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP || ((list == null||list.size() == 0) && isStart)){
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP || ((list == null || list.size() == 0) && isStart)) {
             log("不需要修正或是手机版本过低..");
             if (iScanCallback != null) iScanCallback.stopScan();
             return;
         }
 
-        if (mBluetoothAdapter == null){
+        if (mBluetoothAdapter == null) {
             mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         }
-        if (mBluetoothLeScanner == null){
+        if (mBluetoothLeScanner == null) {
             mBluetoothLeScanner = mBluetoothAdapter.getBluetoothLeScanner();
         }
 
@@ -283,13 +284,13 @@ public class BleBluetoothManage {
                     iScanCallback.stopScan();
                     mBluetoothLeScanner.stopScan(mScanCallbackMessyCode);
                 }
-            }, SCAN_PERIOD/2);
+            }, SCAN_PERIOD / 2);
         }
 
         if (isStart) {
             ScanSettings.Builder builder = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY);
-            mBluetoothLeScanner.startScan(null,builder.build(),mScanCallbackMessyCode);
-        }else {
+            mBluetoothLeScanner.startScan(null, builder.build(), mScanCallbackMessyCode);
+        } else {
             log("停止扫描");
             mTimeHandler.removeMessages(0);
             mBluetoothLeScanner.stopScan(mScanCallbackMessyCode);
@@ -298,40 +299,53 @@ public class BleBluetoothManage {
     }
 
     //连接蓝牙
-    public void connectBluetooth(final DeviceModule module,IDataCallback iDataCallback){
+    public void connectBluetooth(final DeviceModule module, IDataCallback iDataCallback) {
         this.mIDataCallback = iDataCallback;
         mConnectedMac = module.getDevice().getAddress();
-        log("获取需要连接的MAC: "+mConnectedMac);
-        Intent serviceInter = new Intent(mContext,BluetoothLeService.class);
-        mContext.bindService(serviceInter,connection, Context.BIND_AUTO_CREATE);
-        mTimeHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                downloadBinder.connect(mContext,module);
-                downloadBinder.setHandler(mDataHandler);
+        log("获取需要连接的MAC: " + mConnectedMac);
+        deferredConnector.submit(module);
+        if (downloadBinder != null || isServiceBound) return;
+
+        Intent serviceInter = new Intent(mContext, BluetoothLeService.class);
+        isServiceBound = mContext.bindService(serviceInter, connection, Context.BIND_AUTO_CREATE);
+        if (!isServiceBound) {
+            deferredConnector.clear();
+            log("绑定蓝牙服务失败");
+            if (mIDataCallback != null) {
+                mIDataCallback.connectionFail(mConnectedMac, "绑定蓝牙服务失败");
             }
-        },200);
+        }
     }
 
     //断开蓝牙
-    public void disConnectBluetooth(){
+    public void disConnectBluetooth() {
         mConnectedMac = null;
-        if (downloadBinder == null) return;
-        downloadBinder.disconnect();
+        deferredConnector.clear();
+        if (downloadBinder != null) downloadBinder.disconnect();
+        if (!isServiceBound) {
+            deferredConnector.detach();
+            downloadBinder = null;
+            return;
+        }
         mTimeHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 try {
-                    mContext.unbindService(connection);
-                }catch (Exception e){
+                    if (isServiceBound) {
+                        mContext.unbindService(connection);
+                        isServiceBound = false;
+                    }
+                    deferredConnector.detach();
+                    downloadBinder = null;
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
-        },500);
+        }, 500);
     }
 
     //获取当前连接的Mac
-    public String getMac(){
+    public String getMac() {
         return mConnectedMac;
     }
 
@@ -339,18 +353,31 @@ public class BleBluetoothManage {
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            downloadBinder = (BluetoothLeService.DownloadBinder) service;
+            final BluetoothLeService.DownloadBinder connectedBinder =
+                    (BluetoothLeService.DownloadBinder) service;
+            downloadBinder = connectedBinder;
+            isServiceBound = true;
+            connectedBinder.setHandler(mDataHandler);
+            deferredConnector.attach(new DeferredConnector.Connection<DeviceModule>() {
+                @Override
+                public void connect(DeviceModule target) {
+                    connectedBinder.connect(mContext, target);
+                }
+            });
             log("绑定服务..");
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
+            deferredConnector.detach();
+            downloadBinder = null;
             log("onServiceDisconnected");
         }
     };
 
     /**
      * 设置MTU
+     *
      * @param mtu:23 - 512
      */
     public void setMTU(int mtu) {
@@ -358,26 +385,28 @@ public class BleBluetoothManage {
     }
 
     //发送数据给模块
-    public void sendData(byte[] data){
+    public void sendData(byte[] data) {
         //downloadBinder.send(data);
         downloadBinder.sendMultiple(data);
     }
 
     /**
      * 停止发送蓝牙
+     *
      * @param iBluetoothStop:停止完成的回调
      */
-    public void stopSend(IBluetoothStop iBluetoothStop){
-        if(downloadBinder != null)downloadBinder.stopSend(iBluetoothStop);
-        Log.w("AppRun"+getClass().getSimpleName(),"停止发送");
+    public void stopSend(IBluetoothStop iBluetoothStop) {
+        if (downloadBinder != null) downloadBinder.stopSend(iBluetoothStop);
+        Log.w("AppRun" + getClass().getSimpleName(), "停止发送");
     }
 
     /**
      * 设置文件的发送速度
+     *
      * @param velocity:low,height,super,max
      */
-    public void setSendFileVelocity(AllBluetoothManage.SendFileVelocity velocity,int speed) {
-        downloadBinder.setSendFileVelocity(velocity,speed);
+    public void setSendFileVelocity(AllBluetoothManage.SendFileVelocity velocity, int speed) {
+        downloadBinder.setSendFileVelocity(velocity, speed);
         log("修改发送速率...");
     }
 
@@ -386,12 +415,12 @@ public class BleBluetoothManage {
         mCountDownHandler.removeMessages(0);
         mDataArray.add(bytes);
         if (bytes.length > mModuleMtu) mModuleMtu = bytes.length;
-        if (mDataArray.size()==10) mIDataCallback.reading(true);
-        if (mDataArray.size() >= ModuleParameters.getBleReadBuff()/mModuleMtu){
-            if(ModuleParameters.isCheckNewline()) checkNewlineData();
+        if (mDataArray.size() == 10) mIDataCallback.reading(true);
+        if (mDataArray.size() >= ModuleParameters.getBleReadBuff() / mModuleMtu) {
+            if (ModuleParameters.isCheckNewline()) checkNewlineData();
             dataToPhone();
         }
-        mCountDownHandler.sendMessageDelayed(mCountDownHandler.obtainMessage(),ModuleParameters.getTime()*3);
+        mCountDownHandler.sendMessageDelayed(mCountDownHandler.obtainMessage(), ModuleParameters.getTime() * 3);
     }
 
 
@@ -400,30 +429,31 @@ public class BleBluetoothManage {
      * 当缓冲区buff满了之后，寻找到最后一个换行符，换行符后的数据保存在{@link #mDataBuffArray}里
      * 换行前的数据，正常输出，{@link #mDataBuffArray}里的数据，将添加到下一个缓冲区的头部
      */
-    private synchronized void checkNewlineData(){
+    private synchronized void checkNewlineData() {
         byte newline = 10;//换行的ASCIIS码
         int bytePosition = -1;
         int dataPosition;
 
-        for (dataPosition = mDataArray.size()-1;dataPosition>=0;dataPosition--){
-            bytePosition = ArrayUtil.lastIndexOf(mDataArray.get(dataPosition),newline);
-            if(bytePosition != -1) break;
+        for (dataPosition = mDataArray.size() - 1; dataPosition >= 0; dataPosition--) {
+            bytePosition = ArrayUtil.lastIndexOf(mDataArray.get(dataPosition), newline);
+            if (bytePosition != -1) break;
         }
 
         if (bytePosition == -1) return;
-        if (dataPosition == mDataArray.size()-1 && mDataArray.get(dataPosition).length-1 == bytePosition) return;
+        if (dataPosition == mDataArray.size() - 1 && mDataArray.get(dataPosition).length - 1 == bytePosition)
+            return;
 
         byte[] retainBytes = new byte[mDataArray.get(dataPosition).length - bytePosition - 1];//保留数组
-        byte[] usableBytes = new byte[bytePosition+1];//即用数据
+        byte[] usableBytes = new byte[bytePosition + 1];//即用数据
 
-        System.arraycopy(mDataArray.get(dataPosition),bytePosition+1,retainBytes,0,retainBytes.length);
-        System.arraycopy(mDataArray.get(dataPosition),0,usableBytes,0,usableBytes.length);
+        System.arraycopy(mDataArray.get(dataPosition), bytePosition + 1, retainBytes, 0, retainBytes.length);
+        System.arraycopy(mDataArray.get(dataPosition), 0, usableBytes, 0, usableBytes.length);
 
         mDataBuffArray.add(retainBytes);
-        if(dataPosition < mDataArray.size()-1) {
-            mDataBuffArray.addAll(mDataArray.subList(dataPosition+1, mDataArray.size()));
+        if (dataPosition < mDataArray.size() - 1) {
+            mDataBuffArray.addAll(mDataArray.subList(dataPosition + 1, mDataArray.size()));
             mDataArray.subList(dataPosition, mDataArray.size()).clear();
-        }else mDataArray.remove(mDataArray.size()-1);
+        } else mDataArray.remove(mDataArray.size() - 1);
         mDataArray.add(usableBytes);
     }
 
@@ -437,7 +467,7 @@ public class BleBluetoothManage {
         }
     });
 
-    private void dataToPhone(){
+    private void dataToPhone() {
         int length = 0;
 
         for (byte[] bytes : mDataArray) {
@@ -447,12 +477,12 @@ public class BleBluetoothManage {
         byte[] bytes = new byte[length];
         int start = 0;
         for (byte[] data : mDataArray) {
-            System.arraycopy(data,0,bytes,start,data.length);
+            System.arraycopy(data, 0, bytes, start, data.length);
             start += data.length;
         }
-        mIDataCallback.readData(bytes.clone(),mConnectedMac);
+        mIDataCallback.readData(bytes.clone(), mConnectedMac);
         mDataArray.clear();
-        if (!mDataBuffArray.isEmpty()){
+        if (!mDataBuffArray.isEmpty()) {
             mDataArray.addAll(mDataBuffArray);
             mDataBuffArray.clear();
         }
@@ -464,12 +494,12 @@ public class BleBluetoothManage {
                 @Override
                 public void onLeScan(final BluetoothDevice device, final int rssi,
                                      byte[] scanRecord) {
-                    ((Activity)mContext).runOnUiThread(new Runnable() {
+                    ((Activity) mContext).runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
                             //mLeDeviceListAdapter.addDevice(device);
                             //log(device.toString());
-                            addDeviceModel(device,rssi,null,null);
+                            addDeviceModel(device, rssi, null, null);
                         }
                     });
                 }
@@ -477,7 +507,7 @@ public class BleBluetoothManage {
 
     //Android5.0以上扫描蓝牙回调，支持名称中文
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void setScanCallBack(){
+    private void setScanCallBack() {
         mScanCallback = new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, final ScanResult result) {
@@ -485,12 +515,11 @@ public class BleBluetoothManage {
                 final BluetoothDevice device = result.getDevice();
 
 
-
                 String moduleName = null;
-                if(null != device && null != result.getScanRecord() && ToolClass.pattern(device.getName())) {
+                if (null != device && null != result.getScanRecord() && ToolClass.pattern(device.getName())) {
                     try {
-                        if (device.getName()!=null) {
-                            byte[] name = ParseLeAdvData.adv_report_parse(ParseLeAdvData.BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,result.getScanRecord().getBytes());
+                        if (device.getName() != null) {
+                            byte[] name = ParseLeAdvData.adv_report_parse(ParseLeAdvData.BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, result.getScanRecord().getBytes());
                             if (name != null) {
                                 moduleName = new String(name, "GBK");
                             }
@@ -504,22 +533,21 @@ public class BleBluetoothManage {
 
 
                 final String finalModuleName = moduleName;
-                ((Activity)mContext).runOnUiThread(new Runnable() {
+                ((Activity) mContext).runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        addDeviceModel(device,result.getRssi(), finalModuleName,result);
+                        addDeviceModel(device, result.getRssi(), finalModuleName, result);
                     }
                 });
             }
+
             @Override
             public void onScanFailed(final int errorCode) {
                 super.onScanFailed(errorCode);
-                ((Activity)mContext).runOnUiThread(new Runnable()
-                {
+                ((Activity) mContext).runOnUiThread(new Runnable() {
                     @Override
-                    public void run()
-                    {
-                        Toast.makeText(mContext, "扫描出错:"+errorCode, Toast.LENGTH_SHORT).show();
+                    public void run() {
+                        Toast.makeText(mContext, "扫描出错:" + errorCode, Toast.LENGTH_SHORT).show();
                     }
                 });
             }
@@ -527,31 +555,31 @@ public class BleBluetoothManage {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void setScanCallBackMessyCode(final List<DeviceModule> list){
+    private void setScanCallBackMessyCode(final List<DeviceModule> list) {
         mScanCallbackMessyCode = new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, final ScanResult result) {
                 final BluetoothDevice device = result.getDevice();
-                if (device.getAddress().equals("F4:85:50:94:DD:DC")){
-                    Log.e("AppRun","找到42模块");
+                if (device.getAddress().equals("F4:85:50:94:DD:DC")) {
+                    Log.e("AppRun", "找到42模块");
                 }
                 boolean isEquals = false;
                 int listNumber = 0;
-                for (;listNumber<list.size();listNumber++) {
-                    if (device != null && list.get(listNumber).getMac().equals(device.getAddress())){
+                for (; listNumber < list.size(); listNumber++) {
+                    if (device != null && list.get(listNumber).getMac().equals(device.getAddress())) {
                         if (ToolClass.pattern(list.get(listNumber).getName())) {
                             isEquals = true;
                             break;
                         }
                     }
                 }
-                if (!isEquals){
+                if (!isEquals) {
                     return;
                 }
                 String moduleName = null;
-                if( null != result.getScanRecord() && ToolClass.pattern(device.getName())) {
+                if (null != result.getScanRecord() && ToolClass.pattern(device.getName())) {
                     try {
-                        byte[] name = ParseLeAdvData.adv_report_parse(ParseLeAdvData.BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,result.getScanRecord().getBytes());
+                        byte[] name = ParseLeAdvData.adv_report_parse(ParseLeAdvData.BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, result.getScanRecord().getBytes());
                         if (name != null) {
                             moduleName = new String(name, "GBK");
                         }
@@ -562,17 +590,16 @@ public class BleBluetoothManage {
                 if (moduleName == null)
                     moduleName = device.getName();
                 list.remove(listNumber);
-                list.add(listNumber,new DeviceModule(device,result.getRssi(),moduleName,mContext,result));
+                list.add(listNumber, new DeviceModule(device, result.getRssi(), moduleName, mContext, result));
             }
+
             @Override
             public void onScanFailed(final int errorCode) {
                 super.onScanFailed(errorCode);
-                ((Activity)mContext).runOnUiThread(new Runnable()
-                {
+                ((Activity) mContext).runOnUiThread(new Runnable() {
                     @Override
-                    public void run()
-                    {
-                        Toast.makeText(mContext, "扫描出错:"+errorCode, Toast.LENGTH_SHORT).show();
+                    public void run() {
+                        Toast.makeText(mContext, "扫描出错:" + errorCode, Toast.LENGTH_SHORT).show();
                     }
                 });
             }
@@ -581,22 +608,22 @@ public class BleBluetoothManage {
 
 
     //添加搜索到的模块 --> 已经去除重复
-    private void addDeviceModel(BluetoothDevice device,int rssi,String name,ScanResult result){
-        if (mListDevices.size()==0){
-            mListDevices.add(new DeviceModule(device,rssi,name,mContext,result));
+    private void addDeviceModel(BluetoothDevice device, int rssi, String name, ScanResult result) {
+        if (mListDevices.size() == 0) {
+            mListDevices.add(new DeviceModule(device, rssi, name, mContext, result));
             mIScanCallback.updateRecycler(mListDevices.get(0));
             return;
         }
 
         for (DeviceModule mListDevice : mListDevices) {
-            if(mListDevice.getDevice().toString().equals(device.toString())){
+            if (mListDevice.getDevice().toString().equals(device.toString())) {
                 mListDevice.setRssi(rssi);
                 mListDevice.updateIBeacon(device);
                 mIScanCallback.updateRecycler(null);
                 return;
             }
         }
-        DeviceModule deviceModule = new DeviceModule(device,rssi,name,mContext,result);
+        DeviceModule deviceModule = new DeviceModule(device, rssi, name, mContext, result);
         mListDevices.add(deviceModule);
         mIScanCallback.updateRecycler(deviceModule);
     }
@@ -607,7 +634,7 @@ public class BleBluetoothManage {
         if (!mContext.getPackageManager().hasSystemFeature(
                 PackageManager.FEATURE_BLUETOOTH_LE)) {
             Toast.makeText(mContext, "不支持BLE蓝牙，请退出...", Toast.LENGTH_SHORT).show();
-            ((Activity)mContext).finish();
+            ((Activity) mContext).finish();
             return;
         }
         // Initializes Bluetooth adapter.
@@ -621,10 +648,10 @@ public class BleBluetoothManage {
         }
     }
 
-    private void log(String str){
-        Log.d("AppRun"+getClass().getSimpleName(),str);
-        if (mIDataCallback != null){
-            mIDataCallback.readLog(getClass().getSimpleName(),str,"d");
+    private void log(String str) {
+        Log.d("AppRun" + getClass().getSimpleName(), str);
+        if (mIDataCallback != null) {
+            mIDataCallback.readLog(getClass().getSimpleName(), str, "d");
         }
     }
 }

@@ -25,15 +25,16 @@ public class AllBluetoothManage {
     private IDataCallback mIDataCallback;
     private final IBluetooth mIBluetooth;
 
-    private enum State{refresh,leisure}//是否处于扫描状态
+    private enum State {refresh, leisure}//是否处于扫描状态
+
     private State mState = State.leisure;
 
     private boolean mUpdateTheLimit = false;//限制频繁更新列表
     private final Handler mTimeHandler = new Handler();//时间控制
 
-    public enum SendFileVelocity{LOW,HEIGHT,SUPER,MAX,CUSTOM}//发送速度的档次，对应波特率9600,115200,230400,460800,与自定义发送值
+    public enum SendFileVelocity {LOW, HEIGHT, SUPER, MAX, CUSTOM}//发送速度的档次，对应波特率9600,115200,230400,460800,与自定义发送值
 
-    public AllBluetoothManage(Context context,IBluetooth iBluetooth){
+    public AllBluetoothManage(Context context, IBluetooth iBluetooth) {
         this.mContext = context;
         mClassicManage = new ClassicBluetoothManage(context);
         mBleManage = new BleBluetoothManage(context);
@@ -43,7 +44,7 @@ public class AllBluetoothManage {
     }
 
     //综合扫描（扫描完成时会检查是否有BLE模块名字乱码，若有则启动BLE扫描，通过解析BLE的广播包来获取名字）
-    public boolean mixScan(){
+    public boolean mixScan() {
         if (mState == State.refresh) return false;
         mState = State.refresh;
         mClassicBluetoothArray.clear();
@@ -52,7 +53,7 @@ public class AllBluetoothManage {
             @Override
             public void stopScan() {
                 //扫描结束
-                log("classic扫描结束","w");
+                log("classic扫描结束", "w");
                 //检验是否有乱码
                 testMessyCode();
             }
@@ -61,65 +62,66 @@ public class AllBluetoothManage {
             public void updateRecycler(DeviceModule deviceModule) {
                 //更新Recycler的数据
                 if (deviceModule != null) mClassicBluetoothArray.add(deviceModule);
-                callbackActivity(deviceModule,false);
+                callbackActivity(deviceModule, false);
             }
         });
         return true;
     }
 
     //ble扫描
-    public boolean bleScan(){
+    public boolean bleScan() {
         if (mState == State.refresh) return false;
         mState = State.refresh;
         mScanAllModuleArray.clear();
         mBleManage.scanBluetooth(new IScanCallback() {
             @Override
             public void stopScan() {
-                log("ble扫描结束","w");
+                log("ble扫描结束", "w");
                 mIBluetooth.updateEnd();
                 mState = State.leisure;
             }
 
             @Override
             public void updateRecycler(DeviceModule deviceModule) {
-                callbackActivity(deviceModule,true);
+                callbackActivity(deviceModule, true);
             }
         });
         return true;
     }
 
-    public void stopScan(){
-        try{
+    public void stopScan() {
+        try {
             mIBluetooth.updateEnd();
             mClassicManage.stopScan();
             mBleManage.stopScan();
-        }catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             mState = State.leisure;
         }
     }
 
 
     //连接蓝牙
-    public void connect(final DeviceModule deviceModule){
+    public void connect(final DeviceModule deviceModule) {
 
         //连接前，先停下所有扫描
         stopScan();
 
-        if (deviceModule.isBLE()){
-            log("进入ble的连接方式","w");
+        if (deviceModule.isBLE()) {
+            log("进入ble的连接方式", "w");
             if (mBleManage.getMac() == null) {
                 mBleManage.connectBluetooth(deviceModule, mIDataCallback);
             }
-        }else {
-            log("进入2.0的连接方式","w");
-            if (mClassicManage.getMac() == null) mClassicManage.connectBluetooth(deviceModule.getMac(),mIDataCallback);
+        } else {
+            log("进入2.0的连接方式", "w");
+            if (mClassicManage.getMac() == null)
+                mClassicManage.connectBluetooth(deviceModule.getMac(), mIDataCallback);
         }
     }
 
     //断开蓝牙
-    public void disconnect(DeviceModule deviceModule){
+    public void disconnect(DeviceModule deviceModule) {
         if (deviceModule != null) {
             if (deviceModule.isBLE()) {
                 log("断开BLE蓝牙", "w");
@@ -127,65 +129,68 @@ public class AllBluetoothManage {
             } else {
                 mClassicManage.disconnectBluetooth();
             }
-        }else {
+        } else {
             if (mBleManage != null) mBleManage.disConnectBluetooth();
             if (mClassicManage != null) mClassicManage.disconnectBluetooth();
         }
     }
 
     //发送数据
-    public void sendData(DeviceModule deviceModule,byte[] data){
-        if (deviceModule.isBLE()){
+    public void sendData(DeviceModule deviceModule, byte[] data) {
+        if (deviceModule.isBLE()) {
             mBleManage.sendData(data);
-        }else {
+        } else {
             mClassicManage.sendData(data);
         }
     }
 
     /**
      * 设置BLE模块的MTU
+     *
      * @param deviceModule：设备（模块）
      * @param mtu：指定的MTU
      */
-    public void setMTU(DeviceModule deviceModule,int mtu){
-        if (deviceModule.isBLE()){
+    public void setMTU(DeviceModule deviceModule, int mtu) {
+        if (deviceModule.isBLE()) {
             mBleManage.setMTU(mtu);
         }
     }
 
     /**
      * 停止发送数据
+     *
      * @param deviceModule;设备
      * @param callback：回调
      */
-    public void stopSend(DeviceModule deviceModule,IBluetoothStop callback){
-        if(deviceModule != null) {
+    public void stopSend(DeviceModule deviceModule, IBluetoothStop callback) {
+        if (deviceModule != null) {
             if (deviceModule.isBLE()) {
                 mBleManage.stopSend(callback);
             } else {
                 mClassicManage.stopSend(callback);
             }
-        }else {
+        } else {
             if (mBleManage != null) mBleManage.stopSend(callback);
             if (mClassicManage != null) mClassicManage.stopSend(callback);
         }
     }
 
     //查看是否打开蓝牙，如果已开启，则返回true，否则false
-    public boolean isStartBluetooth(){
+    public boolean isStartBluetooth() {
         return mClassicManage.startBluetooth();
     }
 
     /**
      * 指定发送速度
+     *
      * @param deviceModule:模块设备
      * @param v:发送速度等级，从1到4，分别对应波特率9600，115200，230400，460800 与5，和指定参数发送速度单位k/s
      */
-    public void setSendFileVelocity(DeviceModule deviceModule,int ...v){
+    public void setSendFileVelocity(DeviceModule deviceModule, int... v) {
 
         SendFileVelocity velocity;
 
-        switch (v[0]){
+        switch (v[0]) {
             case 1:
                 velocity = SendFileVelocity.LOW;
                 break;
@@ -201,21 +206,21 @@ public class AllBluetoothManage {
             case 5:
                 velocity = SendFileVelocity.CUSTOM;
                 break;
-                default:
-                    velocity = SendFileVelocity.LOW;
-                    log("设置文件发送速度失败,没有这个选项:"+v[0],"e");
+            default:
+                velocity = SendFileVelocity.LOW;
+                log("设置文件发送速度失败,没有这个选项:" + v[0], "e");
         }
 
-        if (deviceModule.isBLE()){
-            mBleManage.setSendFileVelocity(velocity,v[0]==5?v[1]:0);
-        }else {
+        if (deviceModule.isBLE()) {
+            mBleManage.setSendFileVelocity(velocity, v[0] == 5 ? v[1] : 0);
+        } else {
             mClassicManage.setSendFileVelocity(velocity);
         }
 
     }
 
-    private synchronized void callbackActivity(DeviceModule deviceModule,boolean cooling){
-        if (mIBluetooth != null){
+    private synchronized void callbackActivity(DeviceModule deviceModule, boolean cooling) {
+        if (mIBluetooth != null) {
 
             //当2.0扫描模式时，不需要预防频繁更新
             if ((cooling || mUpdateTheLimit) && deviceModule == null) return;
@@ -225,7 +230,8 @@ public class AllBluetoothManage {
                 mUpdateTheLimit = true;
                 mTimeHandler.postDelayed(new Runnable() {
                     @Override
-                    public void run() { mUpdateTheLimit = false;
+                    public void run() {
+                        mUpdateTheLimit = false;
                     }
                 }, 200);
             }
@@ -241,10 +247,10 @@ public class AllBluetoothManage {
         mBleManage.scanBluetooth(list, true, new IScanCallback() {
             @Override
             public void stopScan() {
-                log("=====解码=====","w");
+                log("=====解码=====", "w");
                 for (DeviceModule deviceModule : list) {
-                    log("name: "+deviceModule.getName());
-                    if (mIBluetooth != null){
+                    log("name: " + deviceModule.getName());
+                    if (mIBluetooth != null) {
                         mIBluetooth.updateMessyCode(deviceModule);
                     }
                 }
@@ -260,25 +266,25 @@ public class AllBluetoothManage {
     }
 
     //所有连接的蓝牙数据都回调于此..
-    private void setIDataCallback(){
+    private void setIDataCallback() {
         mIDataCallback = new IDataCallback() {
 
             @Override
             public void readData(byte[] data, String mac) {
-                if (mIBluetooth != null) mIBluetooth.readData(mac,data);
+                if (mIBluetooth != null) mIBluetooth.readData(mac, data);
             }
 
             @Override
             public void connectionFail(String mac, String cause) {
-                log(mac+" 模块连接失败,原因是: "+cause,"e");
+                log(mac + " 模块连接失败,原因是: " + cause, "e");
                 errorDisconnect(mac);
             }
 
             @Override
             public void connectionSucceed(String mac) {
-                log(mac+" 模块连接成功");
+                log(mac + " 模块连接成功");
                 for (DeviceModule deviceModule : mScanAllModuleArray) {
-                    if (deviceModule.getMac().equals(mac)){
+                    if (deviceModule.getMac().equals(mac)) {
                         if (mIBluetooth != null) mIBluetooth.connectSucceed(deviceModule);
                     }
                 }
@@ -286,7 +292,7 @@ public class AllBluetoothManage {
 
             @Override
             public void reading(final boolean isStart) {
-                ((Activity)mContext).runOnUiThread(new Runnable() {
+                ((Activity) mContext).runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         if (mIBluetooth != null) mIBluetooth.reading(isStart);
@@ -300,14 +306,14 @@ public class AllBluetoothManage {
                 if (mIBluetooth != null) mIBluetooth.errorDisconnect(deviceModule);
                 if (deviceModule != null && deviceModule.isBLE()) {
                     mBleManage.disConnectBluetooth();
-                }else {
+                } else {
                     mClassicManage.disconnectBluetooth();
                 }
             }
 
             @Override
             public void readNumber(final int number) {
-                ((Activity)mContext).runOnUiThread(new Runnable() {
+                ((Activity) mContext).runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         if (mIBluetooth != null) mIBluetooth.readNumber(number);
@@ -319,7 +325,7 @@ public class AllBluetoothManage {
             public void readLog(String className, String data, String lv) {
                 if (mIBluetooth != null) {
                     mIBluetooth.readLog(className, data, lv);
-                }else {
+                } else {
                     log("mIBluetooth is null", "w");
                 }
                 //Log.e("AppRun"+getClass().getSimpleName(),"AllBlue接收到信息,传往single");
@@ -337,24 +343,24 @@ public class AllBluetoothManage {
         };
     }
 
-    private DeviceModule getDeviceModule(String mac){
+    private DeviceModule getDeviceModule(String mac) {
         for (DeviceModule deviceModule : mClassicBluetoothArray) {
-            if (deviceModule.getMac().equals(mac)){
+            if (deviceModule.getMac().equals(mac)) {
                 return deviceModule;
             }
         }
         for (DeviceModule deviceModule : mScanAllModuleArray) {
-            if (deviceModule.getMac().equals(mac)){
+            if (deviceModule.getMac().equals(mac)) {
                 return deviceModule;
             }
         }
         return null;
     }
 
-    private List<DeviceModule> getMessyCodeArray(){
+    private List<DeviceModule> getMessyCodeArray() {
         List<DeviceModule> list = new ArrayList<>();
         for (DeviceModule deviceModule : mClassicBluetoothArray) {
-            if (deviceModule.isBLE() && ToolClass.pattern(deviceModule.getName())){
+            if (deviceModule.isBLE() && ToolClass.pattern(deviceModule.getName())) {
                 list.add(deviceModule);
             }
         }
@@ -362,20 +368,21 @@ public class AllBluetoothManage {
     }
 
 
-    private void log(String log){
-        Log.d("AppRun"+getClass().getSimpleName(),log);
-        if (mIBluetooth != null){
-            mIBluetooth.readLog(getClass().getSimpleName(),log,"d");
+    private void log(String log) {
+        Log.d("AppRun" + getClass().getSimpleName(), log);
+        if (mIBluetooth != null) {
+            mIBluetooth.readLog(getClass().getSimpleName(), log, "d");
         }
     }
-    private void log(String log,String lv){
-        if (lv.equals("e")){
-            Log.e("AppRun"+getClass().getSimpleName(),log);
-        }else {
-            Log.w("AppRun"+getClass().getSimpleName(),log);
+
+    private void log(String log, String lv) {
+        if (lv.equals("e")) {
+            Log.e("AppRun" + getClass().getSimpleName(), log);
+        } else {
+            Log.w("AppRun" + getClass().getSimpleName(), log);
         }
-        if (mIBluetooth != null){
-            mIBluetooth.readLog(getClass().getSimpleName(),log,lv);
+        if (mIBluetooth != null) {
+            mIBluetooth.readLog(getClass().getSimpleName(), log, lv);
         }
     }
 }

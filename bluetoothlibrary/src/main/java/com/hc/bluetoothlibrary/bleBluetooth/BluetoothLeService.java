@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -38,6 +39,7 @@ import java.util.UUID;
 * 00002902-0000-1000-8000-00805f9b34fb 这个是设置监听模块数据的UUID
 * */
 public class BluetoothLeService extends Service {
+    private static final String BLE_TRACE_TAG = "Bt24BleTrace";
     //蓝牙的特征值，发送
     private final static String SERVICE_EIGENVALUE_SEND = "0000ffe1-0000-1000-8000-00805f9b34fb";
     //蓝牙的特征值，接收
@@ -80,7 +82,19 @@ public class BluetoothLeService extends Service {
 
     private AllBluetoothManage.SendFileVelocity mSendFileVelocity = AllBluetoothManage.SendFileVelocity.LOW;
 
+    private final BleNotificationTrace mNotificationTrace = new BleNotificationTrace();
+
     //控制服务的类
+    /**
+     * BleBluetoothManage                    BluetoothLeService
+     *         |                                      |
+     *         |--- downloadBinder.connect() -------->|  ① 发起连接
+     *         |--- downloadBinder.sendMultiple() --->|  ② 发送数据
+     *         |--- downloadBinder.disconnect() ----->|  ③ 断开连接
+     *         |--- downloadBinder.setMTU() --------->|  ④ 设置 MTU
+     *         |                                      |
+     *         |<-- mDataHandler.sendMessage() -------|  ⑤ 结果回调 + 数据接收
+     */
     class DownloadBinder extends Binder {
 
         void setHandler(Handler handler){
@@ -95,6 +109,9 @@ public class BluetoothLeService extends Service {
 
         void connect(Context context, DeviceModule device){
             log("连接..");
+            mNotificationTrace.reset();
+            Log.i(BLE_TRACE_TAG, "connect mac=" + device.getDevice().getAddress()
+                    + " bondState=" + device.getDevice().getBondState());
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 mBluetoothGatt = device.getDevice().connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE, BluetoothDevice.PHY_LE_2M);
@@ -184,7 +201,8 @@ public class BluetoothLeService extends Service {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status,
                                             int newState) {
-            if(newState == 133){
+            Log.i(BLE_TRACE_TAG, "connectionState status=" + status + " newState=" + newState);
+            if(status == 133){
                 log("出现133问题，需要扫描重连","e");
                 sendHandler(BleBluetoothManage.SERVICE_CONNECT_FAIL,"出现133错误");
             }
@@ -241,6 +259,8 @@ public class BluetoothLeService extends Service {
         public void onDescriptorWrite(BluetoothGatt gatt,
                                       BluetoothGattDescriptor descriptor,
                                       int status) {
+            Log.i(BLE_TRACE_TAG, "descriptorWrite uuid=" + descriptor.getUuid()
+                    + " status=" + status);
             if (status == BluetoothGatt.GATT_SUCCESS){
                 //mBluetoothGatt.writeDescriptor(descriptor);
                 //来到这里，才算真正的建立连接
@@ -255,6 +275,8 @@ public class BluetoothLeService extends Service {
 
         @Override
         public void onServicesDiscovered(final BluetoothGatt gatt, final int status) {
+            Log.i(BLE_TRACE_TAG, "servicesDiscovered status=" + status
+                    + " count=" + gatt.getServices().size());
             //扫描到蓝牙服务的回调
             // （思想：获取该模块的所有服务，然后再轮询服务下面的所有特征的UUID，再与汇承的UUID比较
             // 　　　　找到汇承的UUID后，建立监听模块数据的回调才算完成真正的连接。）
@@ -323,13 +345,17 @@ public class BluetoothLeService extends Service {
             super.onCharacteristicChanged(gatt,characteristic);
             //模块发送的所有数据都会回调到这里
             //蓝牙发送给app的回调
-            sendHandler(characteristic.getValue());//给handler更新UI
-            accessRate(characteristic.getValue().length);//获取实时速率
+            byte[] value = characteristic.getValue();
+            if (value == null) return;
+            traceNotification(characteristic.getUuid(), value);
+            sendHandler(value);//给handler更新UI
+            accessRate(value.length);//获取实时速率
         }
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
             super.onMtuChanged(gatt, mtu, status);
+            Log.i(BLE_TRACE_TAG, "mtuChanged mtu=" + mtu + " status=" + status);
             if (gatt.getServices() == null || gatt.getServices().size() == 0 ) return;
             if (status == BluetoothGatt.GATT_SUCCESS){
                 mMTU = mtu - 3;
@@ -340,7 +366,29 @@ public class BluetoothLeService extends Service {
                 sendHandler(BleBluetoothManage.SERVICE_READ_MTU,-1);
             }
         }
+
+        @Override
+        public void onPhyUpdate(BluetoothGatt gatt, int txPhy, int rxPhy, int status) {
+            super.onPhyUpdate(gatt, txPhy, rxPhy, status);
+            Log.i(BLE_TRACE_TAG, "phyUpdate tx=" + txPhy + " rx=" + rxPhy
+                    + " status=" + status);
+        }
+
     };
+
+    private void traceNotification(UUID characteristicUuid, byte[] value) {
+        BleNotificationTrace.Sample sample = mNotificationTrace.record(
+                SystemClock.elapsedRealtime(), value.length);
+        if (sample.sequence <= 20 || sample.sequence % 100 == 0 || sample.gapMillis >= 100) {
+            Log.d(BLE_TRACE_TAG, "notification seq=" + sample.sequence
+                    + " bytes=" + value.length
+                    + " total=" + sample.totalBytes
+                    + " gapMs=" + sample.gapMillis
+                    + " elapsedMs=" + sample.elapsedMillis
+                    + " uuid=" + characteristicUuid
+                    + " hex=" + BleNotificationTrace.hexPreview(value, 24));
+        }
+    }
 
     /**
      * 此方法运行在子线程中

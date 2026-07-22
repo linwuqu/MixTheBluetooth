@@ -25,36 +25,36 @@ public class DeviceModule {
     private DataMemory mDataMemory;
     private boolean isCollect = false;//是否被收藏
 
-    private String mServiceUUID,mReadWriteUUID;
+    private String mServiceUUID, mReadWriteUUID;
 
     private IBeaconClass.iBeacon mIBeacon;
 
     //ble设备的实体类构造方法
-    public DeviceModule(BluetoothDevice device, int rssi,String name,Context context,ScanResult result){
-        this(name,device,false,context,rssi);
+    public DeviceModule(BluetoothDevice device, int rssi, String name, Context context, ScanResult result) {
+        this(name, device, false, context, rssi);
         this.result = result;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
                 && result != null && result.getScanRecord() != null) {
-            mIBeacon = IBeaconClass.fromScanData(device,rssi,result.getScanRecord().getBytes());
+            mIBeacon = IBeaconClass.fromScanData(device, rssi, result.getScanRecord().getBytes());
             if (mIBeacon != null) {
                 mName = mIBeacon.beaconName == null ? "N/A" : mIBeacon.beaconName;
                 isBLE = true;
             }
         }
-        if (ToolClass.pattern(device.getName()) && context != null){
-            if (!ToolClass.pattern(name)){
+        if (ToolClass.pattern(device.getName()) && context != null) {
+            if (!ToolClass.pattern(name)) {
                 mDataMemory = new DataMemory(context);
-                mDataMemory.saveData(device.getAddress(),name);
-                Log.d("AppRun"+getClass().getSimpleName(),"修正保存乱码文字..");
+                mDataMemory.saveData(device.getAddress(), name);
+                Log.d("AppRun" + getClass().getSimpleName(), "修正保存乱码文字..");
             }
         }
     }
 
-    public DeviceModule(String name, BluetoothDevice device){
-        this(name,device,false,null,10);
+    public DeviceModule(String name, BluetoothDevice device) {
+        this(name, device, false, null, 10);
     }
 
-    public DeviceModule(String name, BluetoothDevice device,boolean beenConnected,Context context,int rssi){
+    public DeviceModule(String name, BluetoothDevice device, boolean beenConnected, Context context, int rssi) {
 
         this.mName = name;
         this.mDevice = device;
@@ -64,20 +64,20 @@ public class DeviceModule {
         if (device == null)
             return;
 
-        switch (device.getType()){
-            case BluetoothDevice.DEVICE_TYPE_CLASSIC :
+        switch (device.getType()) {
+            case BluetoothDevice.DEVICE_TYPE_CLASSIC:
             case BluetoothDevice.DEVICE_TYPE_DUAL:
-               isBLE = false;
+                isBLE = false;
                 break;
             case BluetoothDevice.DEVICE_TYPE_LE:
                 isBLE = true;
                 break;
         }
 
-        if (isBLE && context != null){
-            if (ToolClass.pattern(name) || ToolClass.pattern(device.getName())){
+        if (isBLE && context != null) {
+            if (ToolClass.pattern(name) || ToolClass.pattern(device.getName())) {
                 String tempName = new DataMemory(context).getData(device.getAddress());
-                if (tempName != null){
+                if (tempName != null) {
                     mName = tempName;
                 }
             }
@@ -85,23 +85,23 @@ public class DeviceModule {
 
     }
 
-    public String getName(){
+    public String getName() {
         if (mName != null) {
             return mName;
-        }else if (mDevice.getName() != null) {
+        } else if (mDevice.getName() != null) {
             mName = mDevice.getName();
-        }else {
+        } else {
             mName = "N/A";
         }
         return mName;
     }
 
-    public String getOriginalName(Context context){
+    public String getOriginalName(Context context) {
         mName = getDevice().getName();
-        if (isBLE && context != null){
-            if (ToolClass.pattern(getDevice().getName())){
+        if (isBLE && context != null) {
+            if (ToolClass.pattern(getDevice().getName())) {
                 String tempName = new DataMemory(context).getData(getMac());
-                if (tempName != null){
+                if (tempName != null) {
                     mName = tempName;
                 }
             }
@@ -115,47 +115,47 @@ public class DeviceModule {
         return mDevice;
     }
 
-    public String getMac(){
-        if (mDevice != null){
+    public String getMac() {
+        if (mDevice != null) {
             return mDevice.getAddress();
         }
         return "出错了";
     }
 
     //修正模块名称的乱码..
-    public void setMessyCode(Context context){
+    public void setMessyCode(Context context) {
         if (context != null) {
             String tempName = new DataMemory(context).getData(getMac());
             if (tempName != null) {
-                Log.d("AppRun"+getClass().getSimpleName(),"修正成功..");
+                Log.d("AppRun" + getClass().getSimpleName(), "修正成功..");
                 mName = tempName;
             }
         }
     }
 
-    public void setRssi(int rssi){
+    public void setRssi(int rssi) {
         this.mRssi = rssi;
     }
 
     public void updateIBeacon(BluetoothDevice device) {
-        if (mIBeacon != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP){
+        if (mIBeacon != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             try {
                 mIBeacon = IBeaconClass.fromScanData(device, mRssi,
                         Objects.requireNonNull(result.getScanRecord()).getBytes());
-            }catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
     }
 
-    public void setUUID(String service, String readWrite){
+    public void setUUID(String service, String readWrite) {
         if (service != null)
             this.mServiceUUID = service;
         if (readWrite != null)
             this.mReadWriteUUID = readWrite;
     }
 
-    public void setCollectModule(Context context,String name){
+    public void setCollectModule(Context context, String name) {
         if (mDataMemory != null) {
             mDataMemory.saveCollectData(getMac(), name);
         } else {
@@ -163,13 +163,13 @@ public class DeviceModule {
             mDataMemory.saveCollectData(getMac(), name);
         }
 
-        if (name == null){
+        if (name == null) {
             getOriginalName(context);
             isCollect = false;
         }
     }
 
-    public void isCollectName(Context context){
+    public void isCollectName(Context context) {
         String s;
         if (mDataMemory != null) {
             s = mDataMemory.getCollectData(getMac());
@@ -177,7 +177,7 @@ public class DeviceModule {
             mDataMemory = new DataMemory(context);
             s = mDataMemory.getCollectData(getMac());
         }
-        if (s != null){
+        if (s != null) {
             isCollect = true;
             mName = s;
         }
@@ -195,7 +195,7 @@ public class DeviceModule {
         return mBeenConnected;
     }
 
-    public String bluetoothType(){
+    public String bluetoothType() {
         if (isBLE)
             return "Ble蓝牙";
         if (mBeenConnected)
@@ -208,17 +208,17 @@ public class DeviceModule {
         return isCollect;
     }
 
-    public boolean isHcModule(boolean isCheck, String dataFilter){
+    public boolean isHcModule(boolean isCheck, String dataFilter) {
         String data = null;
         try {
             if (result != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 data = ParseLeAdvData.getShort16(result.getScanRecord().getBytes());
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
-        if (data != null){
+        if (data != null) {
             if (!isCheck)
                 return data.equals("0xFFE0") || data.equals("0xFFF0");
             else {
@@ -231,6 +231,14 @@ public class DeviceModule {
         return false;
     }
 
+    public boolean hasManufacturerData(int manufacturerId) {
+        if (result == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP
+                || result.getScanRecord() == null) {
+            return false;
+        }
+        return result.getScanRecord().getManufacturerSpecificData(manufacturerId) != null;
+    }
+
 
     public String getReadWriteUUID() {
         if (mReadWriteUUID != null)
@@ -240,7 +248,7 @@ public class DeviceModule {
     }
 
     public String getServiceUUID() {
-        if(mServiceUUID != null)
+        if (mServiceUUID != null)
             return mServiceUUID;
         else
             return "00001101-0000-1000-8000-00805F9B34FB";

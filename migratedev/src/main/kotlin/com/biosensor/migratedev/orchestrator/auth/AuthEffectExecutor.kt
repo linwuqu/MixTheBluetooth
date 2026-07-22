@@ -14,6 +14,8 @@ class AuthEffectExecutor(
 ) : EffectExecutor<AuthEffect, AuthEvent> {
 
     override fun execute(effect: AuthEffect): Flow<AuthEvent> {
+        // 使用扩展函数 effect.toCommand 和 result.toEvent 将 execute 的整体过程进行概括描述
+        // effect → command 执行 → 流式结果 map 为事件
         return port.execute(effect.toCommand()).map { it.toEvent() }
     }
 
