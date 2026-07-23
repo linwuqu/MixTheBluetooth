@@ -4,25 +4,45 @@ import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.port.CommandPort
 
 sealed interface AuthCommand {
-    data class Login(val account: String, val password: String) : AuthCommand
-    data class Register(
-        val account: String,
-        val password: String,
-        val telephone: String,
-        val avatarUrl: String? = null
-    ) : AuthCommand
+    sealed interface Local : AuthCommand {
+        data object ReadSession : Local
+        data class SaveSession(val session: AuthSession) : Local
+        data object ClearSession : Local
+    }
 
-    data class SaveSession(val session: AuthSession) : AuthCommand
-    data object ClearSession : AuthCommand
+    sealed interface Remote : AuthCommand {
+        data class Login(val account: String, val password: String) : Remote
+        data class Register(
+            val account: String,
+            val password: String,
+            val telephone: String,
+            val avatarUrl: String? = null
+        ) : Remote
+        data class ValidateSession(val session: AuthSession) : Remote
+    }
 }
 
 sealed interface AuthResult {
-    data class RemoteAccepted(val session: AuthSession) : AuthResult
-    data class RemoteRejected(val message: String) : AuthResult
-    data object RemoteTimeout : AuthResult
-    data object SessionSaved : AuthResult
-    data class SessionSaveFailed(val message: String) : AuthResult
-    data object SessionCleared : AuthResult
+    sealed interface Local : AuthResult {
+        data class SessionFound(val session: AuthSession) : Local
+        data object SessionMissing : Local
+        data object SessionExpired : Local
+        data class SessionReadFailed(val message: String) : Local
+        data object SessionSaved : Local
+        data class SessionSaveFailed(val message: String) : Local
+        data class SessionClearFailed(val message: String) : Local
+        data object SessionCleared : Local
+    }
+
+    sealed interface Remote : AuthResult {
+        data class SessionVerified(val session: AuthSession) : Remote
+        data class SessionRejected(val message: String) : Remote
+        data object SessionValidationTimeout : Remote
+        data class Accepted(val session: AuthSession) : Remote
+        data class Rejected(val message: String) : Remote
+        data object Timeout : Remote
+        data object RegistrationAccepted : Remote
+    }
 }
 
 interface AuthPort : CommandPort<AuthCommand, AuthResult>

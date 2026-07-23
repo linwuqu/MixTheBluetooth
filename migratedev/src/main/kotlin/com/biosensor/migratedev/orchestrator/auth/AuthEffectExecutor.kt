@@ -21,27 +21,38 @@ class AuthEffectExecutor(
 
     private fun AuthEffect.toCommand(): AuthCommand {
         return when (this) {
-            is AuthEffect.LoginRemote -> AuthCommand.Login(account, password)
-            is AuthEffect.RegisterRemote -> AuthCommand.Register(
+            AuthEffect.ReadSession -> AuthCommand.Local.ReadSession
+            is AuthEffect.ValidateSession -> AuthCommand.Remote.ValidateSession(session)
+            is AuthEffect.LoginRemote -> AuthCommand.Remote.Login(account, password)
+            is AuthEffect.RegisterRemote -> AuthCommand.Remote.Register(
                 account,
                 password,
                 telephone,
                 avatarUrl
             )
 
-            is AuthEffect.SaveSession -> AuthCommand.SaveSession(session)
-            AuthEffect.ClearSession -> AuthCommand.ClearSession
+            is AuthEffect.SaveSession -> AuthCommand.Local.SaveSession(session)
+            AuthEffect.ClearSession -> AuthCommand.Local.ClearSession
         }
     }
 
     private fun AuthResult.toEvent(): AuthEvent {
         return when (this) {
-            is AuthResult.RemoteAccepted -> AuthEvent.RemoteAccepted(session)
-            is AuthResult.RemoteRejected -> AuthEvent.RemoteRejected(message)
-            AuthResult.RemoteTimeout -> AuthEvent.RemoteTimeout
-            AuthResult.SessionSaved -> AuthEvent.SessionSaved
-            is AuthResult.SessionSaveFailed -> AuthEvent.SessionSaveFailed(message)
-            AuthResult.SessionCleared -> AuthEvent.SessionCleared
+            is AuthResult.Local.SessionFound -> AuthEvent.SessionFound(session)
+            AuthResult.Local.SessionMissing -> AuthEvent.SessionMissing
+            AuthResult.Local.SessionExpired -> AuthEvent.SessionExpired
+            is AuthResult.Local.SessionReadFailed -> AuthEvent.SessionReadFailed(message)
+            AuthResult.Local.SessionSaved -> AuthEvent.SessionSaved
+            is AuthResult.Local.SessionSaveFailed -> AuthEvent.SessionSaveFailed(message)
+            is AuthResult.Local.SessionClearFailed -> AuthEvent.SessionClearFailed(message)
+            AuthResult.Local.SessionCleared -> AuthEvent.SessionCleared
+            is AuthResult.Remote.SessionVerified -> AuthEvent.SessionVerified(session)
+            is AuthResult.Remote.SessionRejected -> AuthEvent.SessionRejected(message)
+            AuthResult.Remote.SessionValidationTimeout -> AuthEvent.SessionValidationTimeout
+            is AuthResult.Remote.Accepted -> AuthEvent.RemoteAccepted(session)
+            is AuthResult.Remote.Rejected -> AuthEvent.RemoteRejected(message)
+            AuthResult.Remote.Timeout -> AuthEvent.RemoteTimeout
+            AuthResult.Remote.RegistrationAccepted -> AuthEvent.RegistrationAccepted
         }
     }
 }

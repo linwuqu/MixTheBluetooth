@@ -61,4 +61,66 @@ class AuthDecisionCoreTest {
         assertEquals(AuthState.Idle, result.newState)
         assertEquals(listOf(AuthEffect.ClearSession), result.effects)
     }
+
+    @Test
+    fun appStartedReadsAndValidatesAnExistingSession() {
+        val restoring = AuthDecisionCore.reduce(
+            AuthState.Idle,
+            AuthEvent.AppStarted
+        )
+        assertEquals(AuthState.RestoringSession, restoring.newState)
+        assertEquals(listOf(AuthEffect.ReadSession), restoring.effects)
+
+        val validating = AuthDecisionCore.reduce(
+            restoring.newState,
+            AuthEvent.SessionFound(session)
+        )
+        assertEquals(AuthState.Loading, validating.newState)
+        assertEquals(listOf(AuthEffect.ValidateSession(session)), validating.effects)
+
+        val authenticated = AuthDecisionCore.reduce(
+            validating.newState,
+            AuthEvent.SessionVerified(session)
+        )
+        assertEquals(AuthState.Authenticated(session), authenticated.newState)
+    }
+
+    @Test
+    fun missingSessionReturnsToIdle() {
+        val result = AuthDecisionCore.reduce(
+            AuthState.RestoringSession,
+            AuthEvent.SessionMissing
+        )
+
+        assertEquals(AuthState.Idle, result.newState)
+        assertEquals(emptyList<AuthEffect>(), result.effects)
+    }
+
+    @Test
+    fun expiredOrRejectedSessionIsCleared() {
+        val expired = AuthDecisionCore.reduce(
+            AuthState.RestoringSession,
+            AuthEvent.SessionExpired
+        )
+        assertEquals(AuthState.Idle, expired.newState)
+        assertEquals(listOf(AuthEffect.ClearSession), expired.effects)
+
+        val rejected = AuthDecisionCore.reduce(
+            AuthState.Loading,
+            AuthEvent.SessionRejected("token expired")
+        )
+        assertEquals(AuthState.Idle, rejected.newState)
+        assertEquals(listOf(AuthEffect.ClearSession), rejected.effects)
+    }
+
+    @Test
+    fun registrationSuccessReturnsToLoginForm() {
+        val result = AuthDecisionCore.reduce(
+            AuthState.Loading,
+            AuthEvent.RegistrationAccepted
+        )
+
+        assertEquals(AuthState.Registered("注册成功，请使用新账号登录"), result.newState)
+        assertEquals(emptyList<AuthEffect>(), result.effects)
+    }
 }

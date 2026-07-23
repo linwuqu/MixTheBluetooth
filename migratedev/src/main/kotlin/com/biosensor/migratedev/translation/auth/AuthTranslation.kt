@@ -25,10 +25,16 @@ sealed interface AuthIntent {
     data object Reset : AuthIntent
 }
 
+sealed interface AuthLifecycleEvent {
+    data object AppStarted : AuthLifecycleEvent
+}
+
 sealed interface AuthUiState {
     data object Idle : AuthUiState
+    data object RestoringSession : AuthUiState
     data object Loading : AuthUiState
     data object SavingSession : AuthUiState
+    data class Registered(val message: String) : AuthUiState
     data class Authenticated(val user: User) : AuthUiState
     data class Error(val message: String) : AuthUiState
 }
@@ -50,6 +56,13 @@ class AuthTranslation(
         orchestrator.dispatch(intent.toEvent())
     }
 
+    fun onLifecycle(event: AuthLifecycleEvent) {
+        val authEvent = when (event) {
+            AuthLifecycleEvent.AppStarted -> AuthEvent.AppStarted
+        }
+        orchestrator.dispatch(authEvent)
+    }
+
     private fun AuthIntent.toEvent(): AuthEvent {
         return when (this) {
             is AuthIntent.SubmitLogin -> AuthEvent.SubmitLogin(account, password)
@@ -65,8 +78,10 @@ class AuthTranslation(
     private fun AuthState.toUiState(): AuthUiState {
         return when (this) {
             AuthState.Idle -> AuthUiState.Idle
+            AuthState.RestoringSession -> AuthUiState.RestoringSession
             AuthState.Loading -> AuthUiState.Loading
             is AuthState.SavingSession -> AuthUiState.SavingSession
+            is AuthState.Registered -> AuthUiState.Registered(message)
             // 故意隐藏了 session.token 这些 UI 不该知道的敏感信息
             is AuthState.Authenticated -> AuthUiState.Authenticated(session.user)
             is AuthState.Error -> AuthUiState.Error(message)
