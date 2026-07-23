@@ -102,7 +102,7 @@ object RetrofitRemotePort {
         }
 
         private suspend fun login(command: AuthCommand.Remote.Login): AuthResult.Remote {
-            val login = api.login(LoginRequest(command.account, command.password))
+            val login = api.login(LoginRequest(command.phone, command.password))
             if (!login.isOk()) {
                 return AuthResult.Remote.Rejected(login.msg ?: "登录失败")
             }
@@ -125,9 +125,9 @@ object RetrofitRemotePort {
         private suspend fun register(command: AuthCommand.Remote.Register): AuthResult.Remote {
             val result = api.register(
                 RegisterRequest(
-                    username = command.account,
+                    username = command.nickname,
                     password = command.password,
-                    phone = command.telephone,
+                    phone = command.phone,
                     avatarUrl = command.avatarUrl
                 )
             )

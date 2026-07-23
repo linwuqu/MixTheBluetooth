@@ -38,7 +38,7 @@ fun AuthScreen(
     onRegister: (String, String, String) -> Unit,
     onRetrySession: () -> Unit
 ) {
-    var account by rememberSaveable { mutableStateOf("") }
+    var nickname by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
     var registerMode by rememberSaveable { mutableStateOf(false) }
@@ -89,10 +89,10 @@ fun AuthScreen(
         }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
-            value = account,
-            onValueChange = { account = it },
+            value = phone,
+            onValueChange = { phone = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("账号或手机号") },
+            label = { Text("手机号") },
             singleLine = true
         )
         OutlinedTextField(
@@ -106,11 +106,10 @@ fun AuthScreen(
         )
         if (registerMode) {
             OutlinedTextField(
-                value = phone,
-                onValueChange = { phone = it },
+                value = nickname,
+                onValueChange = { nickname = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("注册手机号") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                label = { Text("账户名") },
                 singleLine = true
             )
         }
@@ -120,9 +119,9 @@ fun AuthScreen(
                 enabled = canSubmit,
                 onClick = {
                     if (registerMode) {
-                        onRegister(account.trim(), password, phone.trim())
+                        onRegister(phone.trim(), password, nickname.trim())
                     } else {
-                        onLogin(account.trim(), password)
+                        onLogin(phone.trim(), password)
                     }
                 }
             ) {

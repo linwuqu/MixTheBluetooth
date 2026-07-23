@@ -18,11 +18,11 @@ class AuthDecisionCoreTest {
     fun acceptedLoginPersistsSessionBeforeAuthentication() {
         val loading = AuthDecisionCore.reduce(
             AuthState.Idle,
-            AuthEvent.SubmitLogin("alice", "password")
+            AuthEvent.SubmitLogin("13800000000", "password")
         )
         assertEquals(AuthState.Loading, loading.newState)
         assertEquals(
-            listOf(AuthEffect.LoginRemote("alice", "password")),
+            listOf(AuthEffect.LoginRemote(phone = "13800000000", password = "password")),
             loading.effects
         )
 
@@ -122,5 +122,28 @@ class AuthDecisionCoreTest {
 
         assertEquals(AuthState.Registered("注册成功，请使用新账号登录"), result.newState)
         assertEquals(emptyList<AuthEffect>(), result.effects)
+    }
+
+    @Test
+    fun registrationKeepsPhoneAndNicknameInTheirOwnFields() {
+        val result = AuthDecisionCore.reduce(
+            AuthState.Idle,
+            AuthEvent.SubmitRegister(
+                phone = "13800000000",
+                password = "password",
+                nickname = "alice"
+            )
+        )
+
+        assertEquals(
+            listOf(
+                AuthEffect.RegisterRemote(
+                    phone = "13800000000",
+                    password = "password",
+                    nickname = "alice"
+                )
+            ),
+            result.effects
+        )
     }
 }

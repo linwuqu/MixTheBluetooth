@@ -59,7 +59,7 @@ class AuthWorkflowTest {
             scope = scope
         )
 
-        orchestrator.dispatch(AuthEvent.SubmitLogin("alice", "password"))
+        orchestrator.dispatch(AuthEvent.SubmitLogin("13800000000", "password"))
         advanceUntilIdle()
 
         assertEquals(AuthState.Authenticated(session), orchestrator.state.value)

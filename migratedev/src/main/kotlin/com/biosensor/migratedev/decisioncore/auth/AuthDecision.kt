@@ -30,11 +30,11 @@ sealed interface AuthState {
 
 sealed interface AuthEvent {
     data object AppStarted : AuthEvent
-    data class SubmitLogin(val account: String, val password: String) : AuthEvent
+    data class SubmitLogin(val phone: String, val password: String) : AuthEvent
     data class SubmitRegister(
-        val account: String,
+        val phone: String,
         val password: String,
-        val telephone: String,
+        val nickname: String,
         val avatarUrl: String? = null
     ) : AuthEvent
 
@@ -60,11 +60,11 @@ sealed interface AuthEvent {
 sealed interface AuthEffect {
     data object ReadSession : AuthEffect
     data class ValidateSession(val session: AuthSession) : AuthEffect
-    data class LoginRemote(val account: String, val password: String) : AuthEffect
+    data class LoginRemote(val phone: String, val password: String) : AuthEffect
     data class RegisterRemote(
-        val account: String,
+        val phone: String,
         val password: String,
-        val telephone: String,
+        val nickname: String,
         val avatarUrl: String? = null
     ) : AuthEffect
 
@@ -143,7 +143,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
             is AuthEvent.SubmitLogin -> when (currentState) {
                 AuthState.Idle, is AuthState.Registered, is AuthState.Error -> Transition(
                     newState = AuthState.Loading,
-                    effects = listOf(AuthEffect.LoginRemote(event.account, event.password))
+                    effects = listOf(AuthEffect.LoginRemote(phone = event.phone, password = event.password))
                 )
                 // 非 Idle/Error 状态下忽略 SubmitLogin，保持现状且无副作用
                 else -> Transition(newState = currentState)
@@ -154,10 +154,10 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
                     newState = AuthState.Loading,
                     effects = listOf(
                         AuthEffect.RegisterRemote(
-                            event.account,
-                            event.password,
-                            event.telephone,
-                            event.avatarUrl
+                            phone = event.phone,
+                            password = event.password,
+                            nickname = event.nickname,
+                            avatarUrl = event.avatarUrl
                         )
                     )
                 )

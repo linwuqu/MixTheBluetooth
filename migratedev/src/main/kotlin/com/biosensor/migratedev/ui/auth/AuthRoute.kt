@@ -10,11 +10,11 @@ import com.biosensor.migratedev.translation.auth.AuthUiState
 fun AuthRoute(state: AuthUiState, translation: AuthTranslation) {
     AuthScreen(
         state = state,
-        onLogin = { account, password ->
-            translation.submit(AuthIntent.SubmitLogin(account, password))
+        onLogin = { phone, password ->
+            translation.submit(AuthIntent.SubmitLogin(phone, password))
         },
-        onRegister = { account, password, phone ->
-            translation.submit(AuthIntent.SubmitRegister(account, password, phone))
+        onRegister = { phone, password, nickname ->
+            translation.submit(AuthIntent.SubmitRegister(phone, password, nickname))
         },
         onRetrySession = {
             translation.onLifecycle(AuthLifecycleEvent.AppStarted)

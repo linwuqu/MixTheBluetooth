@@ -11,11 +11,11 @@ sealed interface AuthCommand {
     }
 
     sealed interface Remote : AuthCommand {
-        data class Login(val account: String, val password: String) : Remote
+        data class Login(val phone: String, val password: String) : Remote
         data class Register(
-            val account: String,
+            val phone: String,
             val password: String,
-            val telephone: String,
+            val nickname: String,
             val avatarUrl: String? = null
         ) : Remote
         data class ValidateSession(val session: AuthSession) : Remote

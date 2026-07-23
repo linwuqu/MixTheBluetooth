@@ -23,12 +23,12 @@ class AuthEffectExecutor(
         return when (this) {
             AuthEffect.ReadSession -> AuthCommand.Local.ReadSession
             is AuthEffect.ValidateSession -> AuthCommand.Remote.ValidateSession(session)
-            is AuthEffect.LoginRemote -> AuthCommand.Remote.Login(account, password)
+            is AuthEffect.LoginRemote -> AuthCommand.Remote.Login(phone, password)
             is AuthEffect.RegisterRemote -> AuthCommand.Remote.Register(
-                account,
-                password,
-                telephone,
-                avatarUrl
+                phone = phone,
+                password = password,
+                nickname = nickname,
+                avatarUrl = avatarUrl
             )
 
             is AuthEffect.SaveSession -> AuthCommand.Local.SaveSession(session)

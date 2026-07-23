@@ -35,21 +35,6 @@ sealed interface BluetoothResult {
 
 interface BluetoothPort : CommandPort<BluetoothCommand, BluetoothResult>
 
-/**
- * 旧 App 实际使用的蓝牙库通信参数。
- *
- * `AllBluetoothManage(activity) -> 恢复旧值；没有旧值时使用这里的默认值`
- *
- * - `bleSendDelayState=1`：BLE 常规发送基础延时为 `5 + 10 * state = 15ms`；
- * - `regularSendIntervalLevel=0`：常规发送不增加额外的 `level * 10ms` 延时；
- * - 文件速率 API 的 1~4 档分别标称 9600、115200、230400、460800 波特率；
- * - BLE 初始分包载荷为 20 字节，可请求 MTU 为 23~512；
- * - BLE 服务和读写特征由库自动发现，经典蓝牙回退 UUID 为
- *   `00001101-0000-1000-8000-00805F9B34FB`。
- *
- * 旧 App 的正常业务没有调用文件速率和 MTU 设置接口，因此这里也不主动调用，避免把
- * “把数值抄进来”变成实际通信行为变化。
- */
 data class LegacyBluetoothParameters(
     val bleSendDelayState: Int = 1,
     val regularSendIntervalLevel: Int = 0,
@@ -59,13 +44,6 @@ data class LegacyBluetoothParameters(
     val checkNewline: Boolean = true
 )
 
-/**
- * bluetoothlibrary 的真实 Port。
- *
- * `execute(command) -> 本次扫描或连接会话的 Flow<result>`
- *
- * 扫描 Flow 在扫描结束时关闭；连接 Flow 在连接成功后继续存活，直到断开或超时才关闭。
- */
 class AndroidBluetoothPort internal constructor(
     private val client: BluetoothLibraryClient,
     private val connectionTimeoutMillis: Long = 15_000
@@ -82,6 +60,7 @@ class AndroidBluetoothPort internal constructor(
 
     private val lock = Any()
     private val scannedDevices = linkedMapOf<String, BluetoothDeviceInfo>()
+    // Port 主要维护这两个可变量 所有可能并发访问这两个变量的地方 都包在 synchronized(lock) 里
     private var scanOutput: SendChannel<BluetoothResult>? = null
     private var connectionSession: ConnectionSession? = null
     private val libraryListener = object : BluetoothLibraryListener {
@@ -117,17 +96,23 @@ class AndroidBluetoothPort internal constructor(
     }
 
     private fun startScan(): Flow<BluetoothResult> = callbackFlow {
+        // channel: SendChannel<BluetoothResult> SendChannel<T>是发送端 对应Flow的收集端会收到
+        // 后续发现设备时，回调需要通过它把事件推给 Flow 的收集者。
         val output = channel
+        // 进入临界区
         val accepted = synchronized(lock) {
+            // 说明已经有一个正在运行的扫描 Flow
             if (scanOutput != null) {
                 false
             } else {
                 scannedDevices.clear()
+                // 在这里闭包捕获到全局变量 scanOutput
                 scanOutput = output
                 true
             }
         }
 
+        // 互斥失败发送异常直接退出
         if (!accepted) {
             trySend(BluetoothResult.ScanFailed("蓝牙扫描已经在进行中"))
             close()
@@ -136,6 +121,7 @@ class AndroidBluetoothPort internal constructor(
 
         val started = runCatching { client.startMixedScan() }
         if (started.isFailure || !started.getOrDefault(false)) {
+            // client.startMixedScan() 是一个耗时较长的操作 失败情况下对于信道的清空应该确保这段时间内没有其他操作修改信道对象
             synchronized(lock) {
                 if (scanOutput === output) scanOutput = null
             }
@@ -167,6 +153,7 @@ class AndroidBluetoothPort internal constructor(
             scanOutput.also { scanOutput = null }
         }
         runCatching { client.stopScan() }
+        // 这里与前面的awaitClose进行配合 ownsScan为false 不会重复调用stopScan()
         output?.trySend(BluetoothResult.ScanStopped)
         output?.close()
         emit(BluetoothResult.ScanStopped)
@@ -247,9 +234,13 @@ class AndroidBluetoothPort internal constructor(
 
     private fun handleDeviceFound(device: LibraryBluetoothDevice) {
         val (output, devices) = synchronized(lock) {
+            // 加入新 Device
             scannedDevices[device.id] = device.toDeviceInfo()
             scanOutput to scannedDevices.values.toList()
+            // (output, devices): tuple(SendChannel<BluetoothResult>?, List<LibraryBluetoothDevice>
         }
+        // 只在scanOutput不为空的时候发送找到设备的通知 前面说了scanOutput不为空说明“有一个正在进行的、且有人在监听的扫描会话”
+        // 所以底层通知只在我们主动监听的时候才上报 否则静默丢弃
         output?.trySend(BluetoothResult.DevicesFound(devices))
     }
 

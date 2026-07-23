@@ -13,11 +13,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 sealed interface AuthIntent {
-    data class SubmitLogin(val account: String, val password: String) : AuthIntent
+    data class SubmitLogin(val phone: String, val password: String) : AuthIntent
     data class SubmitRegister(
-        val account: String,
+        val phone: String,
         val password: String,
-        val telephone: String,
+        val nickname: String,
         val avatarUrl: String? = null
     ) : AuthIntent
 
@@ -65,9 +65,12 @@ class AuthTranslation(
 
     private fun AuthIntent.toEvent(): AuthEvent {
         return when (this) {
-            is AuthIntent.SubmitLogin -> AuthEvent.SubmitLogin(account, password)
+            is AuthIntent.SubmitLogin -> AuthEvent.SubmitLogin(phone = phone, password = password)
             is AuthIntent.SubmitRegister -> AuthEvent.SubmitRegister(
-                account, password, telephone, avatarUrl
+                phone = phone,
+                password = password,
+                nickname = nickname,
+                avatarUrl = avatarUrl
             )
 
             AuthIntent.Logout -> AuthEvent.Logout

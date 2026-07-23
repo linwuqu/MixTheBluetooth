@@ -27,7 +27,9 @@ class RetrofitRemotePortTest {
         val api = FakeAccountApi()
         val port = RetrofitRemotePort.Auth(api, clock)
 
-        val result = port.execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+        val result = port.execute(
+            AuthCommand.Remote.Login(phone = "13800000000", password = "password")
+        ).first()
 
         assertEquals("token-1", api.detailToken)
         assertEquals(
@@ -73,7 +75,12 @@ class RetrofitRemotePortTest {
         val port = RetrofitRemotePort.Auth(api, clock)
 
         val result = port.execute(
-            AuthCommand.Remote.Register("alice", "password", "13800000000", "avatar")
+            AuthCommand.Remote.Register(
+                phone = "13800000000",
+                password = "password",
+                nickname = "alice",
+                avatarUrl = "avatar"
+            )
         ).first()
 
         assertEquals(AuthResult.Remote.RegistrationAccepted, result)
