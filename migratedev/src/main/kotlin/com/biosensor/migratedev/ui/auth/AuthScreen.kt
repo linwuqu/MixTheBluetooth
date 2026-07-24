@@ -81,7 +81,7 @@ fun AuthScreen(
             is AuthUiState.Error -> {
                 Text(state.message, color = MaterialTheme.colorScheme.error)
                 OutlinedButton(onClick = onRetrySession) {
-                    Text("重试会话恢复")
+                    Text("遇到未知问题，点击此处重置")
                 }
             }
 
