@@ -59,7 +59,7 @@ fun AuthScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Auth workflow debug", style = MaterialTheme.typography.headlineSmall)
+        Text("欢迎", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(16.dp))
         when (state) {
             AuthUiState.RestoringSession -> {
