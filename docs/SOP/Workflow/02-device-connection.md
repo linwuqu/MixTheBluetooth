@@ -11,7 +11,7 @@
 - 日志如何帮助快速定位状态机、扫描轮次和连接问题。
 - UI、状态机、Port 和真机如何逐层联测。
 
-本章只确定方案和代码骨架，不直接修改 Kotlin 或 Gradle。第三章的数据收发能力只保留 TODO。
+本章既是第二章的设计约定，也是 `dev-2.1` 的实现与联测依据。第三章的数据收发能力仍只保留 TODO。
 
 ---
 
@@ -176,22 +176,20 @@ migratedev/src/main/sqldelight/com/biosensor/migratedev/database/
 
 ## 4. 依赖与工具链基线
 
-### 4.1 先升级 Kotlin，再逐个引入依赖
+### 4.1 已落地的工具链
 
-当前工程基线是 Kotlin `1.9.24`、AGP `8.5.2`、Compose Compiler `1.5.14` 和 Compose BOM `2024.06.00`。
+`dev-2.1` 使用以下已验证组合：
 
-Kotlin 2.x 之后，Compose Compiler 与 Kotlin 同版本发布，应使用 `org.jetbrains.kotlin.plugin.compose`，不再手工维护 `composeOptions.kotlinCompilerExtensionVersion`。但版本不能只升级 Kotlin：Android 官方兼容表显示，AGP `8.5.x` 对应 Kotlin `2.0`，Kotlin `2.1+` 需要更高 AGP。
+| 项目 | 版本 |
+|---|---|
+| Kotlin / Compose Compiler plugin | `2.3.20` |
+| Android Gradle Plugin | `8.13.2` |
+| Gradle Wrapper | `8.13` |
+| JDK / JVM target | `17` |
+| compileSdk / targetSdk | `35 / 34` |
+| Compose BOM | `2024.06.00` |
 
-所以实际编码前先做一个独立、可回退的工具链迁移：
-
-1. 先决定使用 Kotlin `2.0.x` 继续保留 AGP `8.5.2`，还是一起升级 AGP/Gradle/JDK 后使用更高 Kotlin 2.x。
-2. 在所有 Compose module 应用与 Kotlin 同版本的 `org.jetbrains.kotlin.plugin.compose`。
-3. 删除旧的 `kotlinCompilerExtensionVersion`。
-4. 第一轮保留现有 Compose BOM，避免同时改变过多变量。
-5. 编译全部 module，并运行现有单元测试。
-6. 基线通过后，再按 Navigation Compose → SQLDelight → DataStore/Tink → Okio → Timber 的顺序逐个加入依赖，每加入一个就编译和测试。
-
-版本选择以实施当天的官方兼容表为准，不在本章预先写死“最新版本”。
+Kotlin 2.x 后 Compose Compiler 与 Kotlin 同版本发布，因此 `migratedev` 应用 `org.jetbrains.kotlin.plugin.compose`，不再维护 `composeOptions.kotlinCompilerExtensionVersion`。最初尝试的 Kotlin `2.2.20` + AGP `8.10.1` 虽能完成构建，但 D8/R8 会反复报告 Kotlin metadata 重写告警；升级到上表组合后告警消失。因此后续不要单独回退其中某一个版本。
 
 参考：
 
@@ -207,6 +205,8 @@ Kotlin 2.x 之后，Compose Compiler 与 Kotlin 同版本发布，应使用 `org
 | 结构化数据 | SQLDelight | 自己写 SQL，编译期校验并生成类型安全 Kotlin API |
 | 文件 | Okio FileSystem | API 小、读写清晰，并有 FakeFileSystem 支持测试 |
 | 日志 | Timber | 调用简单，Tree 能按构建模式路由到 Logcat 或文件 |
+
+本次实际依赖版本为 Navigation Compose `2.9.8`、Preferences DataStore `1.2.1`、SQLDelight `2.3.2`、Tink Android `1.23.0`、Okio `3.17.0`、Timber `5.0.1`。
 
 目前没有一个成熟库能同时把“加密 KV、关系型 SQL、普通文件”统一成一套合适的存储模型。这里不强行统一底层，而是在 `LocalPort` 上统一发现入口，同时保留三种数据各自正确的语义。
 
@@ -403,7 +403,7 @@ class ConnectionTranslation(
 
 `ConnectionCreated` 只表示“连接工作流已经建立”，不能假设 Android 权限和系统蓝牙已经可用，因此它进入 `AwaitingBluetoothAccess`，不会立即开始扫描。
 
-这会替换第一章当前的 `AppStarted/AuthLifecycleEvent` 启动方式。实施第二章时必须同步更新第一章文档和 Auth 代码，不能让新旧两套启动事件并存。
+这会替换第一章当前的 `AppStarted/AuthLifecycleEvent` 启动方式。Auth 代码已同步改为 `AuthCreated`；第一章保留当时的实现记录，涉及启动入口时以本章为准，运行代码中不保留两套事件。
 
 ### 5.5 页面可见性只管理扫描资源
 
@@ -508,10 +508,10 @@ private fun bluetoothPermissions(): Array<String> =
 @Composable
 fun BluetoothAccessGate(
     onGranted: () -> Unit,
-    onDenied: (canAskAgain: Boolean) -> Unit
+    onPermissionDenied: () -> Unit,
+    onBluetoothEnableCancelled: () -> Unit
 ) {
     val context = LocalContext.current
-    val activity = context.findActivity()
     val bluetoothManager = remember {
         context.getSystemService(BluetoothManager::class.java)
     }
@@ -522,7 +522,7 @@ fun BluetoothAccessGate(
         if (bluetoothManager.adapter?.isEnabled == true) {
             onGranted()
         } else {
-            onDenied(true)
+            onBluetoothEnableCancelled()
         }
     }
 
@@ -537,14 +537,8 @@ fun BluetoothAccessGate(
                 ) == PackageManager.PERMISSION_GRANTED
         }
 
-        if (!granted) { // 没有二次询问 就是不给权限直接退出app 
-            val canAskAgain = bluetoothPermissions().any {
-                ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity,
-                    it
-                )
-            }
-            onDenied(canAskAgain)
+        if (!granted) {
+            onPermissionDenied()
         } else if (bluetoothManager.adapter?.isEnabled == true) {
             onGranted()
         } else {
@@ -577,22 +571,17 @@ fun BluetoothAccessGate(
 }
 ```
 
-实际实现还要让 `findActivity()` 对 ContextWrapper 逐层解包，并把“永久拒绝”与“可再次请求”映射成不同 UI 文案。
+`findActivity()` 对 `ContextWrapper` 逐层解包。权限只请求一次：任一必需权限未授予时，`onPermissionDenied` 直接调用 `activity.finishAffinity()` 退出应用，不显示解释页，也不在应用内提供第二次请求入口。用户若要恢复，只能在系统设置中重新授予权限后再次启动应用。
 
 Gate 只在 `AwaitingBluetoothAccess` 状态显示，因此 `onGranted()` 导致状态进入 `Scanning` 后，Composable 会退出组合，不会在普通重组中反复触发扫描。Translation 接收：
 
 ```kotlin
 sealed interface ConnectionIntent {
     data object BluetoothAccessGranted : ConnectionIntent
-    data class BluetoothAccessDenied(
-        val canAskAgain: Boolean
-    ) : ConnectionIntent
-    data object RetryBluetoothAccess : ConnectionIntent
     data object BecameVisible : ConnectionIntent
     data object BecameHidden : ConnectionIntent
     data object Refresh : ConnectionIntent
     data class SelectDevice(val deviceId: String) : ConnectionIntent
-    data object Disconnect : ConnectionIntent
     data object Logout : ConnectionIntent
 }
 ```
@@ -617,8 +606,10 @@ sealed interface ScanProgress {
     data object Starting : ScanProgress
     data class Active(val roundId: Long) : ScanProgress
     data class Refreshing(val previousRoundId: Long?) : ScanProgress
-    data class Paused(val previousRoundId: Long?) : ScanProgress
-    data class Failed(val message: String) : ScanProgress
+    data class Stopping(
+        val resumeScanSessionId: String? = null
+    ) : ScanProgress
+    data object Stopped : ScanProgress
 }
 
 sealed interface ConnectionState {
@@ -628,53 +619,59 @@ sealed interface ConnectionState {
         val userId: String
     ) : ConnectionState
 
-    data class BluetoothAccessRequired(
-        val userId: String,
-        val canAskAgain: Boolean
-    ) : ConnectionState
-
     data class Scanning(
         val userId: String,
         val scanSessionId: String,
-        val binding: BindingLookup,
-        val scan: ScanProgress,
         val devices: List<BluetoothDeviceInfo>,
-        val autoAttemptedFor: String?
+        val binding: BindingLookup,
+        val progress: ScanProgress,
+        val autoConnectAttempted: Boolean,
+        val message: String?,
+        val isVisible: Boolean
     ) : ConnectionState
 
     data class Connecting(
         val userId: String,
-        val target: BluetoothDeviceInfo,
-        val source: ConnectSource
+        val deviceId: String,
+        val devices: List<BluetoothDeviceInfo>,
+        val binding: BindingLookup,
+        val source: ConnectionSource
     ) : ConnectionState
 
     data class Connected(
         val userId: String,
-        val device: BluetoothDeviceInfo
+        val device: BluetoothDeviceInfo,
+        val bindingMessage: String?
     ) : ConnectionState
 
     data class ConnectionFailed(
         val userId: String,
-        val deviceId: String?,
+        val deviceId: String,
+        val devices: List<BluetoothDeviceInfo>,
+        val binding: BindingLookup,
+        val source: ConnectionSource,
         val message: String
     ) : ConnectionState
 
     data class EndingSession(
-        val userId: String
+        val pending: Set<SessionResource>
     ) : ConnectionState
 
-    data class LogoutReady(
-        val userId: String
-    ) : ConnectionState
+    data object LogoutReady : ConnectionState
 }
 
-enum class ConnectSource {
-    AUTO,
-    MANUAL
+enum class ConnectionSource {
+    Automatic,
+    Manual
+}
+
+enum class SessionResource {
+    Scan,
+    Connection
 }
 ```
 
-从日志或测试失败中看到 `Scanning(binding=Failed, scan=Active)`，可以立即判断是本地读取失败而不是扫描失败；看到 `Scanning(binding=Found, scan=Failed)` 则相反。
+`message` 保存可展示错误，`progress` 保存扫描资源状态，两者不能互相替代。看到 `Scanning(binding=Failed, progress=Active)`，可以立即判断是本地读取失败而不是扫描失败；看到 `progress=Stopped` 且 `message` 有值，则可沿 ScanFailed 路径排查。
 
 ### 7.2 Event 与 Effect
 
@@ -684,28 +681,37 @@ sealed interface ConnectionEvent {
     data class BluetoothAccessGranted(
         val scanSessionId: String
     ) : ConnectionEvent
-    data class BluetoothAccessDenied(
-        val canAskAgain: Boolean
-    ) : ConnectionEvent
-    data object RetryBluetoothAccess : ConnectionEvent
-    data class BecameVisible(
-        val scanSessionId: String
-    ) : ConnectionEvent
-    data object BecameHidden : ConnectionEvent
-    data object RefreshRequested : ConnectionEvent
-    data object LogoutRequested : ConnectionEvent
-
     data class BindingLoaded(val deviceId: String) : ConnectionEvent
     data object BindingMissing : ConnectionEvent
-    data class BindingReadFailed(val message: String) : ConnectionEvent
+    data class BindingFailed(val message: String) : ConnectionEvent
 
-    data class ScanStarted(val roundId: Long) : ConnectionEvent
-    data class ScanDevicesUpdated(
+    data class ScanStarted(
+        val scanSessionId: String,
+        val roundId: Long
+    ) : ConnectionEvent
+    data class DevicesUpdated(
+        val scanSessionId: String,
         val roundId: Long,
         val devices: List<BluetoothDeviceInfo>
     ) : ConnectionEvent
-    data class ScanRefreshed(val roundId: Long) : ConnectionEvent
-    data class ScanFailed(val message: String) : ConnectionEvent
+    data class ScanRoundEnded(
+        val scanSessionId: String,
+        val roundId: Long
+    ) : ConnectionEvent
+    data class ScanRefreshed(
+        val scanSessionId: String,
+        val roundId: Long
+    ) : ConnectionEvent
+    data class ScanFailed(
+        val scanSessionId: String,
+        val message: String
+    ) : ConnectionEvent
+    data class ScanStopped(
+        val scanSessionId: String
+    ) : ConnectionEvent
+    data class RefreshRequested(
+        val replacementScanSessionId: String
+    ) : ConnectionEvent
 
     data class DeviceSelected(val deviceId: String) : ConnectionEvent
     data class DeviceConnected(
@@ -714,6 +720,14 @@ sealed interface ConnectionEvent {
     data class DeviceConnectFailed(val message: String) : ConnectionEvent
     data object DeviceConnectTimeout : ConnectionEvent
     data object DeviceDisconnected : ConnectionEvent
+    data class BindingSaved(val deviceId: String) : ConnectionEvent
+    data class BindingSaveFailed(val message: String) : ConnectionEvent
+
+    data class BecameVisible(
+        val scanSessionId: String
+    ) : ConnectionEvent
+    data object BecameHidden : ConnectionEvent
+    data object LogoutRequested : ConnectionEvent
 }
 
 sealed interface ConnectionEffect {
@@ -721,16 +735,12 @@ sealed interface ConnectionEffect {
     data class StartScan(val scanSessionId: String) : ConnectionEffect
     data class RefreshScan(val scanSessionId: String) : ConnectionEffect
     data class StopScan(val scanSessionId: String) : ConnectionEffect
-    data class ConnectDevice(
-        val userId: String,
-        val device: BluetoothDeviceInfo,
-        val source: ConnectSource
-    ) : ConnectionEffect
+    data class ConnectDevice(val deviceId: String) : ConnectionEffect
     data class SaveBinding(
         val userId: String,
         val deviceId: String
     ) : ConnectionEffect
-    data object Disconnect : ConnectionEffect
+    data object DisconnectDevice : ConnectionEffect
 }
 ```
 
@@ -746,8 +756,8 @@ reduce(
 返回：
 
 ```kotlin
-Decision(
-    state = ConnectionState.AwaitingBluetoothAccess(userId),
+Transition(
+    newState = ConnectionState.AwaitingBluetoothAccess(userId),
     effects = emptyList()
 )
 ```
@@ -764,14 +774,16 @@ reduce(
 返回：
 
 ```kotlin
-Decision(
-    state = Scanning(
+Transition(
+    newState = Scanning(
         userId = userId,
         scanSessionId = scanSessionId,
-        binding = BindingLookup.Loading,
-        scan = ScanProgress.Starting,
         devices = emptyList(),
-        autoAttemptedFor = null
+        binding = BindingLookup.Loading,
+        progress = ScanProgress.Starting,
+        autoConnectAttempted = false,
+        message = null,
+        isVisible = true
     ),
     effects = listOf(
         ReadBinding(userId),
@@ -796,7 +808,7 @@ Translation 把 UI 的 `BluetoothAccessGranted` Intent 映射成 Event 时生成
     → 否则立即返回 Scanning，继续接收事件
 ```
 
-本地读取是一次性操作，必须最终产生 `BindingLoaded`、`BindingMissing` 或 `BindingReadFailed` 之一。Adapter 要用 `catch` 把异常变成 Result；必要时在 EffectExecutor 给一次性读取加超时，不能让状态永远停留在 `Loading`。
+本地读取是一次性操作，必须最终产生 `BindingLoaded`、`BindingMissing` 或 `BindingFailed` 之一。DefaultConnectionPort 把 SQLDelight 查询异常变成 Result，EffectExecutor 再映射为上述 Event，不能让状态永远停留在 `Loading`。
 
 `Missing` 和 `Failed` 都不会阻止手动选择：
 
@@ -808,30 +820,28 @@ Translation 把 UI 的 `BluetoothAccessGranted` Intent 映射成 Event 时生成
 ```kotlin
 private fun maybeAutoConnect(
     state: ConnectionState.Scanning
-): Decision<ConnectionState, ConnectionEffect> {
+): Transition<ConnectionState, ConnectionEffect> {
     val remembered = state.binding as? BindingLookup.Found
-        ?: return Decision(state)
+        ?: return Transition(state)
 
-    if (state.autoAttemptedFor == remembered.deviceId) {
-        return Decision(state)
+    if (state.autoConnectAttempted) {
+        return Transition(state)
     }
 
     val target = state.devices.firstOrNull {
-        it.deviceId == remembered.deviceId
-    } ?: return Decision(state)
+        it.id == remembered.deviceId
+    } ?: return Transition(state)
 
-    return Decision(
-        state = ConnectionState.Connecting(
+    return Transition(
+        newState = ConnectionState.Connecting(
             userId = state.userId,
-            target = target,
-            source = ConnectSource.AUTO
+            deviceId = target.id,
+            devices = state.devices,
+            binding = state.binding,
+            source = ConnectionSource.Automatic
         ),
         effects = listOf(
-            ConnectionEffect.ConnectDevice(
-                userId = state.userId,
-                device = target,
-                source = ConnectSource.AUTO
-            )
+            ConnectionEffect.ConnectDevice(target.id)
         )
     )
 }
@@ -869,7 +879,7 @@ Orchestrator 串行处理 Event，所以若“自动命中”和“用户点击�
 用户下拉
     → ConnectionIntent.Refresh
     → ConnectionEvent.RefreshRequested
-    → Scanning(scan = Refreshing, devices 保留)
+    → Scanning(progress = Refreshing, devices 保留)
     → ConnectionEffect.RefreshScan(scanSessionId)
     → ScanRefreshed(newRoundId) / ScanFailed
 ```
@@ -878,47 +888,55 @@ Orchestrator 串行处理 Event，所以若“自动命中”和“用户点击�
 
 `RefreshScan` 是 BluetoothPort 的一个原子命令：Android 实现结束当前 SDK 轮次，再在同一个逻辑 scan session 中启动新轮次。旧列表保留到新一轮快照到达，Compose 只更新状态，不刷新 Activity。
 
-### 7.8 前后台恢复使用新的 scan session
+只有 `Active` 或 `Stopped` 接受刷新：`Active` 使用原 session 做原子 Refresh，`Stopped` 建立 replacement session；`Starting`、`Refreshing`、`Stopping` 收到重复刷新时忽略，避免并发命令。
+
+### 7.8 前后台恢复必须等待旧 scan session 停止
 
 `Scanning + BecameHidden` 返回：
 
 ```text
 Scanning(
-    scan = Paused(previousRoundId),
+    progress = Stopping(resumeScanSessionId = null),
+    isVisible = false,
     devices = 原列表,
     binding = 原结果
 )
 + StopScan(currentScanSessionId)
 ```
 
-`Scanning/Paused + BecameVisible(newScanSessionId)` 返回：
+如果 StopScan 还没完成页面就重新可见，`BecameVisible(newScanSessionId)` 只把待恢复 ID 写进 `Stopping`，不提前发 StartScan：
 
 ```text
 Scanning(
-    scanSessionId = newScanSessionId,
-    scan = Starting,
-    devices = 原列表,
-    binding = 原结果
+    progress = Stopping(
+        resumeScanSessionId = newScanSessionId
+    ),
+    isVisible = true
 )
-+ StartScan(newScanSessionId)
++ 无 Effect
 ```
 
-新的 session ID 让旧扫描的迟到回调可以被可靠丢弃。回前台不重复读取绑定；只有创建工作流或用户主动改变绑定时才需要重新查询。
+等旧 session 返回 `ScanStopped(currentScanSessionId)` 后，DecisionCore 才切换为新 session 并产生 `StartScan(newScanSessionId)`。这样不会出现新 StartScan 与旧 StopScan 并发，旧扫描的迟到回调也能靠 session ID 丢弃。回前台不重复读取绑定。
 
 ### 7.9 Logout 先结束连接资源
 
-所有可退出状态收到 `LogoutRequested` 后进入 `EndingSession(userId)` 并产生一个 `Disconnect` Effect。Bluetooth Adapter 的 Disconnect 同时处理“仍在扫描”和“已经连接”两种情况，最终都返回 `DeviceDisconnected`：
+退出只释放当前真正持有的资源，不使用一个含糊的 Disconnect 同时猜测扫描和连接状态：
 
 ```text
-任意活动状态 + LogoutRequested
-    → EndingSession + Disconnect
+Scanning + LogoutRequested
+    → EndingSession(pending = Scan) + StopScan
+    → ScanStopped
+    → LogoutReady
+
+Connecting/Connected + LogoutRequested
+    → EndingSession(pending = Connection) + DisconnectDevice
     → DeviceDisconnected
     → LogoutReady
     → Route 通知父图 AuthTranslation 执行 Auth Logout
     → 导航 Auth
 ```
 
-这样不会在 Connection destination 刚被 pop、`viewModelScope` 被取消时把断开动作一并取消。该流程只清除物理连接和 Auth Session，不删除 `deviceBinding`。
+如果扫描本来就在 `Stopping`，Logout 只进入 `EndingSession` 等待已经在途的 `ScanStopped`，不再重复发 StopScan。这样不会在 Connection destination 刚被 pop、`viewModelScope` 被取消时把断开动作一并取消。该流程只清除物理连接和 Auth Session，不删除 `deviceBinding`。
 
 ---
 
@@ -1447,15 +1465,13 @@ data class ConnectionUiState(
     val devices: List<DeviceItemUi>,
     val rememberedDeviceId: String?,
     val isRefreshing: Boolean,
-    val message: String?,
-    val canRetryBluetoothAccess: Boolean
+    val message: String?
 )
 ```
 
 | State | UI 表现 |
 |---|---|
 | `AwaitingBluetoothAccess` | 显示 Gate，依次处理权限与蓝牙开启 |
-| `BluetoothAccessRequired` | 显示拒绝原因、重试或前往设置 |
 | `Scanning/Starting` | 显示扫描进度和已有列表 |
 | `Scanning/Active` | 持续更新列表，允许选择和下拉刷新 |
 | `Scanning/Refreshing` | 保留列表并显示刷新指示 |
@@ -1512,7 +1528,7 @@ Bluetooth：
 
 - Auth 成功后导航到 `connection/{userId}`，Auth destination 被移除。
 - ConnectionTranslation 只创建一次，普通重组不重复发送 ConnectionCreated。
-- 权限已授予、临时拒绝、永久拒绝三种 UI。
+- 权限已授予时进入扫描；任一权限拒绝时直接结束 Activity，不进行二次申请。
 - 系统蓝牙关闭时发起开启请求，取消后不扫描。
 - 下拉刷新不重建 Activity、不清空旧列表。
 - 进入后台停止扫描，回前台恢复。
@@ -1552,3 +1568,38 @@ Bluetooth：
 - 连接断开后的数据页状态
 
 第三章应继续扩充 `BluetoothPort.kt` 的能力协议，而不是新增一个与现有 HC Client 争用监听器的 Port。
+
+---
+
+## 17. `dev-2.1` 实施状态
+
+第二章方案已按本文拓扑落地，后续查代码时以这些入口为准：
+
+| 关注点 | 代码入口 |
+|---|---|
+| 依赖组装 | `AppGraph.kt` |
+| Auth → Connection 导航和 ViewModel 作用域 | `ui/AppMain.kt` |
+| 权限、开启蓝牙与拒绝退出 | `ui/connection/BluetoothAccessGate.kt` |
+| destination 可见/不可见事件 | `ui/connection/ConnectionRoute.kt` |
+| 页面和下拉刷新 | `ui/connection/ConnectionScreen.kt` |
+| 连接状态与纯决策 | `decisioncore/connection/ConnectionDecision.kt` |
+| Intent/Event 与 UiState 翻译 | `translation/connection/ConnectionTranslation.kt` |
+| Effect 执行与结果回灌 | `orchestrator/connection/ConnectionEffectExecutor.kt` |
+| 连接业务路由 | `port/connection/ConnectionPort.kt`、`DefaultConnectionPort.kt` |
+| 蓝牙能力协议 | `port/adapter/bluetoothport/BluetoothPort.kt` |
+| Android/HC 蓝牙适配 | `port/adapter/bluetoothport/AndroidBluetoothPort.kt` |
+| BT24 产品筛选 | `port/adapter/bluetoothport/Bt24AdvertisementFilter.kt` |
+| 本地能力协议与实现 | `port/adapter/localport/LocalPort.kt`、`AndroidLocalPort.kt` |
+| 用户设备绑定 SQL | `src/main/sqldelight/com/biosensor/migratedev/database/DeviceBinding.sq` |
+| 日志初始化与 Release 文件 Tree | `logging/LoggingInitializer.kt`、`ReleaseTree.kt` |
+
+实现中的关键事实：
+
+1. HC Adapter 使用 BLE 扫描，以取得 manufacturer data；BT24 同时满足 BLE、FFE0（兼容 16 位和标准 128 位写法）与 manufacturerId `0x4458` 才进入业务设备列表。
+2. SDK 一轮扫描自然结束会产生 `ScanRoundEnded` 并启动下一轮，不会作为超时错误；手动刷新替换当前 round，但沿用同一 scan session 和结果流。
+3. 自动连接和手动连接共享扫描与连接 Effect。绑定 Missing/Failed 只关闭自动选择，不会阻塞列表和手动选择；一次自动连接失败后不会因同一批设备无限重试。
+4. 发起连接前 Adapter 必须先停止扫描。Connection 页面退到后台会停止扫描，回前台按状态恢复；已连接时退后台不主动断开。
+5. 权限只申请一次。任一必需权限未授予就 `finishAffinity()`，应用内没有再次申请路径；开启蓝牙被取消时停留在等待状态且不开始扫描。
+6. Debug 使用 `Timber.DebugTree`；Release Tree 只记录 INFO 以上，执行敏感字段脱敏、异步文件写入、大小轮转和过期清理。
+
+当前自动化验证覆盖 DecisionCore、Translation、Business Port、Local Adapter、BT24 Filter、扫描轮次/刷新/停止、连接前停扫与连接超时。真机仍必须按 15.4 的顺序确认系统权限行为、BT24 广播字段、MAC 稳定性和实际连接回调。

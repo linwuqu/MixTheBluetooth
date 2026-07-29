@@ -25,10 +25,7 @@ class AuthEffectExecutor(
             is AuthEffect.ValidateSession -> AuthCommand.Remote.ValidateSession(session)
             is AuthEffect.LoginRemote -> AuthCommand.Remote.Login(phone, password)
             is AuthEffect.RegisterRemote -> AuthCommand.Remote.Register(
-                phone = phone,
-                password = password,
-                nickname = nickname,
-                avatarUrl = avatarUrl
+                phone = phone, password = password, nickname = nickname, avatarUrl = avatarUrl
             )
 
             is AuthEffect.SaveSession -> AuthCommand.Local.SaveSession(session)

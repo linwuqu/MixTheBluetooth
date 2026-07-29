@@ -11,8 +11,7 @@ fun interface DecisionCore<State, Event, Effect> {
      * ` // reduce(currentState, event) -> newState + effects`
      */
     fun reduce(
-        currentState: State,
-        event: Event
+        currentState: State, event: Event
     ): Transition<State, Effect>
 }
 
@@ -20,6 +19,5 @@ fun interface DecisionCore<State, Event, Effect> {
  * 一次状态机决策的完整输出：下一状态，以及随后需要执行的副作用。
  */
 data class Transition<State, Effect>(
-    val newState: State,
-    val effects: List<Effect> = emptyList()
+    val newState: State, val effects: List<Effect> = emptyList()
 )

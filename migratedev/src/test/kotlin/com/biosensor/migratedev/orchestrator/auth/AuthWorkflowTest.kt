@@ -40,7 +40,7 @@ class AuthWorkflowTest {
             scope = scope
         )
 
-        orchestrator.dispatch(AuthEvent.AppStarted)
+        orchestrator.dispatch(AuthEvent.AuthCreated)
         advanceUntilIdle()
 
         assertEquals(AuthState.Authenticated(session), orchestrator.state.value)

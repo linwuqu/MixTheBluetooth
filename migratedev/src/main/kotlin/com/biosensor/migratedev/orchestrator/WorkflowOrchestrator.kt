@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * 所有工作流共用的事件回环，统一负责事件排队、状态发布和副作用生命周期。
@@ -19,7 +20,8 @@ class WorkflowOrchestrator<State, Event, Effect>(
     initialState: State,
     private val decisionCore: DecisionCore<State, Event, Effect>,
     private val effectExecutor: EffectExecutor<Effect, Event>,
-    scope: CoroutineScope
+    scope: CoroutineScope,
+    private val logTag: String = "Workflow"
 ) : AutoCloseable {
 
     // 所有事件统一进入 Channel 排队，再由 loopJob 按到达顺序逐个交给状态机。
@@ -58,8 +60,20 @@ class WorkflowOrchestrator<State, Event, Effect>(
 
     private val loopJob = scope.launch {
         for (event in events) {
-            val transition = decisionCore.reduce(_state.value, event)
+            val previousState = _state.value
+            val startedAt = System.nanoTime()
+            val transition = decisionCore.reduce(
+                previousState, event
+            )
             _state.value = transition.newState
+            Timber.tag(logTag).i(
+                "previous=%s event=%s new=%s effects=%s durationMicros=%d",
+                previousState.safeTypeName(),
+                event.safeTypeName(),
+                transition.newState.safeTypeName(),
+                transition.effects.map { it.safeTypeName() },
+                (System.nanoTime() - startedAt) / 1_000
+            )
             transition.effects.forEach { effect ->
                 effectScope.launch {
                     effectExecutor.execute(effect).collect(events::send)
@@ -79,3 +93,5 @@ class WorkflowOrchestrator<State, Event, Effect>(
         loopJob.cancel()
     }
 }
+
+private fun Any?.safeTypeName(): String = this?.javaClass?.simpleName ?: "null"

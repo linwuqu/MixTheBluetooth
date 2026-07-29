@@ -4,17 +4,12 @@ import com.biosensor.migratedev.decisioncore.DecisionCore
 import com.biosensor.migratedev.decisioncore.Transition
 
 data class User(
-    val id: String,
-    val userName: String,
-    val telephone: String,
-    val avatarUrl: String? = null
+    val id: String, val userName: String, val telephone: String, val avatarUrl: String? = null
 )
 
 
 data class AuthSession(
-    val user: User,
-    val token: String,
-    val expiresAtMillis: Long? = null
+    val user: User, val token: String, val expiresAtMillis: Long? = null
 )
 
 
@@ -29,13 +24,10 @@ sealed interface AuthState {
 }
 
 sealed interface AuthEvent {
-    data object AppStarted : AuthEvent
+    data object AuthCreated : AuthEvent
     data class SubmitLogin(val phone: String, val password: String) : AuthEvent
     data class SubmitRegister(
-        val phone: String,
-        val password: String,
-        val nickname: String,
-        val avatarUrl: String? = null
+        val phone: String, val password: String, val nickname: String, val avatarUrl: String? = null
     ) : AuthEvent
 
     data class RemoteAccepted(val session: AuthSession) : AuthEvent
@@ -62,10 +54,7 @@ sealed interface AuthEffect {
     data class ValidateSession(val session: AuthSession) : AuthEffect
     data class LoginRemote(val phone: String, val password: String) : AuthEffect
     data class RegisterRemote(
-        val phone: String,
-        val password: String,
-        val nickname: String,
-        val avatarUrl: String? = null
+        val phone: String, val password: String, val nickname: String, val avatarUrl: String? = null
     ) : AuthEffect
 
     data class SaveSession(val session: AuthSession) : AuthEffect
@@ -75,14 +64,12 @@ sealed interface AuthEffect {
 // object 是全局单例
 object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
     override fun reduce(
-        currentState: AuthState,
-        event: AuthEvent
+        currentState: AuthState, event: AuthEvent
     ): Transition<AuthState, AuthEffect> {
         return when (event) {
-            AuthEvent.AppStarted -> when (currentState) {
+            AuthEvent.AuthCreated -> when (currentState) {
                 AuthState.Idle, is AuthState.Error -> Transition(
-                    newState = AuthState.RestoringSession,
-                    effects = listOf(AuthEffect.ReadSession)
+                    newState = AuthState.RestoringSession, effects = listOf(AuthEffect.ReadSession)
                 )
 
                 else -> Transition(newState = currentState)
@@ -104,8 +91,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
 
             AuthEvent.SessionExpired -> when (currentState) {
                 AuthState.RestoringSession -> Transition(
-                    newState = AuthState.Idle,
-                    effects = listOf(AuthEffect.ClearSession)
+                    newState = AuthState.Idle, effects = listOf(AuthEffect.ClearSession)
                 )
 
                 else -> Transition(newState = currentState)
@@ -123,8 +109,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
 
             is AuthEvent.SessionRejected -> when (currentState) {
                 AuthState.Loading -> Transition(
-                    newState = AuthState.Idle,
-                    effects = listOf(AuthEffect.ClearSession)
+                    newState = AuthState.Idle, effects = listOf(AuthEffect.ClearSession)
                 )
 
                 else -> Transition(newState = currentState)
@@ -142,8 +127,11 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
 
             is AuthEvent.SubmitLogin -> when (currentState) {
                 AuthState.Idle, is AuthState.Registered, is AuthState.Error -> Transition(
-                    newState = AuthState.Loading,
-                    effects = listOf(AuthEffect.LoginRemote(phone = event.phone, password = event.password))
+                    newState = AuthState.Loading, effects = listOf(
+                        AuthEffect.LoginRemote(
+                            phone = event.phone, password = event.password
+                        )
+                    )
                 )
                 // 非 Idle/Error 状态下忽略 SubmitLogin，保持现状且无副作用
                 else -> Transition(newState = currentState)
@@ -151,8 +139,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
 
             is AuthEvent.SubmitRegister -> when (currentState) {
                 AuthState.Idle, is AuthState.Error -> Transition(
-                    newState = AuthState.Loading,
-                    effects = listOf(
+                    newState = AuthState.Loading, effects = listOf(
                         AuthEffect.RegisterRemote(
                             phone = event.phone,
                             password = event.password,
@@ -203,8 +190,7 @@ object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {
             is AuthEvent.SessionClearFailed -> Transition(AuthState.Error(event.message))
 
             AuthEvent.Logout -> Transition(
-                newState = AuthState.Idle,
-                effects = listOf(AuthEffect.ClearSession)
+                newState = AuthState.Idle, effects = listOf(AuthEffect.ClearSession)
             )
 
             AuthEvent.SessionCleared -> Transition(newState = AuthState.Idle)

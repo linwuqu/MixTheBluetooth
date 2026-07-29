@@ -9,14 +9,15 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
 class PersistenceLocalPort(
-    private val sessionStore: SessionStore,
-    private val clock: Clock
+    private val sessionStore: SessionStore, private val clock: Clock
 ) {
     fun execute(command: AuthCommand.Local): Flow<AuthResult> = flow {
         emit(executeLocal(command))
     }.flowOn(Dispatchers.IO)
 
-    private fun executeLocal(command: AuthCommand.Local): AuthResult.Local {
+    private suspend fun executeLocal(
+        command: AuthCommand.Local
+    ): AuthResult.Local {
         return when (command) {
             AuthCommand.Local.ReadSession -> when (val read = sessionStore.read()) {
                 SessionRead.Missing -> AuthResult.Local.SessionMissing

@@ -76,14 +76,14 @@ class PersistenceLocalPortTest {
         var saved: AuthSession? = null
         var clearCalls = 0
 
-        override fun read(): SessionRead = readResult
+        override suspend fun read(): SessionRead = readResult
 
-        override fun save(session: AuthSession): Boolean {
+        override suspend fun save(session: AuthSession): Boolean {
             saved = session
             return saveResult
         }
 
-        override fun clear(): Boolean {
+        override suspend fun clear(): Boolean {
             clearCalls++
             return clearResult
         }

@@ -2,7 +2,8 @@
 
 buildscript {
     ext {
-        kotlin_version = '1.9.24'
+        kotlin_version = '2.3.20'
+        sqldelight_version = '2.3.2'
     }
     repositories {
         google()
@@ -10,8 +11,10 @@ buildscript {
         
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.5.2'
+        classpath 'com.android.tools.build:gradle:8.13.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+        classpath "app.cash.sqldelight:gradle-plugin:$sqldelight_version"
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files

@@ -33,15 +33,11 @@ interface AccountApi {
 }
 
 data class LoginRequest(
-    val phone: String,
-    val password: String
+    val phone: String, val password: String
 )
 
 data class RegisterRequest(
-    val username: String,
-    val password: String,
-    val phone: String,
-    val avatarUrl: String?
+    val username: String, val password: String, val phone: String, val avatarUrl: String?
 )
 
 data class AccountDto(
@@ -53,32 +49,22 @@ data class AccountDto(
 )
 
 data class ServerResponse<T>(
-    val code: Int = -1,
-    val success: Boolean = false,
-    val msg: String? = null,
-    val data: T? = null
+    val code: Int = -1, val success: Boolean = false, val msg: String? = null, val data: T? = null
 ) {
     fun isOk(): Boolean = success || code == 0 || code == 200
 }
 
 object RetrofitRemotePort {
     fun createAccountApi(baseUrl: String): AccountApi {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-        return Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
+        val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS).writeTimeout(30, TimeUnit.SECONDS).build()
+        return Retrofit.Builder().baseUrl(baseUrl).client(client)
+            .addConverterFactory(GsonConverterFactory.create()).build()
             .create(AccountApi::class.java)
     }
 
     class Auth(
-        private val api: AccountApi,
-        private val clock: Clock
+        private val api: AccountApi, private val clock: Clock
     ) {
         fun execute(command: AuthCommand.Remote): Flow<AuthResult> = flow {
             try {
@@ -106,8 +92,9 @@ object RetrofitRemotePort {
             if (!login.isOk()) {
                 return AuthResult.Remote.Rejected(login.msg ?: "登录失败")
             }
-            val token = login.data?.takeIf { it.isNotBlank() }
-                ?: return AuthResult.Remote.Rejected("登录响应没有 token")
+            val token = login.data?.takeIf { it.isNotBlank() } ?: return AuthResult.Remote.Rejected(
+                "登录响应没有 token"
+            )
             val detail = api.detail(token)
             val account = detail.data
             if (!detail.isOk() || account == null) {

@@ -13,9 +13,9 @@ interface SessionStore {
         const val LOCAL_TOKEN_TTL_MS = 7L * 24 * 60 * 60 * 1000
     }
 
-    fun read(): SessionRead
+    suspend fun read(): SessionRead
 
-    fun save(session: AuthSession): Boolean
+    suspend fun save(session: AuthSession): Boolean
 
-    fun clear(): Boolean
+    suspend fun clear(): Boolean
 }

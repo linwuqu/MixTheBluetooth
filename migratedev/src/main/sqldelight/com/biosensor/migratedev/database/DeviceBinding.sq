@@ -1,0 +1,21 @@
+CREATE TABLE deviceBinding (
+    userId TEXT NOT NULL PRIMARY KEY,
+    deviceId TEXT NOT NULL,
+    updatedAtMillis INTEGER NOT NULL
+);
+
+findByUserId:
+SELECT userId, deviceId, updatedAtMillis
+FROM deviceBinding
+WHERE userId = ?;
+
+upsert:
+INSERT OR REPLACE INTO deviceBinding(
+    userId,
+    deviceId,
+    updatedAtMillis
+) VALUES (?, ?, ?);
+
+deleteByUserId:
+DELETE FROM deviceBinding
+WHERE userId = ?;

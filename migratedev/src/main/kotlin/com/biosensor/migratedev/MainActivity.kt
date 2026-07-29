@@ -12,7 +12,7 @@ class MainActivity : ComponentActivity() {
         val appGraph = (application as MigrateDevApplication).appGraph
         setContent {
             MaterialTheme {
-                AppMain(appGraph.authTranslation)
+                AppMain(appGraph)
             }
         }
     }

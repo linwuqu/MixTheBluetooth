@@ -66,7 +66,7 @@ class AuthDecisionCoreTest {
     fun appStartedReadsAndValidatesAnExistingSession() {
         val restoring = AuthDecisionCore.reduce(
             AuthState.Idle,
-            AuthEvent.AppStarted
+            AuthEvent.AuthCreated
         )
         assertEquals(AuthState.RestoringSession, restoring.newState)
         assertEquals(listOf(AuthEffect.ReadSession), restoring.effects)

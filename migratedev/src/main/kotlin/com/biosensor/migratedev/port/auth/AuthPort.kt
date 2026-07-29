@@ -18,6 +18,7 @@ sealed interface AuthCommand {
             val nickname: String,
             val avatarUrl: String? = null
         ) : Remote
+
         data class ValidateSession(val session: AuthSession) : Remote
     }
 }

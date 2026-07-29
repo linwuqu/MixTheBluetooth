@@ -42,9 +42,8 @@ fun AuthScreen(
     var password by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
     var registerMode by rememberSaveable { mutableStateOf(false) }
-    val canSubmit = state is AuthUiState.Idle ||
-        state is AuthUiState.Error ||
-        state is AuthUiState.Registered
+    val canSubmit =
+        state is AuthUiState.Idle || state is AuthUiState.Error || state is AuthUiState.Registered
 
     LaunchedEffect(state) {
         if (state is AuthUiState.Registered) {
@@ -116,21 +115,17 @@ fun AuthScreen(
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
-                enabled = canSubmit,
-                onClick = {
+                enabled = canSubmit, onClick = {
                     if (registerMode) {
                         onRegister(phone.trim(), password, nickname.trim())
                     } else {
                         onLogin(phone.trim(), password)
                     }
-                }
-            ) {
+                }) {
                 Text(if (registerMode) "注册" else "登录")
             }
             OutlinedButton(
-                enabled = canSubmit,
-                onClick = { registerMode = !registerMode }
-            ) {
+                enabled = canSubmit, onClick = { registerMode = !registerMode }) {
                 Text(if (registerMode) "切换登录" else "切换注册")
             }
         }
@@ -142,8 +137,7 @@ fun DebugHomeScreen(user: User, onLogout: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center
+            .padding(24.dp), verticalArrangement = Arrangement.Center
     ) {
         Text("已登录：${user.userName}")
         Spacer(Modifier.height(12.dp))

@@ -5,8 +5,7 @@ import com.biosensor.migratedev.port.adapter.remoteport.RetrofitRemotePort
 import kotlinx.coroutines.flow.Flow
 
 class DefaultAuthPort(
-    private val persistence: PersistenceLocalPort,
-    private val remote: RetrofitRemotePort.Auth
+    private val persistence: PersistenceLocalPort, private val remote: RetrofitRemotePort.Auth
 ) : AuthPort {
     override fun execute(command: AuthCommand): Flow<AuthResult> {
         return when (command) {
