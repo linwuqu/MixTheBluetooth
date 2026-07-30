@@ -1,0 +1,101 @@
+# 父子 Orchestrator
+
+## 1. 一句话说明
+
+每个业务由自己的子 Orchestrator 独立运行；RootWorkflow 使用父 Orchestrator
+接收子业务结果，并统一决定下一个业务、Translation 生命周期和 Navigation。
+
+```text
+页面操作
+→ Translation
+→ 子 Orchestrator
+→ report(Output)
+→ 父 Orchestrator
+→ RootState
+→ Translation 生命周期 + Navigation
+```
+
+## 2. 父与子的职责
+
+### 父：RootWorkflow
+
+RootWorkflow 不处理登录、扫描或连接细节，只负责：
+
+- 持有父 `WorkflowOrchestrator<RootState, RootEvent, RootEffect>`；
+- 创建、保留和释放子 Translation；
+- 将 `AuthOutput / ConnectionOutput` 转换成 `RootEvent`；
+- 通过 `RootState.screen()` 给出唯一目标页面。
+
+### 子：Translation
+
+AuthTranslation、ConnectionTranslation 各自持有一个业务 Orchestrator，同时：
+
+- 实现 `Translation<Intent, UiState>`：页面提交 Intent，页面观察 UiState；
+- 继承 `ViewModel`：使用 `viewModelScope`，在 `onCleared()` 中关闭 Orchestrator；
+- 只在跨业务边界出现时调用 `report(Output)`。
+
+普通表单变化、扫描列表和连接进度都留在子业务内部，不上报父流程。
+
+## 3. 通信只有两个方向
+
+```text
+父 → 子
+RootEffect
+→ RootWorkflow.execute()
+→ 创建 Translation 或调用 translation.submit(...)
+
+子 → 父
+子 Orchestrator 完成关键状态迁移
+→ Translation.reportRootOutput()
+→ report(Output)
+→ RootWorkflow.report()
+→ 父 Orchestrator.dispatch(RootEvent)
+```
+
+父子不共享状态机，也不互相读取 State。`Output` 只描述已经发生的业务事实，
+例如 `Authenticated`、`LogoutRequested`、`Stopped` 和 `SessionCleared`。
+
+## 4. 页面与 Translation 是两套生命周期
+
+Navigation 负责页面栈；RootWorkflow 负责 Translation：
+
+```text
+进入 Connection
+→ Auth 页面从返回栈删除
+→ AuthTranslation 仍保留在 authStore
+→ ConnectionTranslation 创建在独立 connectionStore
+
+退出登录
+→ ConnectionTranslation 停止自己的资源
+→ AuthTranslation 清理 Session
+→ connectionStore.clear()
+→ ConnectionTranslation.onCleared()
+→ Navigation 才切回 Auth
+```
+
+因此页面可以及时销毁，同时需要恢复的业务上下文仍由父流程保留。
+
+## 5. 实际文件
+
+```text
+decisioncore/root/RootDecision.kt
+  RootState / RootEvent / RootEffect / RootDecisionCore
+
+orchestrator/root/RootWorkflow.kt
+  父 Orchestrator、两个 ViewModelStore、父子通信和释放顺序
+
+translation/auth/AuthTranslation.kt
+translation/connection/ConnectionTranslation.kt
+  子 Orchestrator、Intent/UiState 和 Output 上报
+
+ui/AppMain.kt
+  NavHost、页面渲染和 RootState.screen() 同步
+```
+
+## 6. 约束
+
+1. 页面不根据业务 UiState 自行导航。
+2. 子 Translation 不读取 RootState，也不操作 Navigation。
+3. 父流程不接管子业务的局部 Event、State 或 Effect。
+4. 子业务只上报跨业务边界的事实。
+5. Translation 必须由 RootWorkflow 持有并通过对应 ViewModelStore 释放。

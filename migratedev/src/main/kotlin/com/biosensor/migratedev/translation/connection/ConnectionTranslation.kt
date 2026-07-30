@@ -45,15 +45,24 @@ data class ConnectionUiState(
     val message: String?
 )
 
+sealed interface ConnectionOutput {
+    data object LogoutRequested : ConnectionOutput
+    data object Stopped : ConnectionOutput
+}
+
 class ConnectionTranslation private constructor(
-    userId: String, port: ConnectionPort, private val scanSessionIdFactory: () -> String
+    userId: String,
+    port: ConnectionPort,
+    private val scanSessionIdFactory: () -> String,
+    private val report: (ConnectionOutput) -> Unit
 ) : ViewModel(), Translation<ConnectionIntent, ConnectionUiState> {
     private val orchestrator = WorkflowOrchestrator(
         initialState = ConnectionState.Idle,
         decisionCore = ConnectionDecisionCore,
         effectExecutor = ConnectionEffectExecutor(port),
         scope = viewModelScope,
-        logTag = "Connection.Workflow"
+        logTag = "Connection.Workflow",
+        onTransition = ::reportRootOutput
     )
 
     override val uiState: StateFlow<ConnectionUiState> =
@@ -95,11 +104,33 @@ class ConnectionTranslation private constructor(
         orchestrator.close()
     }
 
+    private fun reportRootOutput(
+        previous: ConnectionState,
+        event: ConnectionEvent,
+        current: ConnectionState
+    ) {
+        if (
+            event == ConnectionEvent.LogoutRequested &&
+            previous != current
+        ) {
+            report(ConnectionOutput.LogoutRequested)
+        }
+        if (
+            previous != ConnectionState.LogoutReady &&
+            current == ConnectionState.LogoutReady
+        ) {
+            report(ConnectionOutput.Stopped)
+        }
+    }
+
     companion object {
         fun factory(
-            userId: String, port: ConnectionPort, scanSessionIdFactory: () -> String = {
+            userId: String,
+            port: ConnectionPort,
+            scanSessionIdFactory: () -> String = {
                 UUID.randomUUID().toString()
-            }
+            },
+            report: (ConnectionOutput) -> Unit = {}
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(
@@ -109,10 +140,13 @@ class ConnectionTranslation private constructor(
                     modelClass.isAssignableFrom(
                         ConnectionTranslation::class.java
                     )
-                )
-                return ConnectionTranslation(
-                    userId, port, scanSessionIdFactory
-                ) as T
+                    )
+                    return ConnectionTranslation(
+                        userId,
+                        port,
+                        scanSessionIdFactory,
+                        report
+                    ) as T
             }
         }
     }

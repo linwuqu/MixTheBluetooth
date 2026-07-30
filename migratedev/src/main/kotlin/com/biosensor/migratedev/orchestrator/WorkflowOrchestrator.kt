@@ -12,50 +12,55 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * 所有工作流共用的事件回环，统一负责事件排队、状态发布和副作用生命周期。
+ * 抓大放小 简单的理解一下 Orchestrator 即
+ * decisionCore.reduce(initialState, onEvent(event)) -> newState, effectExecutor.execute(effects).collect { newEvent -> onEvent(newEvent)}
  *
- * `event -> DecisionCore -> newState + effects -> EffectExecutor -> event`
+ * 1. initialState 和 newState 不会向外通知变更 所以进行包装 形成 StateFlow(Readable) MutableStateFlow(Readable & Writeable)
+ * 这样所有收集这个信息的主体都可以收到变更通知 by using .collectAsStateWithLifecycle()
+ *
+ * 2. onEvent应该排队处理 避免并发问题 给出一个足够大的队列 events: Channel<Event>(Channel.UNLIMITED)
+ * 通过 dispatch 挂到 events 中 表示受理
+ * 启动协程来处理 event
+ * scope.launch {
+ *     for (event in events) {
+ *         // 处理 event
+ *     }
+ * }
+ *
+ * 3. effectExecutor.execute(effects).collect { newEvent -> onEvent(newEvent) 这个过程是异步的 可能会很慢 它不应该拖累主循环
+ * 所以单独赋予一个子作用域
+ * private val effectScope = CoroutineScope(
+ *     scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
+ * )
+ * 这样就可以做到
+ * transition.effects.forEach { effect ->
+ *       effectScope.launch {
+ *              effectExecutor.execute(effect).collect(events::send)
+ *      }
+ * }
+ *
+ * 4. 记得清理资源 使用 AutoCloseable::close 将 子作用域、队列、主循环及时清理
+ *
+ * 5. onTransition 是还原状态机瞬间的最小切面 用于将情况 report 给 RootWorkflow
  */
 class WorkflowOrchestrator<State, Event, Effect>(
     initialState: State,
     private val decisionCore: DecisionCore<State, Event, Effect>,
     private val effectExecutor: EffectExecutor<Effect, Event>,
     scope: CoroutineScope,
-    private val logTag: String = "Workflow"
+    private val logTag: String = "Workflow",
+    private val onTransition: (
+        previousState: State, event: Event, currentState: State
+    ) -> Unit = { _, _, _ -> }
 ) : AutoCloseable {
 
-    // 所有事件统一进入 Channel 排队，再由 loopJob 按到达顺序逐个交给状态机。
     private val events = Channel<Event>(capacity = Channel.UNLIMITED)
 
-    /**
-     * 主事件循环：
-     *
-     * Event -> reduce -> newState
-     *
-     * 必须快速完成。
-     *
-     *
-     * Effect可能很慢：
-     *
-     * 网络请求
-     * 蓝牙通信
-     * 文件 IO
-     *
-     *
-     * 所以Effect必须异步执行。
-     */
     private val effectScope = CoroutineScope(
         scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
     )
 
-    // _state 是内部状态存储，Orchestrator 可以修改 _state.value
     private val _state = MutableStateFlow(initialState)
-
-    /**
-     * state 是对外暴露的只读视图，其他层可以观察，但不能直接赋值
-     *
-     * state 不是静态不变的，它会随着 _state.value 改变而持续发出新状态
-     */
     val state: StateFlow<State> = _state.asStateFlow()
 
     private val loopJob = scope.launch {
@@ -66,6 +71,9 @@ class WorkflowOrchestrator<State, Event, Effect>(
                 previousState, event
             )
             _state.value = transition.newState
+            onTransition(
+                previousState, event, transition.newState
+            )
             Timber.tag(logTag).i(
                 "previous=%s event=%s new=%s effects=%s durationMicros=%d",
                 previousState.safeTypeName(),
@@ -82,7 +90,6 @@ class WorkflowOrchestrator<State, Event, Effect>(
         }
     }
 
-    // 分配任务进入Channel队列中
     fun dispatch(event: Event) {
         check(events.trySend(event).isSuccess) { "WorkflowOrchestrator 已关闭" }
     }

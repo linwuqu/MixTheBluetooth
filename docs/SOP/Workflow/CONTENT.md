@@ -6,6 +6,7 @@
 
 | 顺序 | 工作流 | 文件 | 状态 |
 |---|---|---|---|
+| 00 | 父子编排器 | [00-father-son orchestrator.md](<./00-father-son orchestrator.md>) | 已落地 |
 | 01 | 注册 / 登录 | [01-register-login.md](./01-register-login.md) | 初稿 |
 | 02 | 设备连接 | [02-device-connection.md](./02-device-connection.md) | 初稿 |
 | 03 | 拉取缓存明文流 | [03-read-cache-text-stream.md](./03-read-cache-text-stream.md) | 初稿 |

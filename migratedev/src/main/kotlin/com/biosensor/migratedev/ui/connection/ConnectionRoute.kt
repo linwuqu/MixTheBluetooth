@@ -2,7 +2,6 @@ package com.biosensor.migratedev.ui.connection
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -14,9 +13,7 @@ import com.biosensor.migratedev.translation.connection.ConnectionPhase
 import com.biosensor.migratedev.translation.connection.ConnectionTranslation
 
 @Composable
-fun ConnectionRoute(
-    translation: ConnectionTranslation, onLogoutReady: suspend () -> Unit
-) {
+fun ConnectionRoute(translation: ConnectionTranslation) {
     val state by translation.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = LocalContext.current.findActivity()
@@ -50,12 +47,6 @@ fun ConnectionRoute(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    LaunchedEffect(state.phase) {
-        if (state.phase == ConnectionPhase.LogoutReady) {
-            onLogoutReady()
         }
     }
 

@@ -22,6 +22,41 @@ import org.junit.Test
 class ConnectionTranslationTest {
 
     @Test
+    fun `logout reports request before resources are stopped`() =
+        runTest {
+            Dispatchers.setMain(
+                StandardTestDispatcher(testScheduler)
+            )
+            val store = ViewModelStore()
+            val outputs = mutableListOf<ConnectionOutput>()
+            try {
+                val translation = ViewModelProvider(
+                    store,
+                    ConnectionTranslation.factory(
+                        userId = "user-1",
+                        port = RecordingConnectionPort(),
+                        report = outputs::add
+                    )
+                )[ConnectionTranslation::class.java]
+                advanceUntilIdle()
+
+                translation.submit(ConnectionIntent.Logout)
+                advanceUntilIdle()
+
+                assertEquals(
+                    listOf(
+                        ConnectionOutput.LogoutRequested,
+                        ConnectionOutput.Stopped
+                    ),
+                    outputs
+                )
+            } finally {
+                store.clear()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
     fun `creation is one event and access starts binding plus scan`() =
         runTest {
             Dispatchers.setMain(

@@ -40,14 +40,33 @@ sealed interface AuthUiState {
     data class Error(val message: String) : AuthUiState
 }
 
+sealed interface AuthOutput {
+    data class Authenticated(val userId: String) : AuthOutput
+    data object SessionCleared : AuthOutput
+}
+
+/**
+ * 对于子编排器的逻辑理解主要把握住两个继承
+ * : Translation<AuthIntent, AuthUiState>
+ * 1. override val uiState -> private fun AuthState.toUiState()
+ * 2. override fun submit(intent: AuthIntent) 这里就是子编排器的完整业务逻辑
+ *
+ * : ViewModel()
+ * 1. override fun onCleared()
+ * 2. 传入 orchestrator 的参数从外部 scope: CoroutineScope 变成 viewModelScope
+ * 3. onTransition = ::reportRootOutput 将切面进行上报 即 init 时 object: ViewModelProvider.Factory 传入的 ::report
+ * 4. 建立一个伴随 object.factory 使用时理解成 static 成员函数即可
+ */
 class AuthTranslation private constructor(
-    port: AuthPort
+    port: AuthPort, private val report: (AuthOutput) -> Unit
 ) : ViewModel(), Translation<AuthIntent, AuthUiState> {
     private val orchestrator = WorkflowOrchestrator(
         initialState = AuthState.Idle,
         decisionCore = AuthDecisionCore,
         effectExecutor = AuthEffectExecutor(port),
-        scope = viewModelScope
+        scope = viewModelScope,
+        logTag = "Auth.Workflow",
+        onTransition = ::reportRootOutput
     )
 
     override val uiState: StateFlow<AuthUiState> =
@@ -85,21 +104,33 @@ class AuthTranslation private constructor(
         orchestrator.close()
     }
 
+    private fun reportRootOutput(
+        previous: AuthState, event: AuthEvent, current: AuthState
+    ) {
+        if (current is AuthState.Authenticated && previous !is AuthState.Authenticated) {
+            report(AuthOutput.Authenticated(current.session.user.id))
+        }
+        if (event == AuthEvent.SessionCleared) {
+            report(AuthOutput.SessionCleared)
+        }
+    }
+
     companion object {
-        fun factory(port: AuthPort): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(
-                    modelClass: Class<T>
-                ): T {
-                    require(
-                        modelClass.isAssignableFrom(
-                            AuthTranslation::class.java
-                        )
+        fun factory(
+            port: AuthPort, report: (AuthOutput) -> Unit = {}
+        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(
+                modelClass: Class<T>
+            ): T {
+                require(
+                    modelClass.isAssignableFrom(
+                        AuthTranslation::class.java
                     )
-                    return AuthTranslation(port) as T
-                }
+                )
+                return AuthTranslation(port, report) as T
             }
+        }
     }
 }
 

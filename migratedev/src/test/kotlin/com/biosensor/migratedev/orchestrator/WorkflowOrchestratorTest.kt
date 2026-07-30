@@ -13,6 +13,47 @@ import org.junit.Test
 class WorkflowOrchestratorTest {
 
     @Test
+    fun processedEventIsReportedAfterStateUpdate() = runTest {
+        val observed = mutableListOf<Triple<TestState, TestEvent, TestState>>()
+        val orchestrator =
+            WorkflowOrchestrator<TestState, TestEvent, TestEffect>(
+            initialState = TestState.Idle,
+            decisionCore = DecisionCore { state: TestState, event: TestEvent ->
+                when (state to event) {
+                    TestState.Idle to TestEvent.Start ->
+                        Transition(TestState.Running)
+
+                    else -> Transition(state)
+                }
+            },
+            effectExecutor = EffectExecutor { flowOf<TestEvent>() },
+            scope = this,
+            onTransition = {
+                    previous: TestState,
+                    event: TestEvent,
+                    current: TestState ->
+                observed += Triple(previous, event, current)
+            }
+        )
+
+        orchestrator.dispatch(TestEvent.Start)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                Triple(
+                    TestState.Idle,
+                    TestEvent.Start,
+                    TestState.Running
+                )
+            ),
+            observed
+        )
+        assertEquals(TestState.Running, orchestrator.state.value)
+        orchestrator.close()
+    }
+
+    @Test
     fun effectResultReturnsThroughTheEventLoop() = runTest {
         val decisionCore = DecisionCore<TestState, TestEvent, TestEffect> { state, event ->
             when (state to event) {
