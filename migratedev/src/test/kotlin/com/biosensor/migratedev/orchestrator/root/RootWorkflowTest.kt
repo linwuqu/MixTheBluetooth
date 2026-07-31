@@ -6,6 +6,7 @@ import com.biosensor.migratedev.decisioncore.root.RootState
 import com.biosensor.migratedev.port.auth.AuthCommand
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.auth.AuthResult
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.connection.ConnectionCommand
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.port.connection.ConnectionResult
@@ -96,6 +97,9 @@ class RootWorkflowTest {
     }
 
     private object EmptyConnectionPort : ConnectionPort {
+        override fun scanDevices():
+            Flow<BluetoothDeviceInfo> = emptyFlow()
+
         override fun execute(
             command: ConnectionCommand
         ): Flow<ConnectionResult> = emptyFlow()

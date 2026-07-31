@@ -26,18 +26,6 @@ class ConnectionEffectExecutor(
 
         is ConnectionEffect.SaveBinding -> ConnectionCommand.SaveBinding(userId, deviceId)
 
-        is ConnectionEffect.StartScan -> ConnectionCommand.Bluetooth(
-            BluetoothCommand.StartScan(scanSessionId)
-        )
-
-        is ConnectionEffect.RefreshScan -> ConnectionCommand.Bluetooth(
-            BluetoothCommand.RefreshScan(scanSessionId)
-        )
-
-        is ConnectionEffect.StopScan -> ConnectionCommand.Bluetooth(
-            BluetoothCommand.StopScan(scanSessionId)
-        )
-
         is ConnectionEffect.ConnectDevice -> ConnectionCommand.Bluetooth(
             BluetoothCommand.Connect(deviceId)
         )
@@ -62,28 +50,6 @@ class ConnectionEffectExecutor(
     }
 
     private fun BluetoothResult.toEvent(): ConnectionEvent = when (this) {
-        is BluetoothResult.ScanStarted -> ConnectionEvent.ScanStarted(
-            scanSessionId, roundId
-        )
-
-        is BluetoothResult.DevicesUpdated -> ConnectionEvent.DevicesUpdated(
-            scanSessionId, roundId, devices
-        )
-
-        is BluetoothResult.ScanRoundEnded -> ConnectionEvent.ScanRoundEnded(
-            scanSessionId, roundId
-        )
-
-        is BluetoothResult.ScanRefreshed -> ConnectionEvent.ScanRefreshed(
-            scanSessionId, roundId
-        )
-
-        is BluetoothResult.ScanFailed -> ConnectionEvent.ScanFailed(
-            scanSessionId, message
-        )
-
-        is BluetoothResult.ScanStopped -> ConnectionEvent.ScanStopped(scanSessionId)
-
         is BluetoothResult.Connected -> ConnectionEvent.DeviceConnected(device)
 
         is BluetoothResult.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(message)

@@ -24,7 +24,6 @@ import kotlinx.coroutines.SupervisorJob
  */
 class AppGraph(application: Application) {
     internal val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val bluetoothScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val rootScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val clock = Clock.systemUTC()
 
@@ -38,14 +37,10 @@ class AppGraph(application: Application) {
     )
     private val remoteAuth = RetrofitRemotePort.Auth(accountApi, clock)
     private val authPort: AuthPort = DefaultAuthPort(persistenceLocalPort, remoteAuth)
-    private val bluetoothPort: BluetoothPort = AndroidBluetoothPort(
-        application = application, scope = bluetoothScope
-    )
+    private val bluetoothPort: BluetoothPort = AndroidBluetoothPort(application = application)
     private val connectionPort: ConnectionPort = DefaultConnectionPort(localPort, bluetoothPort)
 
     val rootWorkflow = RootWorkflow(
-        authPort = authPort,
-        connectionPort = connectionPort,
-        scope = rootScope
+        authPort = authPort, connectionPort = connectionPort, scope = rootScope
     )
 }

@@ -11,23 +11,8 @@ sealed interface BindingLookup {
     data class Failed(val message: String) : BindingLookup
 }
 
-sealed interface ScanProgress {
-    data object Starting : ScanProgress
-    data class Active(val roundId: Long) : ScanProgress
-    data class Refreshing(val previousRoundId: Long?) : ScanProgress
-    data class Stopping(
-        val resumeScanSessionId: String? = null
-    ) : ScanProgress
-
-    data object Stopped : ScanProgress
-}
-
 enum class ConnectionSource {
     Automatic, Manual
-}
-
-enum class SessionResource {
-    Scan, Connection
 }
 
 sealed interface ConnectionState {
@@ -39,13 +24,10 @@ sealed interface ConnectionState {
 
     data class Scanning(
         val userId: String,
-        val scanSessionId: String,
         val devices: List<BluetoothDeviceInfo>,
         val binding: BindingLookup,
-        val progress: ScanProgress,
         val autoConnectAttempted: Boolean,
-        val message: String?,
-        val isVisible: Boolean
+        val message: String?
     ) : ConnectionState
 
     data class Connecting(
@@ -69,10 +51,7 @@ sealed interface ConnectionState {
         val message: String
     ) : ConnectionState
 
-    data class EndingSession(
-        val pending: Set<SessionResource>
-    ) : ConnectionState
-
+    data object EndingSession : ConnectionState
     data object LogoutReady : ConnectionState
 }
 
@@ -81,75 +60,42 @@ sealed interface ConnectionEvent {
         val userId: String
     ) : ConnectionEvent
 
-    data class BluetoothAccessGranted(
-        val scanSessionId: String
-    ) : ConnectionEvent
+    data object BluetoothAccessGranted : ConnectionEvent
 
     data class BindingLoaded(
         val deviceId: String
     ) : ConnectionEvent
-
     data object BindingMissing : ConnectionEvent
-
     data class BindingFailed(
         val message: String
     ) : ConnectionEvent
 
-    data class ScanStarted(
-        val scanSessionId: String, val roundId: Long
-    ) : ConnectionEvent
-
     data class DevicesUpdated(
-        val scanSessionId: String, val roundId: Long, val devices: List<BluetoothDeviceInfo>
+        val devices: List<BluetoothDeviceInfo>
     ) : ConnectionEvent
-
-    data class ScanRoundEnded(
-        val scanSessionId: String, val roundId: Long
-    ) : ConnectionEvent
-
-    data class ScanRefreshed(
-        val scanSessionId: String, val roundId: Long
-    ) : ConnectionEvent
-
     data class ScanFailed(
-        val scanSessionId: String, val message: String
+        val message: String
     ) : ConnectionEvent
 
-    data class ScanStopped(
-        val scanSessionId: String
-    ) : ConnectionEvent
-
-    data class RefreshRequested(
-        val replacementScanSessionId: String
-    ) : ConnectionEvent
+    data object RefreshRequested : ConnectionEvent
 
     data class DeviceSelected(
         val deviceId: String
     ) : ConnectionEvent
-
     data class DeviceConnected(
         val device: BluetoothDeviceInfo
     ) : ConnectionEvent
-
     data class DeviceConnectFailed(
         val message: String
     ) : ConnectionEvent
-
     data object DeviceConnectTimeout : ConnectionEvent
     data object DeviceDisconnected : ConnectionEvent
 
     data class BindingSaved(
         val deviceId: String
     ) : ConnectionEvent
-
     data class BindingSaveFailed(
         val message: String
-    ) : ConnectionEvent
-
-    data object BecameHidden : ConnectionEvent
-
-    data class BecameVisible(
-        val scanSessionId: String
     ) : ConnectionEvent
 
     data object LogoutRequested : ConnectionEvent
@@ -162,18 +108,6 @@ sealed interface ConnectionEffect {
 
     data class SaveBinding(
         val userId: String, val deviceId: String
-    ) : ConnectionEffect
-
-    data class StartScan(
-        val scanSessionId: String
-    ) : ConnectionEffect
-
-    data class RefreshScan(
-        val scanSessionId: String
-    ) : ConnectionEffect
-
-    data class StopScan(
-        val scanSessionId: String
     ) : ConnectionEffect
 
     data class ConnectDevice(
@@ -190,11 +124,13 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     ): Transition<ConnectionState, ConnectionEffect> = when (event) {
         is ConnectionEvent.ConnectionCreated -> onCreated(currentState, event)
 
-        is ConnectionEvent.BluetoothAccessGranted -> onAccessGranted(currentState, event)
+        ConnectionEvent.BluetoothAccessGranted -> onAccessGranted(currentState)
 
         is ConnectionEvent.BindingLoaded -> updateScanning(currentState) {
             it.copy(
-                binding = BindingLookup.Found(event.deviceId)
+                binding = BindingLookup.Found(
+                    event.deviceId
+                )
             )
         }
 
@@ -204,69 +140,45 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
 
         is ConnectionEvent.BindingFailed -> updateScanning(currentState) {
             it.copy(
-                binding = BindingLookup.Failed(event.message), message = event.message
+                binding = BindingLookup.Failed(
+                    event.message
+                ), message = event.message
             )
         }
 
-        is ConnectionEvent.ScanStarted -> updateMatchingScan(
-            currentState, event.scanSessionId
-        ) {
-            it.copy(
-                progress = ScanProgress.Active(event.roundId), message = null
-            )
+        is ConnectionEvent.DevicesUpdated -> updateScanning(currentState) {
+            it.copy(devices = event.devices)
         }
 
-        is ConnectionEvent.DevicesUpdated -> updateMatchingScan(
-            currentState, event.scanSessionId
-        ) {
-            it.copy(
-                devices = event.devices, progress = ScanProgress.Active(event.roundId)
-            )
+        is ConnectionEvent.ScanFailed -> updateScanning(currentState) {
+            it.copy(message = event.message)
         }
 
-        is ConnectionEvent.ScanRoundEnded -> updateMatchingScan(
-            currentState, event.scanSessionId
-        ) {
-            it.copy(progress = ScanProgress.Starting)
-        }
+        ConnectionEvent.RefreshRequested -> onRefresh(currentState)
 
-        is ConnectionEvent.ScanRefreshed -> updateMatchingScan(
-            currentState, event.scanSessionId
-        ) {
-            it.copy(
-                progress = ScanProgress.Active(event.roundId), message = null
-            )
-        }
+        is ConnectionEvent.DeviceSelected -> onDeviceSelected(
+            currentState, event.deviceId
+        )
 
-        is ConnectionEvent.ScanFailed -> updateMatchingScan(
-            currentState, event.scanSessionId
-        ) {
-            it.copy(
-                progress = ScanProgress.Stopped, message = event.message
-            )
-        }
+        is ConnectionEvent.DeviceConnected -> onDeviceConnected(
+            currentState, event.device
+        )
 
-        is ConnectionEvent.ScanStopped -> onScanStopped(currentState, event)
-
-        is ConnectionEvent.RefreshRequested -> onRefresh(currentState, event)
-
-        is ConnectionEvent.DeviceSelected -> onDeviceSelected(currentState, event.deviceId)
-
-        is ConnectionEvent.DeviceConnected -> onDeviceConnected(currentState, event.device)
-
-        is ConnectionEvent.DeviceConnectFailed -> onConnectFailed(currentState, event.message)
+        is ConnectionEvent.DeviceConnectFailed -> onConnectFailed(
+            currentState, event.message
+        )
 
         ConnectionEvent.DeviceConnectTimeout -> onConnectFailed(currentState, "连接超时")
 
         ConnectionEvent.DeviceDisconnected -> onDisconnected(currentState)
 
-        is ConnectionEvent.BindingSaved -> onBindingSaved(currentState, event.deviceId)
+        is ConnectionEvent.BindingSaved -> onBindingSaved(
+            currentState, event.deviceId
+        )
 
-        is ConnectionEvent.BindingSaveFailed -> onBindingSaveFailed(currentState, event.message)
-
-        ConnectionEvent.BecameHidden -> onHidden(currentState)
-
-        is ConnectionEvent.BecameVisible -> onVisible(currentState, event.scanSessionId)
+        is ConnectionEvent.BindingSaveFailed -> onBindingSaveFailed(
+            currentState, event.message
+        )
 
         ConnectionEvent.LogoutRequested -> onLogout(currentState)
     }
@@ -275,29 +187,27 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         state: ConnectionState, event: ConnectionEvent.ConnectionCreated
     ): Transition<ConnectionState, ConnectionEffect> = if (state == ConnectionState.Idle) {
         Transition(
-            ConnectionState.AwaitingBluetoothAccess(event.userId)
+            ConnectionState.AwaitingBluetoothAccess(
+                event.userId
+            )
         )
     } else {
         Transition(state)
     }
 
     private fun onAccessGranted(
-        state: ConnectionState, event: ConnectionEvent.BluetoothAccessGranted
+        state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> =
         if (state is ConnectionState.AwaitingBluetoothAccess) {
             Transition(
                 newState = ConnectionState.Scanning(
                     userId = state.userId,
-                    scanSessionId = event.scanSessionId,
                     devices = emptyList(),
                     binding = BindingLookup.Loading,
-                    progress = ScanProgress.Starting,
                     autoConnectAttempted = false,
-                    message = null,
-                    isVisible = true
+                    message = null
                 ), effects = listOf(
-                    ConnectionEffect.ReadBinding(state.userId),
-                    ConnectionEffect.StartScan(event.scanSessionId)
+                    ConnectionEffect.ReadBinding(state.userId)
                 )
             )
         } else {
@@ -305,23 +215,14 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         }
 
     private fun updateScanning(
-        state: ConnectionState, update: (ConnectionState.Scanning) -> ConnectionState.Scanning
+        state: ConnectionState, update: (
+            ConnectionState.Scanning
+        ) -> ConnectionState.Scanning
     ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Scanning) {
         maybeAutoConnect(update(state))
     } else {
         Transition(state)
     }
-
-    private fun updateMatchingScan(
-        state: ConnectionState,
-        scanSessionId: String,
-        update: (ConnectionState.Scanning) -> ConnectionState.Scanning
-    ): Transition<ConnectionState, ConnectionEffect> =
-        if (state is ConnectionState.Scanning && state.scanSessionId == scanSessionId) {
-            maybeAutoConnect(update(state))
-        } else {
-            Transition(state)
-        }
 
     private fun maybeAutoConnect(
         state: ConnectionState.Scanning
@@ -348,55 +249,21 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     }
 
     private fun onRefresh(
-        state: ConnectionState, event: ConnectionEvent.RefreshRequested
+        state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> = when (state) {
-        is ConnectionState.Scanning -> {
-            if (!state.isVisible) {
-                Transition(state)
-            } else if (state.progress == ScanProgress.Stopped) {
-                Transition(
-                    state.copy(
-                        scanSessionId = event.replacementScanSessionId,
-                        progress = ScanProgress.Starting,
-                        message = null
-                    ), listOf(
-                        ConnectionEffect.StartScan(
-                            event.replacementScanSessionId
-                        )
-                    )
-                )
-            } else if (state.progress is ScanProgress.Active) {
-                val previousRound = state.progress.roundId
-                Transition(
-                    state.copy(
-                        progress = ScanProgress.Refreshing(
-                            previousRound
-                        ), message = null
-                    ), listOf(
-                        ConnectionEffect.RefreshScan(
-                            state.scanSessionId
-                        )
-                    )
-                )
-            } else {
-                Transition(state)
-            }
-        }
+        is ConnectionState.Scanning -> Transition(
+            state.copy(
+                devices = emptyList(), message = null
+            )
+        )
 
         is ConnectionState.ConnectionFailed -> Transition(
-            newState = ConnectionState.Scanning(
+            ConnectionState.Scanning(
                 userId = state.userId,
-                scanSessionId = event.replacementScanSessionId,
-                devices = state.devices,
+                devices = emptyList(),
                 binding = state.binding,
-                progress = ScanProgress.Starting,
                 autoConnectAttempted = state.source == ConnectionSource.Automatic,
-                message = null,
-                isVisible = true
-            ), effects = listOf(
-                ConnectionEffect.StartScan(
-                    event.replacementScanSessionId
-                )
+                message = null
             )
         )
 
@@ -428,13 +295,15 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
             return Transition(state)
         }
         return Transition(
-            ConnectionState.Connecting(
+            newState = ConnectionState.Connecting(
                 userId = userId,
                 deviceId = deviceId,
                 devices = devices,
                 binding = binding,
                 source = ConnectionSource.Manual
-            ), listOf(ConnectionEffect.ConnectDevice(deviceId))
+            ), effects = listOf(
+                ConnectionEffect.ConnectDevice(deviceId)
+            )
         )
     }
 
@@ -479,14 +348,16 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     private fun onDisconnected(
         state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> = when (state) {
-        is ConnectionState.EndingSession -> finishResource(state, SessionResource.Connection)
+        ConnectionState.EndingSession -> Transition(ConnectionState.LogoutReady)
 
         is ConnectionState.Connected -> Transition(
             ConnectionState.ConnectionFailed(
                 userId = state.userId,
                 deviceId = state.device.id,
                 devices = listOf(state.device),
-                binding = BindingLookup.Found(state.device.id),
+                binding = BindingLookup.Found(
+                    state.device.id
+                ),
                 source = ConnectionSource.Automatic,
                 message = "蓝牙连接已断开"
             )
@@ -499,7 +370,9 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         state: ConnectionState, deviceId: String
     ): Transition<ConnectionState, ConnectionEffect> =
         if (state is ConnectionState.Connected && state.device.id == deviceId) {
-            Transition(state.copy(bindingMessage = null))
+            Transition(
+                state.copy(bindingMessage = null)
+            )
         } else {
             Transition(state)
         }
@@ -507,62 +380,9 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     private fun onBindingSaveFailed(
         state: ConnectionState, message: String
     ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Connected) {
-        Transition(state.copy(bindingMessage = message))
-    } else {
-        Transition(state)
-    }
-
-    private fun onHidden(
-        state: ConnectionState
-    ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Scanning) {
-        when (state.progress) {
-            is ScanProgress.Stopping -> Transition(
-                state.copy(
-                    progress = ScanProgress.Stopping(), isVisible = false
-                )
-            )
-
-            ScanProgress.Stopped -> Transition(
-                state.copy(isVisible = false)
-            )
-
-            else -> Transition(
-                state.copy(
-                    progress = ScanProgress.Stopping(), isVisible = false
-                ), listOf(
-                    ConnectionEffect.StopScan(
-                        state.scanSessionId
-                    )
-                )
-            )
-        }
-    } else {
-        Transition(state)
-    }
-
-    private fun onVisible(
-        state: ConnectionState, scanSessionId: String
-    ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Scanning) {
-        when (state.progress) {
-            ScanProgress.Stopped -> Transition(
-                state.copy(
-                    scanSessionId = scanSessionId,
-                    progress = ScanProgress.Starting,
-                    isVisible = true,
-                    message = null
-                ), listOf(ConnectionEffect.StartScan(scanSessionId))
-            )
-
-            is ScanProgress.Stopping -> Transition(
-                state.copy(
-                    progress = ScanProgress.Stopping(
-                        resumeScanSessionId = scanSessionId
-                    ), isVisible = true
-                )
-            )
-
-            else -> Transition(state.copy(isVisible = true))
-        }
+        Transition(
+            state.copy(bindingMessage = message)
+        )
     } else {
         Transition(state)
     }
@@ -570,77 +390,14 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     private fun onLogout(
         state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> = when (state) {
-        is ConnectionState.Scanning -> if (state.progress == ScanProgress.Stopped) {
-            Transition(ConnectionState.LogoutReady)
-        } else if (state.progress is ScanProgress.Stopping) {
-            Transition(
-                ConnectionState.EndingSession(
-                    setOf(SessionResource.Scan)
-                )
-            )
-        } else {
-            Transition(
-                ConnectionState.EndingSession(
-                    setOf(SessionResource.Scan)
-                ), listOf(
-                    ConnectionEffect.StopScan(
-                        state.scanSessionId
-                    )
-                )
-            )
-        }
-
         is ConnectionState.Connecting, is ConnectionState.Connected -> Transition(
-            ConnectionState.EndingSession(
-                setOf(SessionResource.Connection)
-            ), listOf(ConnectionEffect.DisconnectDevice)
+            newState = ConnectionState.EndingSession, effects = listOf(
+                ConnectionEffect.DisconnectDevice
+            )
         )
 
-        is ConnectionState.EndingSession, ConnectionState.LogoutReady -> Transition(state)
+        ConnectionState.EndingSession, ConnectionState.LogoutReady -> Transition(state)
 
         else -> Transition(ConnectionState.LogoutReady)
-    }
-
-    private fun onScanStopped(
-        state: ConnectionState, event: ConnectionEvent.ScanStopped
-    ): Transition<ConnectionState, ConnectionEffect> = when (state) {
-        is ConnectionState.Scanning -> if (state.scanSessionId == event.scanSessionId) {
-            val resumeScanSessionId =
-                (state.progress as? ScanProgress.Stopping)?.resumeScanSessionId
-            if (resumeScanSessionId == null) {
-                Transition(
-                    state.copy(progress = ScanProgress.Stopped)
-                )
-            } else {
-                Transition(
-                    state.copy(
-                        scanSessionId = resumeScanSessionId, progress = ScanProgress.Starting
-                    ), listOf(
-                        ConnectionEffect.StartScan(
-                            resumeScanSessionId
-                        )
-                    )
-                )
-            }
-        } else {
-            Transition(state)
-        }
-
-        is ConnectionState.EndingSession -> finishResource(state, SessionResource.Scan)
-
-        else -> Transition(state)
-    }
-
-    private fun finishResource(
-        state: ConnectionState.EndingSession, resource: SessionResource
-    ): Transition<ConnectionState, ConnectionEffect> {
-        val remaining = state.pending - resource
-        return Transition(
-            if (remaining.isEmpty()) {
-                ConnectionState.LogoutReady
-            } else {
-                state.copy(pending = remaining)
-            }
-        )
     }
 }

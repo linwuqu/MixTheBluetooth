@@ -1,6 +1,7 @@
 package com.biosensor.migratedev.port.connection
 
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.adapter.localport.LocalPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -9,11 +10,18 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import timber.log.Timber
 
+/**
+ * 具体 ConnectionCommand & ConnectionResult 见接口文件
+ * DefaultConnectionPort 对接口进行实现 使用了两个 adapter 能力: local、bluetooth
+ * readBinding、saveBinding 使用 sql 查询也给出了实现
+ */
 class DefaultConnectionPort(
     private val local: LocalPort,
     private val bluetooth: BluetoothPort,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) : ConnectionPort {
+
+    override fun scanDevices(): Flow<BluetoothDeviceInfo> = bluetooth.scanDevices()
 
     override fun execute(
         command: ConnectionCommand

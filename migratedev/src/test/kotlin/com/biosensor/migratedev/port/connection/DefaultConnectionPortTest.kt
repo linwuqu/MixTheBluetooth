@@ -3,6 +3,7 @@ package com.biosensor.migratedev.port.connection
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.biosensor.migratedev.database.LocalDatabase
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothResult
 import com.biosensor.migratedev.port.adapter.localport.FileDeleteResult
@@ -90,15 +91,27 @@ class DefaultConnectionPortTest {
     @Test
     fun `bluetooth command and stream are passed through unchanged`() =
         runTest {
-            val command = BluetoothCommand.StartScan("scan-1")
+            val command = BluetoothCommand.Connect("AA:01")
             bluetooth.results = flowOf(
-                BluetoothResult.ScanStarted("scan-1", 1)
+                BluetoothResult.Connected(
+                    BluetoothDeviceInfo(
+                        id = "AA:01",
+                        name = "BT24-S",
+                        isBle = true
+                    )
+                )
             )
 
             assertEquals(
                 listOf(
                     ConnectionResult.Bluetooth(
-                        BluetoothResult.ScanStarted("scan-1", 1)
+                        BluetoothResult.Connected(
+                            BluetoothDeviceInfo(
+                                id = "AA:01",
+                                name = "BT24-S",
+                                isBle = true
+                            )
+                        )
                     )
                 ),
                 port.execute(
@@ -108,9 +121,29 @@ class DefaultConnectionPortTest {
             assertEquals(command, bluetooth.lastCommand)
         }
 
+    @Test
+    fun `scan device stream is passed through unchanged`() =
+        runTest {
+            val device = BluetoothDeviceInfo(
+                id = "AA:01",
+                name = "BT24-S",
+                isBle = true
+            )
+            bluetooth.devices = flowOf(device)
+
+            assertEquals(
+                listOf(device),
+                port.scanDevices().toList()
+            )
+        }
+
     private class FakeBluetoothPort : BluetoothPort {
         var lastCommand: BluetoothCommand? = null
         var results: Flow<BluetoothResult> = flowOf()
+        var devices: Flow<BluetoothDeviceInfo> = flowOf()
+
+        override fun scanDevices():
+            Flow<BluetoothDeviceInfo> = devices
 
         override fun execute(
             command: BluetoothCommand

@@ -1,13 +1,6 @@
 package com.biosensor.migratedev.port.adapter.bluetoothport
 
 import android.app.Application
-import android.content.Context
-import com.hc.bluetoothlibrary.AllBluetoothManage
-import com.hc.bluetoothlibrary.DeviceModule
-import com.hc.bluetoothlibrary.IBluetooth
-import com.hc.bluetoothlibrary.tootl.DataMemory
-import com.hc.bluetoothlibrary.tootl.ModuleParameters
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -16,48 +9,45 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import kotlin.time.Duration.Companion.milliseconds
 
-data class LegacyBluetoothParameters(
-    val bleSendDelayState: Int = 1,
-    val regularSendIntervalLevel: Int = 0,
-    val bleReadBufferBytes: Int = 1_000,
-    val classicReadBufferBytes: Int = 1_500,
-    val receiveQuietPeriodMillis: Int = 100,
-    val checkNewline: Boolean = true
-)
-
+/**
+ * AndroidBluetoothPort 是蓝牙端口的基础实现
+ * 目前有两个功能 汇集了 AndroidNativeBleScanner 的扫描能力 & HcBluetoothLibraryClient 的蓝牙库能力
+ * 之所以扫描独立出来是想使用安卓原生的 callbackFlow 进行控制
+ *
+ * 1. 对于扫描
+ * 重写了 scanDevices 通过在 callbackFlow 上实现 listener: NativeBleScanListener 的所有回调
+ * 并使用 channel 进行信息流订阅获取全部扫描信息
+ *
+ * 2. 对于蓝牙库
+ * 在 execute 中进行业务路由 实现了 BluetoothCommand 两个路由的业务实现 connect & disconnect
+ *
+ * 值得注意的是所有的业务函数都是建立在冷流中的 所以都有很好的性质: 即用即关、用到时才主动释放(emit、trySend)和收集
+ */
 class AndroidBluetoothPort internal constructor(
     private val client: BluetoothLibraryClient,
-    private val scanScope: CoroutineScope,
+    private val scanner: NativeBleScanner,
     private val filter: BluetoothAdvertisementFilter = Bt24AdvertisementFilter
 ) : BluetoothPort {
 
     constructor(
         application: Application,
-        scope: CoroutineScope,
         parameters: LegacyBluetoothParameters = LegacyBluetoothParameters(),
         filter: BluetoothAdvertisementFilter = Bt24AdvertisementFilter
     ) : this(
         client = HcBluetoothLibraryClient(application, parameters),
-        scanScope = scope,
+        scanner = AndroidNativeBleScanner(application),
         filter = filter
     )
 
     private val lock = Any()
-    private var nextRoundId = 0L
-    private var activeScan: ScanSession? = null
+    private val discovered = linkedMapOf<String, ScannedBleDevice>()
+    private var activeScan: ScanCollection? = null
     private var connectionSession: ConnectionSession? = null
 
     private val libraryListener = object : BluetoothLibraryListener {
-        override fun onDeviceFound(device: LibraryBluetoothDevice) {
-            handleDeviceFound(device)
-        }
-
-        override fun onScanFinished() {
-            handleScanFinished()
-        }
-
-        override fun onConnected(device: LibraryBluetoothDevice) {
+        override fun onConnected(device: BluetoothDeviceInfo) {
             handleConnected(device)
         }
 
@@ -70,200 +60,112 @@ class AndroidBluetoothPort internal constructor(
         client.setListener(libraryListener)
     }
 
-    override fun execute(
-        command: BluetoothCommand
-    ): Flow<BluetoothResult> = when (command) {
-        is BluetoothCommand.StartScan -> startScan(command.scanSessionId)
+    override fun scanDevices(): Flow<BluetoothDeviceInfo> = callbackFlow {
+        lateinit var listener: NativeBleScanListener
+        listener = object : NativeBleScanListener {
+            override fun onDeviceFound(device: ScannedBleDevice) {
+                if (!filter.matches(device.advertisement)) return
+                val isCurrent = synchronized(lock) {
+                    if (activeScan?.listener !== listener) false
+                    else {
+                        discovered[device.info.id] = device
+                        true
+                    }
+                }
+                if (isCurrent) {
+                    trySend(device.info)
+                }
+            }
 
-        is BluetoothCommand.RefreshScan -> refreshScan(command.scanSessionId)
+            override fun onScanFailed(failure: BluetoothScanException) {
+                finishActiveScan(expected = listener, failure = failure)
+            }
+        }
 
-        is BluetoothCommand.StopScan -> stopScan(command.scanSessionId)
-
-        is BluetoothCommand.Connect -> connect(command.deviceId, command.timeoutMillis)
-
-        BluetoothCommand.Disconnect -> disconnect()
-    }
-
-    private fun startScan(
-        scanSessionId: String
-    ): Flow<BluetoothResult> = callbackFlow {
-        val session = ScanSession(
-            id = scanSessionId, output = channel
-        )
         val accepted = synchronized(lock) {
-            if (activeScan != null) {
-                false
-            } else {
-                activeScan = session
+            if (activeScan != null) false
+            else {
+                discovered.clear()
+                activeScan = ScanCollection(listener = listener, output = channel)
                 true
             }
         }
         if (!accepted) {
-            trySend(
-                BluetoothResult.ScanFailed(
-                    scanSessionId, "蓝牙扫描已经在进行中"
-                )
-            )
-            close()
+            close(BluetoothScanException("蓝牙扫描已经在进行中"))
             return@callbackFlow
         }
 
-        if (!beginRound(session)) {
-            close()
-            return@callbackFlow
-        }
+        val started = runCatching { scanner.start(listener) }
+        if (started.isFailure) {
+            finishActiveScan(
+                expected = listener,
+                failure = started.exceptionOrNull()?.toBluetoothScanException()
+                    ?: BluetoothScanException("启动蓝牙扫描失败")
+            )
+        } else Timber.tag(BLUETOOTH_TAG).i("native BLE scan started")
+
 
         awaitClose {
-            finishScanSession(
-                expectedSessionId = scanSessionId, stopLibrary = true
-            )
+            finishActiveScan(expected = listener)
         }
     }
 
-    private fun refreshScan(
-        scanSessionId: String
-    ): Flow<BluetoothResult> = flow {
-        val session = synchronized(lock) {
-            activeScan?.takeIf { it.id == scanSessionId }?.also {
-                it.suppressNextRoundEnd = true
-            }
-        }
-        if (session == null) {
-            emit(
-                BluetoothResult.ScanFailed(
-                    scanSessionId, "当前扫描会话不存在"
-                )
-            )
-            return@flow
-        }
-
-        runCatching { client.stopScan() }
-        synchronized(lock) {
-            if (activeScan === session) {
-                session.suppressNextRoundEnd = false
-            }
-        }
-        val started = beginRound(session)
-        if (started) {
-            emit(
-                BluetoothResult.ScanRefreshed(
-                    scanSessionId, session.roundId
-                )
-            )
-        } else {
-            emit(
-                BluetoothResult.ScanFailed(
-                    scanSessionId, session.lastFailure ?: "刷新蓝牙扫描失败"
-                )
-            )
-        }
+    override fun execute(
+        command: BluetoothCommand
+    ): Flow<BluetoothResult> = when (command) {
+        is BluetoothCommand.Connect -> connect(command.deviceId, command.timeoutMillis)
+        BluetoothCommand.Disconnect -> disconnect()
     }
 
-    private fun stopScan(
-        scanSessionId: String
-    ): Flow<BluetoothResult> = flow {
-        finishScanSession(
-            expectedSessionId = scanSessionId, stopLibrary = true
-        )
-        emit(BluetoothResult.ScanStopped(scanSessionId))
-    }
+    private fun finishActiveScan(
+        expected: NativeBleScanListener? = null, failure: Throwable? = null
+    ) {
+        val scan = synchronized(lock) {
+            activeScan?.takeIf { expected == null || it.listener === expected }
+                ?.also { activeScan = null }
+        } ?: return
 
-    private fun beginRound(session: ScanSession): Boolean {
-        val roundId = synchronized(lock) {
-            if (activeScan !== session) {
-                return false
-            }
-            nextRoundId += 1
-            session.roundId = nextRoundId
-            nextRoundId
-        }
-        val started = runCatching { client.startScan() }
-        if (started.isFailure || !started.getOrDefault(false)) {
-            val message = started.exceptionOrNull()?.bluetoothFailureMessage("启动蓝牙扫描失败")
-                ?: "启动蓝牙扫描失败"
-            synchronized(lock) {
-                if (activeScan === session) {
-                    activeScan = null
-                }
-                session.lastFailure = message
-            }
-            session.output.trySend(
-                BluetoothResult.ScanFailed(session.id, message)
-            )
-            session.output.close()
-            return false
-        }
-        session.output.trySend(
-            BluetoothResult.ScanStarted(session.id, roundId)
-        )
-        Timber.tag(BLUETOOTH_TAG).i(
-            "scanSession=%s round=%d started", session.id.redactedId(), roundId
-        )
-        return true
-    }
-
-    private fun finishScanSession(
-        expectedSessionId: String?, stopLibrary: Boolean
-    ): ScanSession? {
-        val session = synchronized(lock) {
-            activeScan?.takeIf {
-                expectedSessionId == null || it.id == expectedSessionId
-            }?.also {
-                it.suppressNextRoundEnd = true
-                activeScan = null
-            }
-        } ?: return null
-
-        if (stopLibrary) {
-            runCatching { client.stopScan() }
-        }
-        session.output.close()
-        return session
+        runCatching { scanner.stop(scan.listener) }
+        scan.output.close(failure)
+        Timber.tag(BLUETOOTH_TAG).i("native BLE scan stopped")
     }
 
     private fun connect(
         deviceId: String, timeoutMillis: Long
     ): Flow<BluetoothResult> = callbackFlow {
-        require(timeoutMillis > 0) {
-            "连接超时时间必须大于 0"
-        }
-        finishScanSession(
-            expectedSessionId = null, stopLibrary = true
-        )
+        require(timeoutMillis > 0) { "连接超时时间必须大于 0" }
+        finishActiveScan()
 
-        val session = ConnectionSession(
-            deviceId = deviceId, output = channel
-        )
+        val target = synchronized(lock) { discovered[deviceId] }
+        if (target == null) {
+            trySend(BluetoothResult.ConnectFailed("找不到待连接的蓝牙设备"))
+            close()
+            return@callbackFlow
+        }
+
+        val session = ConnectionSession(deviceId = deviceId, output = channel)
         val accepted = synchronized(lock) {
-            if (connectionSession != null) {
-                false
-            } else {
+            if (connectionSession != null) false
+            else {
                 connectionSession = session
                 true
             }
         }
         if (!accepted) {
-            trySend(
-                BluetoothResult.ConnectFailed(
-                    "已有蓝牙连接会话正在进行"
-                )
-            )
+            trySend(BluetoothResult.ConnectFailed("已有蓝牙连接会话正在进行"))
             close()
             return@callbackFlow
         }
 
-        val started = runCatching { client.connect(deviceId) }
+        val started = runCatching { client.connect(target) }
         if (started.isFailure || !started.getOrDefault(false)) {
             synchronized(lock) {
-                if (connectionSession === session) {
-                    connectionSession = null
-                }
+                if (connectionSession === session) connectionSession = null
             }
             trySend(
                 BluetoothResult.ConnectFailed(
-                    started.exceptionOrNull()?.bluetoothFailureMessage(
-                        "找不到待连接的蓝牙设备"
-                    ) ?: "找不到待连接的蓝牙设备"
+                    started.exceptionOrNull()?.bluetoothFailureMessage("找不到待连接的蓝牙设备")
+                        ?: "找不到待连接的蓝牙设备"
                 )
             )
             close()
@@ -271,14 +173,12 @@ class AndroidBluetoothPort internal constructor(
         }
 
         val timeout = launch {
-            delay(timeoutMillis)
+            delay(timeoutMillis.milliseconds)
             val timedOut = synchronized(lock) {
                 if (connectionSession === session && !session.connected) {
                     connectionSession = null
                     true
-                } else {
-                    false
-                }
+                } else false
             }
             if (timedOut) {
                 trySend(BluetoothResult.ConnectTimeout)
@@ -293,17 +193,18 @@ class AndroidBluetoothPort internal constructor(
                 if (connectionSession === session) {
                     connectionSession = null
                     true
-                } else {
-                    false
-                }
+                } else false
             }
             if (ownsConnection) {
-                runCatching { client.disconnect(deviceId) }
+                runCatching {
+                    client.disconnect(deviceId)
+                }
             }
         }
     }
 
     private fun disconnect(): Flow<BluetoothResult> = flow {
+        finishActiveScan()
         val session = synchronized(lock) {
             connectionSession.also {
                 connectionSession = null
@@ -314,85 +215,29 @@ class AndroidBluetoothPort internal constructor(
         emit(BluetoothResult.Disconnected)
     }
 
-    private fun handleDeviceFound(
-        device: LibraryBluetoothDevice
-    ) {
-//        if (!filter.matches(device.advertisement)) {
-//            return
-//        }
-        val snapshot = synchronized(lock) {
-            val session = activeScan ?: return
-            session.devices[device.id] = device.toDeviceInfo()
-            Triple(
-                session.output, session.id, session.roundId
-            ) to session.devices.values.toList()
-        }
-        val (scan, devices) = snapshot
-        scan.first.trySend(
-            BluetoothResult.DevicesUpdated(
-                scanSessionId = scan.second, roundId = scan.third, devices = devices
-            )
-        )
-    }
-
-    private fun handleScanFinished() {
-        val ended = synchronized(lock) {
-            val session = activeScan ?: return
-            if (session.suppressNextRoundEnd) {
-                return
-            }
-            Triple(
-                session, session.id, session.roundId
-            )
-        }
-        val (session, sessionId, roundId) = ended
-        session.output.trySend(
-            BluetoothResult.ScanRoundEnded(
-                sessionId, roundId
-            )
-        )
-        scanScope.launch {
-            beginRound(session)
-        }
-    }
-
-    private fun handleConnected(
-        device: LibraryBluetoothDevice
-    ) {
+    private fun handleConnected(device: BluetoothDeviceInfo) {
         val session = synchronized(lock) {
             connectionSession?.takeIf { it.deviceId == device.id }?.also { it.connected = true }
         }
-        session?.output?.trySend(
-            BluetoothResult.Connected(device.toDeviceInfo())
-        )
+        session?.output?.trySend(BluetoothResult.Connected(device))
     }
 
     private fun handleConnectionLost(deviceId: String?) {
         val session = synchronized(lock) {
-            connectionSession?.takeIf {
-                deviceId == null || it.deviceId == deviceId
-            }?.also { connectionSession = null }
+            connectionSession?.takeIf { deviceId == null || it.deviceId == deviceId }
+                ?.also { connectionSession = null }
         } ?: return
 
         session.output.trySend(
             if (session.connected) {
                 BluetoothResult.Disconnected
-            } else {
-                BluetoothResult.ConnectFailed(
-                    "蓝牙连接失败"
-                )
-            }
+            } else BluetoothResult.ConnectFailed("蓝牙连接失败")
         )
         session.output.close()
     }
 
-    private class ScanSession(
-        val id: String,
-        val output: SendChannel<BluetoothResult>,
-        val devices: LinkedHashMap<String, BluetoothDeviceInfo> = linkedMapOf(),
-        var roundId: Long = 0,
-        var suppressNextRoundEnd: Boolean = false,
-        var lastFailure: String? = null
+    private class ScanCollection(
+        val listener: NativeBleScanListener, val output: SendChannel<BluetoothDeviceInfo>
     )
 
     private class ConnectionSession(
@@ -406,169 +251,13 @@ class AndroidBluetoothPort internal constructor(
     }
 }
 
-internal data class LibraryBluetoothDevice(
-    val id: String,
-    val name: String?,
-    val isBle: Boolean,
-    val rssi: Int?,
-    val serviceUuids: Set<String>?,
-    val manufacturerIds: Set<Int>?
-) {
-    val advertisement = BluetoothAdvertisement(
-        isBle = isBle, serviceUuids = serviceUuids, manufacturerIds = manufacturerIds
-    )
-}
-
-internal fun LibraryBluetoothDevice.toDeviceInfo() = BluetoothDeviceInfo(
-    id = id, name = name, isBle = isBle, rssi = rssi
+private fun Throwable.toBluetoothScanException(): BluetoothScanException = BluetoothScanException(
+    bluetoothFailureMessage("启动蓝牙扫描失败"), this
 )
 
-internal interface BluetoothLibraryListener {
-    fun onDeviceFound(device: LibraryBluetoothDevice)
-    fun onScanFinished()
-    fun onConnected(device: LibraryBluetoothDevice)
-    fun onConnectionLost(deviceId: String?)
-}
-
-internal interface BluetoothLibraryClient {
-    fun setListener(listener: BluetoothLibraryListener?)
-    fun startScan(): Boolean
-    fun stopScan()
-    fun connect(deviceId: String): Boolean
-    fun disconnect(deviceId: String?)
-}
-
-internal class HcBluetoothLibraryClient(
-    context: Context, parameters: LegacyBluetoothParameters
-) : BluetoothLibraryClient {
-
-    private val applicationContext = context.applicationContext
-    private var listener: BluetoothLibraryListener? = null
-    private val nativeDevices = linkedMapOf<String, DeviceModule>()
-    private val manager = AllBluetoothManage(
-        applicationContext, object : IBluetooth {
-            override fun updateList(
-                deviceModule: DeviceModule?
-            ) = publishDevice(deviceModule)
-
-            override fun connectSucceed(
-                deviceModule: DeviceModule?
-            ) {
-                deviceModule?.let {
-                    listener?.onConnected(
-                        it.toLibraryDevice()
-                    )
-                }
-            }
-
-            override fun updateEnd() {
-                listener?.onScanFinished()
-            }
-
-            override fun updateMessyCode(
-                deviceModule: DeviceModule?
-            ) = publishDevice(deviceModule)
-
-            override fun readData(
-                mac: String?, data: ByteArray?
-            ) = Unit
-
-            override fun reading(isStart: Boolean) = Unit
-
-            override fun errorDisconnect(
-                deviceModule: DeviceModule?
-            ) {
-                listener?.onConnectionLost(
-                    deviceModule?.mac
-                )
-            }
-
-            override fun readNumber(number: Int) = Unit
-            override fun readLog(
-                className: String?, data: String?, lv: String?
-            ) = Unit
-
-            override fun readVelocity(velocity: Int) = Unit
-            override fun callbackMTU(mtu: Int) = Unit
-        })
-
-    init {
-        if (DataMemory(applicationContext).parameters == null) {
-            ModuleParameters.setParameters(
-                parameters.bleSendDelayState,
-                parameters.bleReadBufferBytes,
-                parameters.classicReadBufferBytes,
-                parameters.receiveQuietPeriodMillis,
-                applicationContext
-            )
-        }
-        if (!applicationContext.getSharedPreferences(
-                "data", Context.MODE_PRIVATE
-            ).contains("ModuleLevel")
-        ) {
-            ModuleParameters.saveLevel(
-                parameters.regularSendIntervalLevel, applicationContext
-            )
-        }
-        ModuleParameters.setNewline(parameters.checkNewline)
+private fun Throwable.bluetoothFailureMessage(fallback: String): String =
+    if (this is SecurityException) {
+        "缺少蓝牙扫描或连接权限"
+    } else {
+        message?.takeIf { it.isNotBlank() } ?: fallback
     }
-
-    override fun setListener(
-        listener: BluetoothLibraryListener?
-    ) {
-        this.listener = listener
-    }
-
-    override fun startScan(): Boolean = manager.bleScan()
-
-    override fun stopScan() = manager.stopScan()
-
-    override fun connect(deviceId: String): Boolean {
-        val device = nativeDevices[deviceId] ?: return false
-        manager.connect(device)
-        return true
-    }
-
-    override fun disconnect(deviceId: String?) {
-        manager.disconnect(
-            deviceId?.let(nativeDevices::get)
-        )
-    }
-
-    private fun publishDevice(
-        deviceModule: DeviceModule?
-    ) {
-        deviceModule ?: return
-        nativeDevices[deviceModule.mac] = deviceModule
-        listener?.onDeviceFound(
-            deviceModule.toLibraryDevice()
-        )
-    }
-
-    private fun DeviceModule.toLibraryDevice() = LibraryBluetoothDevice(
-        id = mac,
-        name = name,
-        isBle = isBLE,
-        rssi = rssi,
-        serviceUuids = if (isHcModule(true, "FFE0")) {
-            setOf("FFE0")
-        } else {
-            emptySet()
-        },
-        manufacturerIds = if (hasManufacturerData(0x4458)) {
-            setOf(0x4458)
-        } else {
-            emptySet()
-        }
-    )
-}
-
-private fun Throwable.bluetoothFailureMessage(
-    fallback: String
-): String = if (this is SecurityException) {
-    "缺少蓝牙扫描或连接权限"
-} else {
-    message?.takeIf { it.isNotBlank() } ?: fallback
-}
-
-private fun String.redactedId(): String = takeLast(4).padStart(length.coerceAtMost(4), '*')

@@ -105,6 +105,8 @@ public class AllBluetoothManage {
     //连接蓝牙
     public void connect(final DeviceModule deviceModule) {
 
+        rememberForConnection(mScanAllModuleArray, deviceModule);
+
         //连接前，先停下所有扫描
         stopScan();
 
@@ -118,6 +120,18 @@ public class AllBluetoothManage {
             if (mClassicManage.getMac() == null)
                 mClassicManage.connectBluetooth(deviceModule.getMac(), mIDataCallback);
         }
+    }
+
+    static void rememberForConnection(
+            List<DeviceModule> devices,
+            DeviceModule target
+    ) {
+        for (int i = devices.size() - 1; i >= 0; i--) {
+            if (devices.get(i).getMac().equals(target.getMac())) {
+                devices.remove(i);
+            }
+        }
+        devices.add(target);
     }
 
     //断开蓝牙

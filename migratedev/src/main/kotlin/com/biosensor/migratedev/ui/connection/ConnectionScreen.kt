@@ -128,7 +128,7 @@ private fun StatusText(state: ConnectionUiState) {
             when (state.phase) {
                 ConnectionPhase.AwaitingBluetoothAccess -> "正在准备蓝牙权限与系统蓝牙"
 
-                ConnectionPhase.Scanning -> "持续扫描中，下拉可刷新当前轮次"
+                ConnectionPhase.Scanning -> "持续扫描中，下拉可刷新列表"
 
                 ConnectionPhase.Connecting -> "正在连接所选设备"
 
