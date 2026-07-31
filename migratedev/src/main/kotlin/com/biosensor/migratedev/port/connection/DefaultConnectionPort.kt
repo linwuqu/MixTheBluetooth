@@ -23,29 +23,17 @@ class DefaultConnectionPort(
 
     override fun scanDevices(): Flow<BluetoothDeviceInfo> = bluetooth.scanDevices()
 
-    override fun execute(
-        command: ConnectionCommand
-    ): Flow<ConnectionResult> = when (command) {
-        is ConnectionCommand.ReadBinding -> readBinding(command.userId)
-
-        is ConnectionCommand.SaveBinding -> saveBinding(command.userId, command.deviceId)
-
-        is ConnectionCommand.Bluetooth -> bluetooth.execute(command.command).map {
-            ConnectionResult.Bluetooth(it)
-        }
-    }
-
-    private fun readBinding(
+    override fun readBinding(
         userId: String
-    ): Flow<ConnectionResult> = flow {
+    ): Flow<BindingSnapshot> = flow {
         val result = runCatching {
             local.sqlite.deviceBindingQueries.findByUserId(userId).executeAsOneOrNull()
         }.fold(onSuccess = { binding ->
             binding?.let {
-                ConnectionResult.BindingLoaded(it.deviceId)
-            } ?: ConnectionResult.BindingMissing
+                BindingSnapshot.Found(it.deviceId)
+            } ?: BindingSnapshot.Missing
         }, onFailure = {
-            ConnectionResult.BindingFailed(
+            BindingSnapshot.Failed(
                 it.message ?: "读取设备绑定失败"
             )
         })
@@ -54,6 +42,16 @@ class DefaultConnectionPort(
         )
         emit(result)
     }.flowOn(Dispatchers.IO)
+
+    override fun execute(
+        command: ConnectionCommand
+    ): Flow<ConnectionResult> = when (command) {
+        is ConnectionCommand.SaveBinding -> saveBinding(command.userId, command.deviceId)
+
+        is ConnectionCommand.Bluetooth -> bluetooth.execute(command.command).map {
+            ConnectionResult.Bluetooth(it)
+        }
+    }
 
     private fun saveBinding(
         userId: String, deviceId: String

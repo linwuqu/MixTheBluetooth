@@ -3,13 +3,13 @@ package com.biosensor.migratedev.translation.connection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.biosensor.migratedev.decisioncore.connection.BindingLookup
 import com.biosensor.migratedev.decisioncore.connection.ConnectionDecisionCore
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.decisioncore.connection.ConnectionState
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.orchestrator.connection.ConnectionEffectExecutor
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.translation.Translation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -65,8 +64,20 @@ sealed interface ConnectionOutput {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionTranslation private constructor(
-    userId: String, private val port: ConnectionPort, private val report: (ConnectionOutput) -> Unit
+    private val userId: String,
+    private val port: ConnectionPort,
+    private val report: (ConnectionOutput) -> Unit
 ) : ViewModel(), Translation<ConnectionIntent, ConnectionUiState> {
+
+    private val bluetoothAccessGranted = MutableStateFlow(false)
+    private val visible = MutableStateFlow(false)
+    private val scanRestart = MutableStateFlow(0)
+    private val binding = MutableStateFlow<BindingSnapshot>(BindingSnapshot.Loading)
+    private val devices = MutableStateFlow<List<BluetoothDeviceInfo>>(emptyList())
+    private val discovered = linkedMapOf<String, BluetoothDeviceInfo>()
+    private var scanActive = false
+    private var autoConnectConsumed = false
+    private var logoutStarted = false
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = ConnectionState.Idle,
@@ -74,20 +85,28 @@ class ConnectionTranslation private constructor(
         effectExecutor = ConnectionEffectExecutor(port),
         scope = viewModelScope,
         logTag = "Connection.Workflow",
-        onTransition = ::reportRootOutput
+        onTransition = ::onTransition
     )
 
-    private val bluetoothAccessGranted = MutableStateFlow(false)
-    private val visible = MutableStateFlow(false)
-    private val scanRestart = MutableStateFlow(0)
-    private val discovered = linkedMapOf<String, BluetoothDeviceInfo>()
-    private var scanActive = false
-    private var logoutStarted = false
+    override val uiState: StateFlow<ConnectionUiState> = combine(
+        orchestrator.state, binding, devices
+    ) { state, currentBinding, currentDevices ->
+        state.toUiState(currentBinding, currentDevices)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        ConnectionState.Idle.toUiState(BindingSnapshot.Loading, emptyList())
+    )
 
-    override val uiState: StateFlow<ConnectionUiState> =
-        orchestrator.state.map(ConnectionState::toUiState).stateIn(
-            viewModelScope, SharingStarted.Eagerly, ConnectionState.Idle.toUiState()
-        )
+    private val bindingCollection: Job = viewModelScope.launch {
+        port.readBinding(userId).catch { error ->
+            emit(
+                BindingSnapshot.Failed(
+                    error.message?.takeIf(String::isNotBlank) ?: "读取设备绑定失败"
+                )
+            )
+        }.collect { binding.value = it }
+    }
 
     private val scanCollection: Job = viewModelScope.launch {
         combine(
@@ -98,67 +117,59 @@ class ConnectionTranslation private constructor(
                 restart = restart
             )
         }.distinctUntilChanged().flatMapLatest { request ->
-            if (request.enabled) scanFlow()
-            else emptyFlow()
+            if (request.enabled) scanFlow() else emptyFlow()
         }.collect { device ->
             discovered[device.id] = device
-            orchestrator.dispatch(
-                ConnectionEvent.DevicesUpdated(
-                    discovered.values.toList()
-                )
-            )
+            devices.value = discovered.values.toList()
+        }
+    }
+
+    private val autoConnectCollection: Job = viewModelScope.launch {
+        combine(binding, devices) { currentBinding, currentDevices ->
+            (currentBinding as? BindingSnapshot.Found)?.deviceId?.takeIf { id ->
+                currentDevices.any { it.id == id }
+            }
+        }.distinctUntilChanged().collect { deviceId ->
+            if (deviceId != null) requestConnection(deviceId, automatic = true)
         }
     }
 
     init {
-        orchestrator.dispatch(
-            ConnectionEvent.ConnectionCreated(userId)
-        )
+        orchestrator.dispatch(ConnectionEvent.ConnectionCreated(userId))
     }
 
     override fun submit(intent: ConnectionIntent) {
         when (intent) {
             ConnectionIntent.BluetoothAccessGranted -> {
                 bluetoothAccessGranted.value = true
-                orchestrator.dispatch(
-                    ConnectionEvent.BluetoothAccessGranted
-                )
+                orchestrator.dispatch(ConnectionEvent.BluetoothAccessGranted)
             }
 
             ConnectionIntent.Refresh -> {
-                discovered.clear()
-                orchestrator.dispatch(
-                    ConnectionEvent.RefreshRequested
-                )
-                if (!scanActive) {
-                    scanRestart.value += 1
-                }
+                clearDevices()
+                orchestrator.dispatch(ConnectionEvent.RefreshRequested)
+                if (!scanActive) scanRestart.value += 1
             }
 
-            is ConnectionIntent.SelectDevice -> orchestrator.dispatch(
-                ConnectionEvent.DeviceSelected(
-                    intent.deviceId
-                )
+            is ConnectionIntent.SelectDevice -> requestConnection(
+                intent.deviceId, automatic = false
             )
 
             ConnectionIntent.BecameVisible -> visible.value = true
-
             ConnectionIntent.BecameHidden -> visible.value = false
-
             ConnectionIntent.Logout -> beginLogout()
         }
     }
 
     override fun onCleared() {
+        bindingCollection.cancel()
         scanCollection.cancel()
+        autoConnectCollection.cancel()
         orchestrator.close()
     }
 
     private fun scanFlow(): Flow<BluetoothDeviceInfo> = port.scanDevices().onStart {
-        discovered.clear()
-        orchestrator.dispatch(
-            ConnectionEvent.DevicesUpdated(emptyList())
-        )
+        clearDevices()
         scanActive = true
     }.onCompletion {
         scanActive = false
@@ -170,24 +181,44 @@ class ConnectionTranslation private constructor(
         )
     }
 
+    private fun requestConnection(
+        deviceId: String, automatic: Boolean
+    ) {
+        if (logoutStarted) return
+        if (automatic) {
+            if (autoConnectConsumed) return
+            autoConnectConsumed = true
+        } else {
+            if (deviceId !in discovered) return
+            autoConnectConsumed = true
+        }
+        orchestrator.dispatch(ConnectionEvent.ConnectRequested(deviceId))
+    }
+
+    private fun clearDevices() {
+        discovered.clear()
+        devices.value = emptyList()
+    }
+
     private fun beginLogout() {
         if (logoutStarted) return
         logoutStarted = true
         report(ConnectionOutput.LogoutRequested)
         viewModelScope.launch {
             scanCollection.cancelAndJoin()
-            orchestrator.dispatch(
-                ConnectionEvent.LogoutRequested
-            )
+            orchestrator.dispatch(ConnectionEvent.LogoutRequested)
         }
     }
 
-    private fun reportRootOutput(
+    private fun onTransition(
         previous: ConnectionState, event: ConnectionEvent, current: ConnectionState
     ) {
-        if (previous != ConnectionState.LogoutReady && current == ConnectionState.LogoutReady) report(
-            ConnectionOutput.Stopped
-        )
+        if (event is ConnectionEvent.BindingSaved) {
+            binding.value = BindingSnapshot.Found(event.deviceId)
+        }
+        if (previous != ConnectionState.LogoutReady && current == ConnectionState.LogoutReady) {
+            report(ConnectionOutput.Stopped)
+        }
     }
 
     private data class ScanRequest(
@@ -203,52 +234,43 @@ class ConnectionTranslation private constructor(
                 modelClass: Class<T>
             ): T {
                 require(
-                    modelClass.isAssignableFrom(
-                        ConnectionTranslation::class.java
-                    )
+                    modelClass.isAssignableFrom(ConnectionTranslation::class.java)
                 )
-                return ConnectionTranslation(
-                    userId, port, report
-                ) as T
+                return ConnectionTranslation(userId, port, report) as T
             }
         }
     }
 }
 
-private fun ConnectionState.toUiState(): ConnectionUiState {
-    val binding = when (this) {
-        is ConnectionState.Scanning -> binding
-        is ConnectionState.Connecting -> binding
-        is ConnectionState.ConnectionFailed -> binding
-        else -> null
-    }
-    val remembered = (binding as? BindingLookup.Found)?.deviceId
-    val bluetoothDevices: List<BluetoothDeviceInfo> = when (this) {
-        is ConnectionState.Scanning -> devices
-        is ConnectionState.Connecting -> devices
+private fun ConnectionState.toUiState(
+    binding: BindingSnapshot, scannedDevices: List<BluetoothDeviceInfo>
+): ConnectionUiState {
+    val remembered = (binding as? BindingSnapshot.Found)?.deviceId
+    val visibleDevices = when (this) {
+        is ConnectionState.Scanning, is ConnectionState.Connecting, is ConnectionState.ConnectionFailed -> scannedDevices
+
         is ConnectionState.Connected -> listOf(device)
-        is ConnectionState.ConnectionFailed -> devices
         else -> emptyList()
     }
-    val message = when (this) {
+    val stateMessage = when (this) {
         is ConnectionState.Scanning -> message
         is ConnectionState.Connected -> bindingMessage
         is ConnectionState.ConnectionFailed -> message
         else -> null
     }
+    val bindingMessage = (binding as? BindingSnapshot.Failed)?.message
     return ConnectionUiState(
         phase = when (this) {
             ConnectionState.Idle, is ConnectionState.AwaitingBluetoothAccess -> ConnectionPhase.AwaitingBluetoothAccess
-            is ConnectionState.Scanning -> ConnectionPhase.Scanning
 
+            is ConnectionState.Scanning -> ConnectionPhase.Scanning
             is ConnectionState.Connecting -> ConnectionPhase.Connecting
             is ConnectionState.Connected -> ConnectionPhase.Connected
             is ConnectionState.ConnectionFailed -> ConnectionPhase.Failed
-
             ConnectionState.EndingSession -> ConnectionPhase.EndingSession
             ConnectionState.LogoutReady -> ConnectionPhase.LogoutReady
         },
-        devices = bluetoothDevices.sortedWith(compareByDescending<BluetoothDeviceInfo> { it.id == remembered }.thenByDescending {
+        devices = visibleDevices.sortedWith(compareByDescending<BluetoothDeviceInfo> { it.id == remembered }.thenByDescending {
             it.rssi ?: Int.MIN_VALUE
         }.thenBy { it.name ?: it.id }).map {
             DeviceItemUi(
@@ -260,6 +282,6 @@ private fun ConnectionState.toUiState(): ConnectionUiState {
         },
         rememberedDeviceId = remembered,
         isRefreshing = false,
-        message = message
+        message = stateMessage ?: bindingMessage
     )
 }

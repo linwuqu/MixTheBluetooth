@@ -22,8 +22,6 @@ class ConnectionEffectExecutor(
     }
 
     private fun ConnectionEffect.toCommand(): ConnectionCommand = when (this) {
-        is ConnectionEffect.ReadBinding -> ConnectionCommand.ReadBinding(userId)
-
         is ConnectionEffect.SaveBinding -> ConnectionCommand.SaveBinding(userId, deviceId)
 
         is ConnectionEffect.ConnectDevice -> ConnectionCommand.Bluetooth(
@@ -36,12 +34,6 @@ class ConnectionEffectExecutor(
     }
 
     private fun ConnectionResult.toEvent(): ConnectionEvent = when (this) {
-        is ConnectionResult.BindingLoaded -> ConnectionEvent.BindingLoaded(deviceId)
-
-        ConnectionResult.BindingMissing -> ConnectionEvent.BindingMissing
-
-        is ConnectionResult.BindingFailed -> ConnectionEvent.BindingFailed(message)
-
         is ConnectionResult.BindingSaved -> ConnectionEvent.BindingSaved(deviceId)
 
         is ConnectionResult.BindingSaveFailed -> ConnectionEvent.BindingSaveFailed(message)

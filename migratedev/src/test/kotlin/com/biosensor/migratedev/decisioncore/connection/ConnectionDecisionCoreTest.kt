@@ -13,7 +13,7 @@ class ConnectionDecisionCoreTest {
     )
 
     @Test
-    fun `access starts binding lookup without scan effect`() {
+    fun `access enters scanning without binding effect`() {
         val created = reduce(
             ConnectionState.Idle,
             ConnectionEvent.ConnectionCreated("user-1")
@@ -29,198 +29,99 @@ class ConnectionDecisionCoreTest {
         )
 
         assertEquals(scanning(), granted.newState)
-        assertEquals(
-            listOf(ConnectionEffect.ReadBinding("user-1")),
-            granted.effects
-        )
+        assertEquals(emptyList<ConnectionEffect>(), granted.effects)
     }
 
     @Test
-    fun `binding then device triggers auto connect once`() {
-        val withBinding = reduce(
-            scanning(),
-            ConnectionEvent.BindingLoaded(device.id)
-        )
-        val target = reduce(
-            withBinding.newState,
-            ConnectionEvent.DevicesUpdated(
-                listOf(device)
-            )
-        )
-
-        assertEquals(
-            ConnectionState.Connecting(
-                userId = "user-1",
-                deviceId = device.id,
-                devices = listOf(device),
-                binding = BindingLookup.Found(device.id),
-                source = ConnectionSource.Automatic
-            ),
-            target.newState
-        )
-        assertEquals(
-            listOf(
-                ConnectionEffect.ConnectDevice(device.id)
-            ),
-            target.effects
-        )
-
-        val duplicate = reduce(
-            target.newState,
-            ConnectionEvent.DevicesUpdated(
-                listOf(device)
-            )
-        )
-        assertEquals(target.newState, duplicate.newState)
-        assertEquals(
-            emptyList<ConnectionEffect>(),
-            duplicate.effects
-        )
-    }
-
-    @Test
-    fun `device then binding also triggers auto connect`() {
-        val withDevice = reduce(
-            scanning(),
-            ConnectionEvent.DevicesUpdated(
-                listOf(device)
-            )
-        )
+    fun `connect request uses one business transition`() {
         val result = reduce(
-            withDevice.newState,
-            ConnectionEvent.BindingLoaded(device.id)
+            scanning(),
+            ConnectionEvent.ConnectRequested(device.id)
         )
 
         assertEquals(
-            listOf(
-                ConnectionEffect.ConnectDevice(device.id)
-            ),
+            ConnectionState.Connecting("user-1", device.id),
+            result.newState
+        )
+        assertEquals(
+            listOf(ConnectionEffect.ConnectDevice(device.id)),
             result.effects
         )
+    }
+
+    @Test
+    fun `failed connection can be selected again`() {
+        val failed = ConnectionState.ConnectionFailed(
+            userId = "user-1",
+            deviceId = device.id,
+            message = "timeout"
+        )
+
+        val result = reduce(
+            failed,
+            ConnectionEvent.ConnectRequested(device.id)
+        )
+
         assertEquals(
-            ConnectionSource.Automatic,
-            (result.newState as ConnectionState.Connecting)
-                .source
+            ConnectionState.Connecting("user-1", device.id),
+            result.newState
+        )
+        assertEquals(
+            listOf(ConnectionEffect.ConnectDevice(device.id)),
+            result.effects
         )
     }
 
     @Test
-    fun `missing binding still allows manual connect`() {
-        val afterBinding = reduce(
-            scanning(),
-            ConnectionEvent.BindingMissing
-        )
-        val afterDevices = reduce(
-            afterBinding.newState,
-            ConnectionEvent.DevicesUpdated(
-                listOf(device)
-            )
-        )
-        val selected = reduce(
-            afterDevices.newState,
-            ConnectionEvent.DeviceSelected(device.id)
+    fun `every successful connection saves binding`() {
+        val result = reduce(
+            ConnectionState.Connecting("user-1", device.id),
+            ConnectionEvent.DeviceConnected(device)
         )
 
         assertEquals(
-            listOf(
-                ConnectionEffect.ConnectDevice(device.id)
+            ConnectionState.Connected(
+                userId = "user-1",
+                device = device,
+                bindingMessage = null
             ),
-            selected.effects
+            result.newState
         )
         assertEquals(
-            ConnectionSource.Manual,
-            (selected.newState as ConnectionState.Connecting)
-                .source
+            listOf(ConnectionEffect.SaveBinding("user-1", device.id)),
+            result.effects
         )
     }
 
     @Test
-    fun `refresh changes no scan resource state`() {
-        val failedScan = reduce(
-            scanning().copy(devices = listOf(device)),
+    fun `refresh clears scan failure and returns connection failure to scanning`() {
+        val scanFailure = reduce(
+            scanning(),
             ConnectionEvent.ScanFailed("scanner failed")
         )
-        val refreshed = reduce(
-            failedScan.newState,
-            ConnectionEvent.RefreshRequested
+        assertEquals(
+            scanning().copy(message = "scanner failed"),
+            scanFailure.newState
         )
-
         assertEquals(
             scanning(),
-            refreshed.newState
+            reduce(
+                scanFailure.newState,
+                ConnectionEvent.RefreshRequested
+            ).newState
         )
-        assertEquals(
-            emptyList<ConnectionEffect>(),
-            refreshed.effects
-        )
-    }
 
-    @Test
-    fun `only successful manual connection saves binding`() {
-        val manual = ConnectionState.Connecting(
+        val connectionFailure = ConnectionState.ConnectionFailed(
             userId = "user-1",
             deviceId = device.id,
-            devices = listOf(device),
-            binding = BindingLookup.Missing,
-            source = ConnectionSource.Manual
+            message = "timeout"
         )
-        val automatic = manual.copy(
-            source = ConnectionSource.Automatic
-        )
-
         assertEquals(
-            listOf(
-                ConnectionEffect.SaveBinding(
-                    "user-1",
-                    device.id
-                )
-            ),
+            scanning(),
             reduce(
-                manual,
-                ConnectionEvent.DeviceConnected(device)
-            ).effects
-        )
-        assertEquals(
-            emptyList<ConnectionEffect>(),
-            reduce(
-                automatic,
-                ConnectionEvent.DeviceConnected(device)
-            ).effects
-        )
-    }
-
-    @Test
-    fun `failed automatic connection does not retry after refresh`() {
-        val connecting = ConnectionState.Connecting(
-            userId = "user-1",
-            deviceId = device.id,
-            devices = listOf(device),
-            binding = BindingLookup.Found(device.id),
-            source = ConnectionSource.Automatic
-        )
-        val failed = reduce(
-            connecting,
-            ConnectionEvent.DeviceConnectFailed("timeout")
-        )
-        val refreshed = reduce(
-            failed.newState,
-            ConnectionEvent.RefreshRequested
-        )
-        val devicesAgain = reduce(
-            refreshed.newState,
-            ConnectionEvent.DevicesUpdated(
-                listOf(device)
-            )
-        )
-
-        assertEquals(
-            emptyList<ConnectionEffect>(),
-            devicesAgain.effects
-        )
-        assertEquals(
-            true,
-            (devicesAgain.newState as ConnectionState.Scanning)
-                .autoConnectAttempted
+                connectionFailure,
+                ConnectionEvent.RefreshRequested
+            ).newState
         )
     }
 
@@ -230,14 +131,8 @@ class ConnectionDecisionCoreTest {
             scanning(),
             ConnectionEvent.LogoutRequested
         )
-        assertEquals(
-            ConnectionState.LogoutReady,
-            scanningLogout.newState
-        )
-        assertEquals(
-            emptyList<ConnectionEffect>(),
-            scanningLogout.effects
-        )
+        assertEquals(ConnectionState.LogoutReady, scanningLogout.newState)
+        assertEquals(emptyList<ConnectionEffect>(), scanningLogout.effects)
 
         val connected = ConnectionState.Connected(
             userId = "user-1",
@@ -248,10 +143,7 @@ class ConnectionDecisionCoreTest {
             connected,
             ConnectionEvent.LogoutRequested
         )
-        assertEquals(
-            ConnectionState.EndingSession,
-            ending.newState
-        )
+        assertEquals(ConnectionState.EndingSession, ending.newState)
         assertEquals(
             listOf(ConnectionEffect.DisconnectDevice),
             ending.effects
@@ -265,14 +157,10 @@ class ConnectionDecisionCoreTest {
         )
     }
 
-    private fun scanning() =
-        ConnectionState.Scanning(
-            userId = "user-1",
-            devices = emptyList(),
-            binding = BindingLookup.Loading,
-            autoConnectAttempted = false,
-            message = null
-        )
+    private fun scanning() = ConnectionState.Scanning(
+        userId = "user-1",
+        message = null
+    )
 
     private fun reduce(
         state: ConnectionState,

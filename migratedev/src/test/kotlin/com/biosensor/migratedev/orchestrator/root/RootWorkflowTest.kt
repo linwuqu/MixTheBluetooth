@@ -7,6 +7,7 @@ import com.biosensor.migratedev.port.auth.AuthCommand
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.auth.AuthResult
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionCommand
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.port.connection.ConnectionResult
@@ -97,6 +98,10 @@ class RootWorkflowTest {
     }
 
     private object EmptyConnectionPort : ConnectionPort {
+        override fun readBinding(
+            userId: String
+        ): Flow<BindingSnapshot> = flowOf(BindingSnapshot.Missing)
+
         override fun scanDevices():
             Flow<BluetoothDeviceInfo> = emptyFlow()
 

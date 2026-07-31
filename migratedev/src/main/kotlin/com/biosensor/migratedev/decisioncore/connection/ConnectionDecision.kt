@@ -4,17 +4,6 @@ import com.biosensor.migratedev.decisioncore.DecisionCore
 import com.biosensor.migratedev.decisioncore.Transition
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 
-sealed interface BindingLookup {
-    data object Loading : BindingLookup
-    data object Missing : BindingLookup
-    data class Found(val deviceId: String) : BindingLookup
-    data class Failed(val message: String) : BindingLookup
-}
-
-enum class ConnectionSource {
-    Automatic, Manual
-}
-
 sealed interface ConnectionState {
     data object Idle : ConnectionState
 
@@ -23,19 +12,11 @@ sealed interface ConnectionState {
     ) : ConnectionState
 
     data class Scanning(
-        val userId: String,
-        val devices: List<BluetoothDeviceInfo>,
-        val binding: BindingLookup,
-        val autoConnectAttempted: Boolean,
-        val message: String?
+        val userId: String, val message: String?
     ) : ConnectionState
 
     data class Connecting(
-        val userId: String,
-        val deviceId: String,
-        val devices: List<BluetoothDeviceInfo>,
-        val binding: BindingLookup,
-        val source: ConnectionSource
+        val userId: String, val deviceId: String
     ) : ConnectionState
 
     data class Connected(
@@ -43,12 +24,7 @@ sealed interface ConnectionState {
     ) : ConnectionState
 
     data class ConnectionFailed(
-        val userId: String,
-        val deviceId: String,
-        val devices: List<BluetoothDeviceInfo>,
-        val binding: BindingLookup,
-        val source: ConnectionSource,
-        val message: String
+        val userId: String, val deviceId: String, val message: String
     ) : ConnectionState
 
     data object EndingSession : ConnectionState
@@ -62,38 +38,31 @@ sealed interface ConnectionEvent {
 
     data object BluetoothAccessGranted : ConnectionEvent
 
-    data class BindingLoaded(
-        val deviceId: String
-    ) : ConnectionEvent
-    data object BindingMissing : ConnectionEvent
-    data class BindingFailed(
-        val message: String
-    ) : ConnectionEvent
-
-    data class DevicesUpdated(
-        val devices: List<BluetoothDeviceInfo>
-    ) : ConnectionEvent
     data class ScanFailed(
         val message: String
     ) : ConnectionEvent
 
     data object RefreshRequested : ConnectionEvent
 
-    data class DeviceSelected(
+    data class ConnectRequested(
         val deviceId: String
     ) : ConnectionEvent
+
     data class DeviceConnected(
         val device: BluetoothDeviceInfo
     ) : ConnectionEvent
+
     data class DeviceConnectFailed(
         val message: String
     ) : ConnectionEvent
+
     data object DeviceConnectTimeout : ConnectionEvent
     data object DeviceDisconnected : ConnectionEvent
 
     data class BindingSaved(
         val deviceId: String
     ) : ConnectionEvent
+
     data class BindingSaveFailed(
         val message: String
     ) : ConnectionEvent
@@ -102,10 +71,6 @@ sealed interface ConnectionEvent {
 }
 
 sealed interface ConnectionEffect {
-    data class ReadBinding(
-        val userId: String
-    ) : ConnectionEffect
-
     data class SaveBinding(
         val userId: String, val deviceId: String
     ) : ConnectionEffect
@@ -123,40 +88,17 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         currentState: ConnectionState, event: ConnectionEvent
     ): Transition<ConnectionState, ConnectionEffect> = when (event) {
         is ConnectionEvent.ConnectionCreated -> onCreated(currentState, event)
-
         ConnectionEvent.BluetoothAccessGranted -> onAccessGranted(currentState)
 
-        is ConnectionEvent.BindingLoaded -> updateScanning(currentState) {
-            it.copy(
-                binding = BindingLookup.Found(
-                    event.deviceId
-                )
-            )
-        }
-
-        ConnectionEvent.BindingMissing -> updateScanning(currentState) {
-            it.copy(binding = BindingLookup.Missing)
-        }
-
-        is ConnectionEvent.BindingFailed -> updateScanning(currentState) {
-            it.copy(
-                binding = BindingLookup.Failed(
-                    event.message
-                ), message = event.message
-            )
-        }
-
-        is ConnectionEvent.DevicesUpdated -> updateScanning(currentState) {
-            it.copy(devices = event.devices)
-        }
-
-        is ConnectionEvent.ScanFailed -> updateScanning(currentState) {
-            it.copy(message = event.message)
+        is ConnectionEvent.ScanFailed -> if (currentState is ConnectionState.Scanning) {
+            Transition(currentState.copy(message = event.message))
+        } else {
+            Transition(currentState)
         }
 
         ConnectionEvent.RefreshRequested -> onRefresh(currentState)
 
-        is ConnectionEvent.DeviceSelected -> onDeviceSelected(
+        is ConnectionEvent.ConnectRequested -> onConnectRequested(
             currentState, event.deviceId
         )
 
@@ -168,7 +110,9 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
             currentState, event.message
         )
 
-        ConnectionEvent.DeviceConnectTimeout -> onConnectFailed(currentState, "连接超时")
+        ConnectionEvent.DeviceConnectTimeout -> onConnectFailed(
+            currentState, "连接超时"
+        )
 
         ConnectionEvent.DeviceDisconnected -> onDisconnected(currentState)
 
@@ -186,11 +130,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     private fun onCreated(
         state: ConnectionState, event: ConnectionEvent.ConnectionCreated
     ): Transition<ConnectionState, ConnectionEffect> = if (state == ConnectionState.Idle) {
-        Transition(
-            ConnectionState.AwaitingBluetoothAccess(
-                event.userId
-            )
-        )
+        Transition(ConnectionState.AwaitingBluetoothAccess(event.userId))
     } else {
         Transition(state)
     }
@@ -199,111 +139,33 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> =
         if (state is ConnectionState.AwaitingBluetoothAccess) {
-            Transition(
-                newState = ConnectionState.Scanning(
-                    userId = state.userId,
-                    devices = emptyList(),
-                    binding = BindingLookup.Loading,
-                    autoConnectAttempted = false,
-                    message = null
-                ), effects = listOf(
-                    ConnectionEffect.ReadBinding(state.userId)
-                )
-            )
+            Transition(ConnectionState.Scanning(state.userId, message = null))
         } else {
             Transition(state)
         }
 
-    private fun updateScanning(
-        state: ConnectionState, update: (
-            ConnectionState.Scanning
-        ) -> ConnectionState.Scanning
-    ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Scanning) {
-        maybeAutoConnect(update(state))
-    } else {
-        Transition(state)
-    }
-
-    private fun maybeAutoConnect(
-        state: ConnectionState.Scanning
-    ): Transition<ConnectionState, ConnectionEffect> {
-        if (state.autoConnectAttempted) {
-            return Transition(state)
-        }
-        val remembered =
-            (state.binding as? BindingLookup.Found)?.deviceId ?: return Transition(state)
-        if (state.devices.none { it.id == remembered }) {
-            return Transition(state)
-        }
-        return Transition(
-            newState = ConnectionState.Connecting(
-                userId = state.userId,
-                deviceId = remembered,
-                devices = state.devices,
-                binding = state.binding,
-                source = ConnectionSource.Automatic
-            ), effects = listOf(
-                ConnectionEffect.ConnectDevice(remembered)
-            )
-        )
-    }
-
     private fun onRefresh(
         state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> = when (state) {
-        is ConnectionState.Scanning -> Transition(
-            state.copy(
-                devices = emptyList(), message = null
-            )
-        )
-
+        is ConnectionState.Scanning -> Transition(state.copy(message = null))
         is ConnectionState.ConnectionFailed -> Transition(
-            ConnectionState.Scanning(
-                userId = state.userId,
-                devices = emptyList(),
-                binding = state.binding,
-                autoConnectAttempted = state.source == ConnectionSource.Automatic,
-                message = null
-            )
+            ConnectionState.Scanning(state.userId, message = null)
         )
 
         else -> Transition(state)
     }
 
-    private fun onDeviceSelected(
+    private fun onConnectRequested(
         state: ConnectionState, deviceId: String
     ): Transition<ConnectionState, ConnectionEffect> {
-        val userId: String
-        val devices: List<BluetoothDeviceInfo>
-        val binding: BindingLookup
-        when (state) {
-            is ConnectionState.Scanning -> {
-                userId = state.userId
-                devices = state.devices
-                binding = state.binding
-            }
-
-            is ConnectionState.ConnectionFailed -> {
-                userId = state.userId
-                devices = state.devices
-                binding = state.binding
-            }
-
+        val userId = when (state) {
+            is ConnectionState.Scanning -> state.userId
+            is ConnectionState.ConnectionFailed -> state.userId
             else -> return Transition(state)
         }
-        if (devices.none { it.id == deviceId }) {
-            return Transition(state)
-        }
         return Transition(
-            newState = ConnectionState.Connecting(
-                userId = userId,
-                deviceId = deviceId,
-                devices = devices,
-                binding = binding,
-                source = ConnectionSource.Manual
-            ), effects = listOf(
-                ConnectionEffect.ConnectDevice(deviceId)
-            )
+            newState = ConnectionState.Connecting(userId, deviceId),
+            effects = listOf(ConnectionEffect.ConnectDevice(deviceId))
         )
     }
 
@@ -314,15 +176,9 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
             Transition(
                 newState = ConnectionState.Connected(
                     userId = state.userId, device = device, bindingMessage = null
-                ), effects = if (state.source == ConnectionSource.Manual) {
-                    listOf(
-                        ConnectionEffect.SaveBinding(
-                            state.userId, device.id
-                        )
-                    )
-                } else {
-                    emptyList()
-                }
+                ), effects = listOf(
+                    ConnectionEffect.SaveBinding(state.userId, device.id)
+                )
             )
         } else {
             Transition(state)
@@ -333,12 +189,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Connecting) {
         Transition(
             ConnectionState.ConnectionFailed(
-                userId = state.userId,
-                deviceId = state.deviceId,
-                devices = state.devices,
-                binding = state.binding,
-                source = state.source,
-                message = message
+                userId = state.userId, deviceId = state.deviceId, message = message
             )
         )
     } else {
@@ -352,14 +203,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
 
         is ConnectionState.Connected -> Transition(
             ConnectionState.ConnectionFailed(
-                userId = state.userId,
-                deviceId = state.device.id,
-                devices = listOf(state.device),
-                binding = BindingLookup.Found(
-                    state.device.id
-                ),
-                source = ConnectionSource.Automatic,
-                message = "蓝牙连接已断开"
+                userId = state.userId, deviceId = state.device.id, message = "蓝牙连接已断开"
             )
         )
 
@@ -370,9 +214,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         state: ConnectionState, deviceId: String
     ): Transition<ConnectionState, ConnectionEffect> =
         if (state is ConnectionState.Connected && state.device.id == deviceId) {
-            Transition(
-                state.copy(bindingMessage = null)
-            )
+            Transition(state.copy(bindingMessage = null))
         } else {
             Transition(state)
         }
@@ -380,9 +222,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     private fun onBindingSaveFailed(
         state: ConnectionState, message: String
     ): Transition<ConnectionState, ConnectionEffect> = if (state is ConnectionState.Connected) {
-        Transition(
-            state.copy(bindingMessage = message)
-        )
+        Transition(state.copy(bindingMessage = message))
     } else {
         Transition(state)
     }
@@ -391,9 +231,8 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         state: ConnectionState
     ): Transition<ConnectionState, ConnectionEffect> = when (state) {
         is ConnectionState.Connecting, is ConnectionState.Connected -> Transition(
-            newState = ConnectionState.EndingSession, effects = listOf(
-                ConnectionEffect.DisconnectDevice
-            )
+            newState = ConnectionState.EndingSession,
+            effects = listOf(ConnectionEffect.DisconnectDevice)
         )
 
         ConnectionState.EndingSession, ConnectionState.LogoutReady -> Transition(state)

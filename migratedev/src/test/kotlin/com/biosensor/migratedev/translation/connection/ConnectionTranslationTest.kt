@@ -2,7 +2,9 @@ package com.biosensor.migratedev.translation.connection
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionCommand
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.port.connection.ConnectionResult
@@ -10,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -91,6 +94,7 @@ class ConnectionTranslationTest {
                     translation.uiState.value.phase
                 )
                 assertEquals(emptyList<ConnectionCommand>(), port.commands)
+                assertEquals(listOf("user-1"), port.bindingUsers)
 
                 translation.submit(
                     ConnectionIntent.BecameVisible
@@ -104,12 +108,7 @@ class ConnectionTranslationTest {
                     ConnectionPhase.Scanning,
                     translation.uiState.value.phase
                 )
-                assertEquals(
-                    setOf(
-                        ConnectionCommand.ReadBinding("user-1")
-                    ),
-                    port.commands.toSet()
-                )
+                assertEquals(emptyList<ConnectionCommand>(), port.commands)
                 assertEquals(1, port.scanCollections)
             } finally {
                 store.clear()
@@ -117,6 +116,104 @@ class ConnectionTranslationTest {
                 Dispatchers.resetMain()
             }
         }
+
+    @Test
+    fun `binding and scan streams submit one automatic connection`() =
+        runTest {
+            Dispatchers.setMain(
+                StandardTestDispatcher(testScheduler)
+            )
+            val store = ViewModelStore()
+            val port = RecordingConnectionPort()
+            val device = BluetoothDeviceInfo(
+                id = "AA:BB:CC:DD:EE:FF",
+                name = "BT24-S",
+                isBle = true,
+                rssi = -40
+            )
+            try {
+                val translation = ViewModelProvider(
+                    store,
+                    ConnectionTranslation.factory(
+                        userId = "user-1",
+                        port = port
+                    )
+                )[ConnectionTranslation::class.java]
+
+                translation.submit(ConnectionIntent.BecameVisible)
+                translation.submit(
+                    ConnectionIntent.BluetoothAccessGranted
+                )
+                advanceUntilIdle()
+
+                port.devices.emit(device)
+                advanceUntilIdle()
+                assertEquals(emptyList<ConnectionCommand>(), port.commands)
+
+                port.binding.value = BindingSnapshot.Found(device.id)
+                advanceUntilIdle()
+
+                val connect = ConnectionCommand.Bluetooth(
+                    BluetoothCommand.Connect(device.id)
+                )
+                assertEquals(listOf(connect), port.commands)
+
+                port.devices.emit(device.copy(rssi = -41))
+                port.binding.value = BindingSnapshot.Found(device.id)
+                advanceUntilIdle()
+                assertEquals(listOf(connect), port.commands)
+            } finally {
+                store.clear()
+                advanceUntilIdle()
+                Dispatchers.resetMain()
+            }
+        }
+
+    @Test
+    fun `manual selection uses the same connection command`() = runTest {
+        Dispatchers.setMain(
+            StandardTestDispatcher(testScheduler)
+        )
+        val store = ViewModelStore()
+        val port = RecordingConnectionPort()
+        val device = BluetoothDeviceInfo(
+            id = "AA:BB:CC:DD:EE:FF",
+            name = "BT24-S",
+            isBle = true,
+            rssi = -40
+        )
+        try {
+            val translation = ViewModelProvider(
+                store,
+                ConnectionTranslation.factory(
+                    userId = "user-1",
+                    port = port
+                )
+            )[ConnectionTranslation::class.java]
+
+            translation.submit(ConnectionIntent.BecameVisible)
+            translation.submit(ConnectionIntent.BluetoothAccessGranted)
+            advanceUntilIdle()
+            port.devices.emit(device)
+            advanceUntilIdle()
+
+            translation.submit(ConnectionIntent.SelectDevice(device.id))
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    ConnectionCommand.Bluetooth(
+                        BluetoothCommand.Connect(device.id)
+                    )
+                ),
+                port.commands
+            )
+        } finally {
+            store.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun `hidden cancels scan and visible starts one new collection`() =
@@ -222,12 +319,21 @@ class ConnectionTranslationTest {
 
     private class RecordingConnectionPort : ConnectionPort {
         val commands = mutableListOf<ConnectionCommand>()
+        val binding = MutableStateFlow<BindingSnapshot>(BindingSnapshot.Missing)
+        val bindingUsers = mutableListOf<String>()
         val devices =
             MutableSharedFlow<BluetoothDeviceInfo>(
                 extraBufferCapacity = 8
             )
         var scanCollections = 0
         var scanStops = 0
+
+        override fun readBinding(
+            userId: String
+        ): Flow<BindingSnapshot> = flow {
+            bindingUsers += userId
+            emitAll(binding)
+        }
 
         override fun scanDevices():
             Flow<BluetoothDeviceInfo> = flow {

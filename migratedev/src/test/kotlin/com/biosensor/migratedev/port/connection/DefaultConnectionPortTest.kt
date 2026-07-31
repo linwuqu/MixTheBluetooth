@@ -58,10 +58,8 @@ class DefaultConnectionPortTest {
     @Test
     fun `read and save binding are routed to sqlite`() = runTest {
         assertEquals(
-            listOf(ConnectionResult.BindingMissing),
-            port.execute(
-                ConnectionCommand.ReadBinding("user-1")
-            ).toList()
+            listOf(BindingSnapshot.Missing),
+            port.readBinding("user-1").toList()
         )
 
         assertEquals(
@@ -74,10 +72,8 @@ class DefaultConnectionPortTest {
             ).toList()
         )
         assertEquals(
-            listOf(ConnectionResult.BindingLoaded("AA:01")),
-            port.execute(
-                ConnectionCommand.ReadBinding("user-1")
-            ).toList()
+            listOf(BindingSnapshot.Found("AA:01")),
+            port.readBinding("user-1").toList()
         )
         assertEquals(
             1234L,
