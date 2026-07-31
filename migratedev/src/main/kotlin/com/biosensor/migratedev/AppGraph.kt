@@ -18,6 +18,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
+/**
+ * 这里进行模块装载
+ * TODO: 还需要进一步优化这里的模块设计将初始化过程变得更加清晰
+ */
 class AppGraph(application: Application) {
     internal val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val bluetoothScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

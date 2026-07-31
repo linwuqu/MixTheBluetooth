@@ -105,32 +105,21 @@ class ConnectionTranslation private constructor(
     }
 
     private fun reportRootOutput(
-        previous: ConnectionState,
-        event: ConnectionEvent,
-        current: ConnectionState
+        previous: ConnectionState, event: ConnectionEvent, current: ConnectionState
     ) {
-        if (
-            event == ConnectionEvent.LogoutRequested &&
-            previous != current
-        ) {
+        if (event == ConnectionEvent.LogoutRequested && previous != current) {
             report(ConnectionOutput.LogoutRequested)
         }
-        if (
-            previous != ConnectionState.LogoutReady &&
-            current == ConnectionState.LogoutReady
-        ) {
+        if (previous != ConnectionState.LogoutReady && current == ConnectionState.LogoutReady) {
             report(ConnectionOutput.Stopped)
         }
     }
 
     companion object {
         fun factory(
-            userId: String,
-            port: ConnectionPort,
-            scanSessionIdFactory: () -> String = {
+            userId: String, port: ConnectionPort, scanSessionIdFactory: () -> String = {
                 UUID.randomUUID().toString()
-            },
-            report: (ConnectionOutput) -> Unit = {}
+            }, report: (ConnectionOutput) -> Unit = {}
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(
@@ -140,13 +129,10 @@ class ConnectionTranslation private constructor(
                     modelClass.isAssignableFrom(
                         ConnectionTranslation::class.java
                     )
-                    )
-                    return ConnectionTranslation(
-                        userId,
-                        port,
-                        scanSessionIdFactory,
-                        report
-                    ) as T
+                )
+                return ConnectionTranslation(
+                    userId, port, scanSessionIdFactory, report
+                ) as T
             }
         }
     }

@@ -90,14 +90,18 @@ fun BluetoothAccessGate(
     }
 }
 
-internal fun requiredBluetoothPermissions(): Array<String> =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+internal fun requiredBluetoothPermissions(
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Array<String> = if (sdkInt >= Build.VERSION_CODES.S) {
         arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
-    } else {
-        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-    }
+} else {
+    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+}
 
 private fun Context.hasPermissions(
     permissions: Array<String>

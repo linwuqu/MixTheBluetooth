@@ -317,9 +317,9 @@ class AndroidBluetoothPort internal constructor(
     private fun handleDeviceFound(
         device: LibraryBluetoothDevice
     ) {
-        if (!filter.matches(device.advertisement)) {
-            return
-        }
+//        if (!filter.matches(device.advertisement)) {
+//            return
+//        }
         val snapshot = synchronized(lock) {
             val session = activeScan ?: return
             session.devices[device.id] = device.toDeviceInfo()

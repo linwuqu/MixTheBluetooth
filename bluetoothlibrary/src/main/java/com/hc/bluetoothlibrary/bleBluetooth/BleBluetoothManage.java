@@ -16,6 +16,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
@@ -73,6 +74,7 @@ public class BleBluetoothManage {
     private static final long SCAN_PERIOD = 20 * 1000;//扫描时间
 
     private final Handler mTimeHandler = new Handler();//延时执行
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
     private final Context mContext;
 
@@ -494,7 +496,7 @@ public class BleBluetoothManage {
                 @Override
                 public void onLeScan(final BluetoothDevice device, final int rssi,
                                      byte[] scanRecord) {
-                    ((Activity) mContext).runOnUiThread(new Runnable() {
+                    mMainHandler.post(new Runnable() {
                         @Override
                         public void run() {
                             //mLeDeviceListAdapter.addDevice(device);
@@ -533,7 +535,7 @@ public class BleBluetoothManage {
 
 
                 final String finalModuleName = moduleName;
-                ((Activity) mContext).runOnUiThread(new Runnable() {
+                mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         addDeviceModel(device, result.getRssi(), finalModuleName, result);
@@ -544,7 +546,7 @@ public class BleBluetoothManage {
             @Override
             public void onScanFailed(final int errorCode) {
                 super.onScanFailed(errorCode);
-                ((Activity) mContext).runOnUiThread(new Runnable() {
+                mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         Toast.makeText(mContext, "扫描出错:" + errorCode, Toast.LENGTH_SHORT).show();
@@ -596,7 +598,7 @@ public class BleBluetoothManage {
             @Override
             public void onScanFailed(final int errorCode) {
                 super.onScanFailed(errorCode);
-                ((Activity) mContext).runOnUiThread(new Runnable() {
+                mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         Toast.makeText(mContext, "扫描出错:" + errorCode, Toast.LENGTH_SHORT).show();

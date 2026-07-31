@@ -26,11 +26,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.translation.auth.AuthUiState
 
-/** UI 占位；工作流合约完成接线后再补充具体界面。 */
+// TODO: 讲一下这里怎么使用 @Preview
 @Composable
 fun AuthScreen(
     state: AuthUiState,
@@ -128,21 +129,6 @@ fun AuthScreen(
                 enabled = canSubmit, onClick = { registerMode = !registerMode }) {
                 Text(if (registerMode) "切换登录" else "切换注册")
             }
-        }
-    }
-}
-
-@Composable
-fun DebugHomeScreen(user: User, onLogout: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp), verticalArrangement = Arrangement.Center
-    ) {
-        Text("已登录：${user.userName}")
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onLogout) {
-            Text("退出登录")
         }
     }
 }
