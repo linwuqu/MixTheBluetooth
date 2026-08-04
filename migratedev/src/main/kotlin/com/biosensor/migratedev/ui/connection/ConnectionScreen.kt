@@ -51,9 +51,7 @@ fun ConnectionScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "连接 BT24", style = MaterialTheme.typography.headlineSmall
-            )
+            Text("连接 BT24", style = MaterialTheme.typography.headlineSmall)
             OutlinedButton(
                 enabled = state.phase != ConnectionPhase.EndingSession, onClick = onLogout
             ) {

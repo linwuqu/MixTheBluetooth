@@ -19,44 +19,28 @@ fun ConnectionRoute(translation: ConnectionTranslation) {
     val activity = LocalContext.current.findActivity()
 
     if (state.phase == ConnectionPhase.AwaitingBluetoothAccess) {
-        BluetoothAccessGate(onAccessReady = {
-            translation.submit(
-                ConnectionIntent.BluetoothAccessGranted
-            )
-        }, onPermissionDenied = {
-            activity?.finishAffinity()
-        }, onBluetoothEnableCancelled = {
-            // 保持 Awaiting；不扫描，也不二次弹系统请求。
-        })
+        BluetoothAccessGate(
+            onAccessReady = { translation.submit(ConnectionIntent.BluetoothAccessGranted) },
+            onPermissionDenied = { activity?.finishAffinity() },
+            onBluetoothEnableCancelled = {})
     }
 
     DisposableEffect(lifecycleOwner, translation) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> translation.submit(
-                    ConnectionIntent.BecameVisible
-                )
-
-                Lifecycle.Event.ON_STOP -> translation.submit(
-                    ConnectionIntent.BecameHidden
-                )
+                Lifecycle.Event.ON_START -> translation.submit(ConnectionIntent.BecameVisible)
+                Lifecycle.Event.ON_STOP -> translation.submit(ConnectionIntent.BecameHidden)
 
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    ConnectionScreen(state = state, onRefresh = {
-        translation.submit(ConnectionIntent.Refresh)
-    }, onDeviceSelected = {
-        translation.submit(
-            ConnectionIntent.SelectDevice(it)
-        )
-    }, onLogout = {
-        translation.submit(ConnectionIntent.Logout)
-    })
+    ConnectionScreen(
+        state = state,
+        onRefresh = { translation.submit(ConnectionIntent.Refresh) },
+        onDeviceSelected = { translation.submit(ConnectionIntent.SelectDevice(it)) },
+        onLogout = { translation.submit(ConnectionIntent.Logout) })
 }

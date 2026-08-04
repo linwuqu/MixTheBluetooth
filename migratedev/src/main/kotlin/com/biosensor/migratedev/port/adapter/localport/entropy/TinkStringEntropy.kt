@@ -13,14 +13,15 @@ import kotlinx.coroutines.flow.first
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
 
+/**
+ * 使用 Tink 进行加密 然后使用 android 安全的 DataStore进行存储
+ */
 class TinkStringEntropy internal constructor(
     private val preferences: EntropyPreferences, private val aead: Aead
 ) : StringEntropy {
     constructor(
         dataStore: DataStore<Preferences>, aead: Aead
-    ) : this(
-        preferences = DataStoreEntropyPreferences(dataStore), aead = aead
-    )
+    ) : this(preferences = DataStoreEntropyPreferences(dataStore), aead = aead)
 
     override suspend fun read(key: String): EntropyReadResult {
         return try {
@@ -30,9 +31,7 @@ class TinkStringEntropy internal constructor(
             val plaintext = aead.decrypt(ciphertext, associatedData(key))
             EntropyReadResult.Found(plaintext.toString(Charsets.UTF_8))
         } catch (failure: Exception) {
-            EntropyReadResult.Failed(
-                failure.message ?: "加密字符串读取失败"
-            )
+            EntropyReadResult.Failed(failure.message ?: "加密字符串读取失败")
         }
     }
 
@@ -40,17 +39,11 @@ class TinkStringEntropy internal constructor(
         key: String, value: String
     ): EntropyWriteResult {
         return try {
-            val ciphertext = aead.encrypt(
-                value.toByteArray(Charsets.UTF_8), associatedData(key)
-            )
-            preferences.write(
-                preferenceKey(key), ciphertext.toByteString().base64()
-            )
+            val ciphertext = aead.encrypt(value.toByteArray(Charsets.UTF_8), associatedData(key))
+            preferences.write(preferenceKey(key), ciphertext.toByteString().base64())
             EntropyWriteResult.Written
         } catch (failure: Exception) {
-            EntropyWriteResult.Failed(
-                failure.message ?: "加密字符串写入失败"
-            )
+            EntropyWriteResult.Failed(failure.message ?: "加密字符串写入失败")
         }
     }
 
@@ -65,9 +58,7 @@ class TinkStringEntropy internal constructor(
                 EntropyRemoveResult.Removed
             }
         } catch (failure: Exception) {
-            EntropyRemoveResult.Failed(
-                failure.message ?: "加密字符串删除失败"
-            )
+            EntropyRemoveResult.Failed(failure.message ?: "加密字符串删除失败")
         }
     }
 

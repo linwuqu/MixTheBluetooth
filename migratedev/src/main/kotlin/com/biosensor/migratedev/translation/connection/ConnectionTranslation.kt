@@ -62,6 +62,11 @@ sealed interface ConnectionOutput {
     data object Stopped : ConnectionOutput
 }
 
+/**
+ * ConnectionTranslation 是蓝牙扫描和连接部分的重要枢纽
+ * 除了负责翻译层的本职工作建立 Orchestrator 外
+ * 还负责了三个协程任务的管理
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionTranslation private constructor(
     private val userId: String,

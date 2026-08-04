@@ -88,7 +88,7 @@ private fun RootNavigationEffect(
     val screen = rootState.screen()
     LaunchedEffect(screen) {
         when (screen) {
-            // TODO: 这部分有实际意义吗
+            // TODO: 这里是无害的 本身栈顶就是 AUTH_ROUTE
             RootScreen.Auth -> {
                 navController.navigate(AUTH_ROUTE) {
                     popUpTo(SESSION_GRAPH) {
