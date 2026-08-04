@@ -12,7 +12,9 @@
 | 03 | 拉取缓存明文流 | [03-read-cache-text-stream.md](./03-read-cache-text-stream.md) | 初稿 |
 | 04 | 解析 / 校验 / 重试决策 | [04-parse-validate-cache-text.md](./04-parse-validate-cache-text.md) | 初稿 |
 | 06 | 端口挂载：能力与业务适配器分离（架构） | [06-port-capability-separation.md](./06-port-capability-separation.md) | 已落地 |
-| 07 | 指令直达，分层上报：Effect/Command 映射收敛（架构） | [07-direct-command-hierarchical-report.md](./07-direct-command-hierarchical-report.md) | 设计稿 |
+| 07 | 指令直达，分层上报：Effect/Command 映射收敛（架构） | [07-direct-command-hierarchical-report.md](./07-direct-command-hierarchical-report.md) | 已落地 |
+| 08 | UI 分层：Route 业务转移 / Screen 纯呈现 + 组件拆分与 Preview（架构） | [08-ui-route-screen-split.md](./08-ui-route-screen-split.md) | 已落地 |
+| 09 | 流全景与 combine 建模：抗压与低能耗刷新的边界（架构） | [09-flow-landscape-and-combine.md](./09-flow-landscape-and-combine.md) | 梳理稿 |
 
 ## 2. 待整理工作流
 
