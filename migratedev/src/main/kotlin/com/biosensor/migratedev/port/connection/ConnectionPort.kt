@@ -1,24 +1,10 @@
 package com.biosensor.migratedev.port.connection
 
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.port.CommandPort
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothResult
 import kotlinx.coroutines.flow.Flow
-
-sealed interface ConnectionCommand {
-    data class SaveBinding(val userId: String, val deviceId: String) : ConnectionCommand
-
-    data class Bluetooth(val command: BluetoothCommand) : ConnectionCommand
-}
-
-sealed interface ConnectionResult {
-    data class BindingSaved(val deviceId: String) : ConnectionResult
-
-    data class BindingSaveFailed(val message: String) : ConnectionResult
-
-    data class Bluetooth(val result: BluetoothResult) : ConnectionResult
-}
 
 sealed interface BindingSnapshot {
     data object Loading : BindingSnapshot
@@ -27,7 +13,11 @@ sealed interface BindingSnapshot {
     data class Failed(val message: String) : BindingSnapshot
 }
 
-interface ConnectionPort : CommandPort<ConnectionCommand, ConnectionResult> {
+/**
+ * 连接业务端口:直接执行领域副作用([ConnectionEffect]),翻译成领域事件([ConnectionEvent])上报。
+ * [readBinding] / [scanDevices] 是直读流(非 effect→event 形态),保持不变。
+ */
+interface ConnectionPort : CommandPort<ConnectionEffect, ConnectionEvent> {
     fun readBinding(userId: String): Flow<BindingSnapshot>
 
     fun scanDevices(): Flow<BluetoothDeviceInfo>

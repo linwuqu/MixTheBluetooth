@@ -2,11 +2,11 @@ package com.biosensor.migratedev.translation.auth
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
-import com.biosensor.migratedev.port.auth.AuthCommand
 import com.biosensor.migratedev.port.auth.AuthPort
-import com.biosensor.migratedev.port.auth.AuthResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -40,16 +40,16 @@ class AuthTranslationTest {
             )
             val port = object : AuthPort {
                 override fun execute(
-                    command: AuthCommand
-                ): Flow<AuthResult> = when (command) {
-                    AuthCommand.Local.ReadSession ->
-                        flowOf(AuthResult.Local.SessionFound(session))
+                    effect: AuthEffect
+                ): Flow<AuthEvent> = when (effect) {
+                    is AuthEffect.ReadSession ->
+                        flowOf(AuthEvent.SessionFound(session))
 
-                    is AuthCommand.Remote.ValidateSession ->
-                        flowOf(AuthResult.Remote.SessionVerified(session))
+                    is AuthEffect.ValidateSession ->
+                        flowOf(AuthEvent.SessionVerified(session))
 
-                    AuthCommand.Local.ClearSession ->
-                        flowOf(AuthResult.Local.SessionCleared)
+                    is AuthEffect.ClearSession ->
+                        flowOf(AuthEvent.SessionCleared)
 
                     else -> emptyFlow()
                 }
@@ -105,7 +105,7 @@ class AuthTranslationTest {
 
     private object EmptyAuthPort : AuthPort {
         override fun execute(
-            command: AuthCommand
-        ): Flow<AuthResult> = emptyFlow()
+            effect: AuthEffect
+        ): Flow<AuthEvent> = emptyFlow()
     }
 }

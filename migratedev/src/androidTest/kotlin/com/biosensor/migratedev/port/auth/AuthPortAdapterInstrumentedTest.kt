@@ -3,6 +3,8 @@ package com.biosensor.migratedev.port.auth
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.port.adapter.localport.AndroidLocalPort
@@ -40,20 +42,20 @@ class AuthPortAdapterInstrumentedTest {
                 )
 
                 assertEquals(
-                    AuthResult.Local.SessionCleared,
-                    port.execute(AuthCommand.Local.ClearSession).first()
+                    AuthEvent.SessionCleared,
+                    port.execute(AuthEffect.ClearSession).first()
                 )
                 assertEquals(
-                    AuthResult.Local.SessionSaved,
-                    port.execute(AuthCommand.Local.SaveSession(session)).first()
+                    AuthEvent.SessionSaved,
+                    port.execute(AuthEffect.SaveSession(session)).first()
                 )
                 assertEquals(
-                    AuthResult.Local.SessionFound(session),
-                    port.execute(AuthCommand.Local.ReadSession).first()
+                    AuthEvent.SessionFound(session),
+                    port.execute(AuthEffect.ReadSession).first()
                 )
                 assertEquals(
-                    AuthResult.Local.SessionCleared,
-                    port.execute(AuthCommand.Local.ClearSession).first()
+                    AuthEvent.SessionCleared,
+                    port.execute(AuthEffect.ClearSession).first()
                 )
             } finally {
                 scope.cancel()

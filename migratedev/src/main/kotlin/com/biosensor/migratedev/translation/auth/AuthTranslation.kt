@@ -8,7 +8,6 @@ import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthState
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
-import com.biosensor.migratedev.orchestrator.auth.AuthEffectExecutor
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.translation.Translation
 import kotlinx.coroutines.flow.SharingStarted
@@ -63,7 +62,7 @@ class AuthTranslation private constructor(
     private val orchestrator = WorkflowOrchestrator(
         initialState = AuthState.Idle,
         decisionCore = AuthDecisionCore,
-        effectExecutor = AuthEffectExecutor(port),
+        effectExecutor = port,
         scope = viewModelScope,
         logTag = "Auth.Workflow",
         onTransition = ::reportRootOutput

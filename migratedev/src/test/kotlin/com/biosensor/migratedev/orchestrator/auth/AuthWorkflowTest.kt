@@ -1,14 +1,13 @@
 package com.biosensor.migratedev.orchestrator.auth
 
 import com.biosensor.migratedev.decisioncore.auth.AuthDecisionCore
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
 import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.AuthState
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
-import com.biosensor.migratedev.port.auth.AuthCommand
 import com.biosensor.migratedev.port.auth.AuthPort
-import com.biosensor.migratedev.port.auth.AuthResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +35,7 @@ class AuthWorkflowTest {
         val orchestrator = WorkflowOrchestrator(
             initialState = AuthState.Idle,
             decisionCore = AuthDecisionCore,
-            effectExecutor = AuthEffectExecutor(FakeAuthPort(session)),
+            effectExecutor = FakeAuthPort(session),
             scope = scope
         )
 
@@ -55,7 +54,7 @@ class AuthWorkflowTest {
         val orchestrator = WorkflowOrchestrator(
             initialState = AuthState.Idle,
             decisionCore = AuthDecisionCore,
-            effectExecutor = AuthEffectExecutor(port),
+            effectExecutor = port,
             scope = scope
         )
 
@@ -74,28 +73,26 @@ class AuthWorkflowTest {
     ) : AuthPort {
         var savedSession: AuthSession? = null
 
-        override fun execute(command: AuthCommand): Flow<AuthResult> {
+        override fun execute(effect: AuthEffect): Flow<AuthEvent> {
             return flowOf(
-                when (command) {
-                    AuthCommand.Local.ReadSession -> restoredSession?.let {
-                        AuthResult.Local.SessionFound(it)
-                    } ?: AuthResult.Local.SessionMissing
+                when (effect) {
+                    is AuthEffect.ReadSession -> restoredSession?.let {
+                        AuthEvent.SessionFound(it)
+                    } ?: AuthEvent.SessionMissing
 
-                    is AuthCommand.Local.SaveSession -> {
-                        savedSession = command.session
-                        AuthResult.Local.SessionSaved
+                    is AuthEffect.SaveSession -> {
+                        savedSession = effect.session
+                        AuthEvent.SessionSaved
                     }
 
-                    AuthCommand.Local.ClearSession -> AuthResult.Local.SessionCleared
-                    is AuthCommand.Remote.ValidateSession -> {
-                        AuthResult.Remote.SessionVerified(command.session)
-                    }
+                    is AuthEffect.ClearSession -> AuthEvent.SessionCleared
+                    is AuthEffect.ValidateSession -> AuthEvent.SessionVerified(effect.session)
 
-                    is AuthCommand.Remote.Login -> {
-                        AuthResult.Remote.Accepted(requireNotNull(loginSession))
-                    }
+                    is AuthEffect.LoginRemote -> AuthEvent.RemoteAccepted(
+                        requireNotNull(loginSession)
+                    )
 
-                    is AuthCommand.Remote.Register -> AuthResult.Remote.RegistrationAccepted
+                    is AuthEffect.RegisterRemote -> AuthEvent.RegistrationAccepted
                 }
             )
         }

@@ -7,7 +7,6 @@ import com.biosensor.migratedev.decisioncore.connection.ConnectionDecisionCore
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.decisioncore.connection.ConnectionState
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
-import com.biosensor.migratedev.orchestrator.connection.ConnectionEffectExecutor
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
@@ -87,7 +86,7 @@ class ConnectionTranslation private constructor(
     private val orchestrator = WorkflowOrchestrator(
         initialState = ConnectionState.Idle,
         decisionCore = ConnectionDecisionCore,
-        effectExecutor = ConnectionEffectExecutor(port),
+        effectExecutor = port,
         scope = viewModelScope,
         logTag = "Connection.Workflow",
         onTransition = ::onTransition

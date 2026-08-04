@@ -1,6 +1,7 @@
 package com.biosensor.migratedev.orchestrator
 
 import com.biosensor.migratedev.decisioncore.DecisionCore
+import com.biosensor.migratedev.port.CommandPort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -46,7 +47,7 @@ import timber.log.Timber
 class WorkflowOrchestrator<State, Event, Effect>(
     initialState: State,
     private val decisionCore: DecisionCore<State, Event, Effect>,
-    private val effectExecutor: EffectExecutor<Effect, Event>,
+    private val effectExecutor: CommandPort<Effect, Event>,
     scope: CoroutineScope,
     private val logTag: String = "Workflow",
     private val onTransition: (

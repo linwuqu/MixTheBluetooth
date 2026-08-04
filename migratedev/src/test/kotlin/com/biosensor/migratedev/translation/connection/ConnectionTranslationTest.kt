@@ -2,12 +2,11 @@ package com.biosensor.migratedev.translation.connection
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.connection.BindingSnapshot
-import com.biosensor.migratedev.port.connection.ConnectionCommand
 import com.biosensor.migratedev.port.connection.ConnectionPort
-import com.biosensor.migratedev.port.connection.ConnectionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -93,7 +92,7 @@ class ConnectionTranslationTest {
                     ConnectionPhase.AwaitingBluetoothAccess,
                     translation.uiState.value.phase
                 )
-                assertEquals(emptyList<ConnectionCommand>(), port.commands)
+                assertEquals(emptyList<ConnectionEffect>(), port.commands)
                 assertEquals(listOf("user-1"), port.bindingUsers)
 
                 translation.submit(
@@ -108,7 +107,7 @@ class ConnectionTranslationTest {
                     ConnectionPhase.Scanning,
                     translation.uiState.value.phase
                 )
-                assertEquals(emptyList<ConnectionCommand>(), port.commands)
+                assertEquals(emptyList<ConnectionEffect>(), port.commands)
                 assertEquals(1, port.scanCollections)
             } finally {
                 store.clear()
@@ -148,14 +147,12 @@ class ConnectionTranslationTest {
 
                 port.devices.emit(device)
                 advanceUntilIdle()
-                assertEquals(emptyList<ConnectionCommand>(), port.commands)
+                assertEquals(emptyList<ConnectionEffect>(), port.commands)
 
                 port.binding.value = BindingSnapshot.Found(device.id)
                 advanceUntilIdle()
 
-                val connect = ConnectionCommand.Bluetooth(
-                    BluetoothCommand.Connect(device.id)
-                )
+                val connect = ConnectionEffect.ConnectDevice(device.id)
                 assertEquals(listOf(connect), port.commands)
 
                 port.devices.emit(device.copy(rssi = -41))
@@ -201,11 +198,7 @@ class ConnectionTranslationTest {
             advanceUntilIdle()
 
             assertEquals(
-                listOf(
-                    ConnectionCommand.Bluetooth(
-                        BluetoothCommand.Connect(device.id)
-                    )
-                ),
+                listOf(ConnectionEffect.ConnectDevice(device.id)),
                 port.commands
             )
         } finally {
@@ -318,7 +311,7 @@ class ConnectionTranslationTest {
         }
 
     private class RecordingConnectionPort : ConnectionPort {
-        val commands = mutableListOf<ConnectionCommand>()
+        val commands = mutableListOf<ConnectionEffect>()
         val binding = MutableStateFlow<BindingSnapshot>(BindingSnapshot.Missing)
         val bindingUsers = mutableListOf<String>()
         val devices =
@@ -346,9 +339,9 @@ class ConnectionTranslationTest {
         }
 
         override fun execute(
-            command: ConnectionCommand
-        ): Flow<ConnectionResult> {
-            commands += command
+            effect: ConnectionEffect
+        ): Flow<ConnectionEvent> {
+            commands += effect
             return emptyFlow()
         }
     }

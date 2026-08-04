@@ -1,16 +1,16 @@
 package com.biosensor.migratedev.orchestrator.root
 
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.decisioncore.root.RootState
-import com.biosensor.migratedev.port.auth.AuthCommand
-import com.biosensor.migratedev.port.auth.AuthPort
-import com.biosensor.migratedev.port.auth.AuthResult
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.connection.BindingSnapshot
-import com.biosensor.migratedev.port.connection.ConnectionCommand
 import com.biosensor.migratedev.port.connection.ConnectionPort
-import com.biosensor.migratedev.port.connection.ConnectionResult
 import com.biosensor.migratedev.translation.connection.ConnectionIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,16 +82,16 @@ class RootWorkflowTest {
         )
 
         override fun execute(
-            command: AuthCommand
-        ): Flow<AuthResult> = when (command) {
-            AuthCommand.Local.ReadSession ->
-                flowOf(AuthResult.Local.SessionFound(session))
+            effect: AuthEffect
+        ): Flow<AuthEvent> = when (effect) {
+            is AuthEffect.ReadSession ->
+                flowOf(AuthEvent.SessionFound(session))
 
-            is AuthCommand.Remote.ValidateSession ->
-                flowOf(AuthResult.Remote.SessionVerified(session))
+            is AuthEffect.ValidateSession ->
+                flowOf(AuthEvent.SessionVerified(session))
 
-            AuthCommand.Local.ClearSession ->
-                flowOf(AuthResult.Local.SessionCleared)
+            is AuthEffect.ClearSession ->
+                flowOf(AuthEvent.SessionCleared)
 
             else -> emptyFlow()
         }
@@ -106,7 +106,7 @@ class RootWorkflowTest {
             Flow<BluetoothDeviceInfo> = emptyFlow()
 
         override fun execute(
-            command: ConnectionCommand
-        ): Flow<ConnectionResult> = emptyFlow()
+            effect: ConnectionEffect
+        ): Flow<ConnectionEvent> = emptyFlow()
     }
 }

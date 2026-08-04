@@ -6,8 +6,8 @@ import com.biosensor.migratedev.decisioncore.root.RootDecisionCore
 import com.biosensor.migratedev.decisioncore.root.RootEffect
 import com.biosensor.migratedev.decisioncore.root.RootEvent
 import com.biosensor.migratedev.decisioncore.root.RootState
-import com.biosensor.migratedev.orchestrator.EffectExecutor
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
+import com.biosensor.migratedev.port.CommandPort
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.translation.auth.AuthIntent
@@ -46,7 +46,7 @@ class RootWorkflow(
     private var connectionStore: ViewModelStore? = null
     private var connection: ConnectionTranslation? = null
 
-    private val effectExecutor = EffectExecutor<RootEffect, RootEvent>(::execute)
+    private val effectExecutor = CommandPort<RootEffect, RootEvent>(::execute)
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = RootState.Starting,

@@ -1,5 +1,7 @@
 package com.biosensor.migratedev.port.auth
 
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.port.InMemoryStringEntropy
@@ -36,28 +38,31 @@ class AuthPortAdapterLocalTest {
         val session = AuthSession(user, "token", now + 1)
 
         val result = adapter(seededEntropy(gson.toJson(session)))
-            .execute(AuthCommand.Local.ReadSession).first()
+            .execute(AuthEffect.ReadSession).first()
 
-        assertEquals(AuthResult.Local.SessionFound(session), result)
+        assertEquals(AuthEvent.SessionFound(session), result)
     }
 
     @Test
     fun expiredSessionIsReportedWithoutClearingStorage() = runTest {
         val entropy = seededEntropy(gson.toJson(AuthSession(user, "token", now)))
 
-        val result = adapter(entropy).execute(AuthCommand.Local.ReadSession).first()
+        val result = adapter(entropy).execute(AuthEffect.ReadSession).first()
 
-        assertEquals(AuthResult.Local.SessionExpired, result)
-        assertEquals(EntropyReadResult.Found(gson.toJson(AuthSession(user, "token", now))), entropy.read(AuthPortAdapter.SESSION_KEY))
+        assertEquals(AuthEvent.SessionExpired, result)
+        assertEquals(
+            EntropyReadResult.Found(gson.toJson(AuthSession(user, "token", now))),
+            entropy.read(AuthPortAdapter.SESSION_KEY)
+        )
     }
 
     @Test
     fun corruptedSessionIsClearedAndReported() = runTest {
         val entropy = seededEntropy("not-json")
 
-        val result = adapter(entropy).execute(AuthCommand.Local.ReadSession).first()
+        val result = adapter(entropy).execute(AuthEffect.ReadSession).first()
 
-        assertEquals(AuthResult.Local.SessionReadFailed("本地会话无法解密"), result)
+        assertEquals(AuthEvent.SessionReadFailed("本地会话无法解密"), result)
         assertEquals(EntropyReadResult.Missing, entropy.read(AuthPortAdapter.SESSION_KEY))
     }
 
@@ -65,9 +70,9 @@ class AuthPortAdapterLocalTest {
     fun blankTokenJsonIsTreatedAsCorrupted() = runTest {
         val entropy = seededEntropy(gson.toJson(AuthSession(user, "", null)))
 
-        val result = adapter(entropy).execute(AuthCommand.Local.ReadSession).first()
+        val result = adapter(entropy).execute(AuthEffect.ReadSession).first()
 
-        assertEquals(AuthResult.Local.SessionReadFailed("本地会话无法解密"), result)
+        assertEquals(AuthEvent.SessionReadFailed("本地会话无法解密"), result)
     }
 
     @Test
@@ -76,24 +81,24 @@ class AuthPortAdapterLocalTest {
         val session = AuthSession(User("7", "tester", "13800000000"), "token", 1234L)
 
         assertEquals(
-            AuthResult.Local.SessionMissing,
-            port.execute(AuthCommand.Local.ReadSession).first()
+            AuthEvent.SessionMissing,
+            port.execute(AuthEffect.ReadSession).first()
         )
         assertEquals(
-            AuthResult.Local.SessionSaved,
-            port.execute(AuthCommand.Local.SaveSession(session)).first()
+            AuthEvent.SessionSaved,
+            port.execute(AuthEffect.SaveSession(session)).first()
         )
         assertEquals(
-            AuthResult.Local.SessionFound(session),
-            port.execute(AuthCommand.Local.ReadSession).first()
+            AuthEvent.SessionFound(session),
+            port.execute(AuthEffect.ReadSession).first()
         )
         assertEquals(
-            AuthResult.Local.SessionCleared,
-            port.execute(AuthCommand.Local.ClearSession).first()
+            AuthEvent.SessionCleared,
+            port.execute(AuthEffect.ClearSession).first()
         )
         assertEquals(
-            AuthResult.Local.SessionMissing,
-            port.execute(AuthCommand.Local.ReadSession).first()
+            AuthEvent.SessionMissing,
+            port.execute(AuthEffect.ReadSession).first()
         )
     }
 
@@ -101,17 +106,17 @@ class AuthPortAdapterLocalTest {
     fun blankTokenSaveIsRejected() = runTest {
         val port = adapter(InMemoryStringEntropy())
 
-        val result = port.execute(AuthCommand.Local.SaveSession(AuthSession(user, "", null))).first()
+        val result = port.execute(AuthEffect.SaveSession(AuthSession(user, "", null))).first()
 
-        assertEquals(AuthResult.Local.SessionSaveFailed("本地会话写入失败"), result)
+        assertEquals(AuthEvent.SessionSaveFailed("本地会话写入失败"), result)
     }
 
     @Test
     fun clearFailureIsReported() = runTest {
         val result = adapter(FailingRemoveEntropy())
-            .execute(AuthCommand.Local.ClearSession).first()
+            .execute(AuthEffect.ClearSession).first()
 
-        assertEquals(AuthResult.Local.SessionClearFailed("本地会话清理失败"), result)
+        assertEquals(AuthEvent.SessionClearFailed("本地会话清理失败"), result)
     }
 
     private class FailingRemoveEntropy : StringEntropy {

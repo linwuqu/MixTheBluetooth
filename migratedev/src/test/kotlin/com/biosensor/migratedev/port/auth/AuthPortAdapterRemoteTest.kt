@@ -1,5 +1,7 @@
 package com.biosensor.migratedev.port.auth
 
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.port.InMemoryStringEntropy
@@ -27,11 +29,11 @@ class AuthPortAdapterRemoteTest {
         val api = FakeAccountApi()
 
         val result = adapter(FakeHttpRemote(api))
-            .execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+            .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
 
         assertEquals("token-1", api.detailToken)
         assertEquals(
-            AuthResult.Remote.Accepted(
+            AuthEvent.RemoteAccepted(
                 AuthSession(
                     user = User("7", "alice", "13800000000", "avatar"),
                     token = "token-1",
@@ -49,9 +51,9 @@ class AuthPortAdapterRemoteTest {
         }
 
         val result = adapter(FakeHttpRemote(api))
-            .execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+            .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
 
-        assertEquals(AuthResult.Remote.Rejected("手机号或密码错误"), result)
+        assertEquals(AuthEvent.RemoteRejected("手机号或密码错误"), result)
     }
 
     @Test
@@ -59,9 +61,9 @@ class AuthPortAdapterRemoteTest {
         val api = FakeAccountApi().apply { loginResponse = ServerResponse(0, true, null, null) }
 
         val result = adapter(FakeHttpRemote(api))
-            .execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+            .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
 
-        assertEquals(AuthResult.Remote.Rejected("登录响应没有 token"), result)
+        assertEquals(AuthEvent.RemoteRejected("登录响应没有 token"), result)
     }
 
     @Test
@@ -69,9 +71,9 @@ class AuthPortAdapterRemoteTest {
         val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Timeout) }
 
         val result = adapter(http)
-            .execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+            .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
 
-        assertEquals(AuthResult.Remote.Timeout, result)
+        assertEquals(AuthEvent.RemoteTimeout, result)
     }
 
     @Test
@@ -80,9 +82,9 @@ class AuthPortAdapterRemoteTest {
             .apply { enqueue(HttpOutcome.Http(500, "服务端错误：500")) }
 
         val result = adapter(http)
-            .execute(AuthCommand.Remote.Login("13800000000", "password")).first()
+            .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
 
-        assertEquals(AuthResult.Remote.Rejected("服务端错误：500"), result)
+        assertEquals(AuthEvent.RemoteRejected("服务端错误：500"), result)
     }
 
     @Test
@@ -91,11 +93,11 @@ class AuthPortAdapterRemoteTest {
         val original = AuthSession(User("old", "old", "old"), "saved-token", 88_000L)
 
         val result = adapter(FakeHttpRemote(api))
-            .execute(AuthCommand.Remote.ValidateSession(original)).first()
+            .execute(AuthEffect.ValidateSession(original)).first()
 
         assertEquals("saved-token", api.detailToken)
         assertEquals(
-            AuthResult.Remote.SessionVerified(
+            AuthEvent.SessionVerified(
                 AuthSession(
                     user = User("7", "alice", "13800000000", "avatar"),
                     token = "saved-token",
@@ -112,9 +114,9 @@ class AuthPortAdapterRemoteTest {
             .apply { enqueue(HttpOutcome.Http(503, "服务端错误：503")) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
-        val result = adapter(http).execute(AuthCommand.Remote.ValidateSession(session)).first()
+        val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
 
-        assertEquals(AuthResult.Remote.SessionValidationTimeout, result)
+        assertEquals(AuthEvent.SessionValidationTimeout, result)
     }
 
     @Test
@@ -123,9 +125,9 @@ class AuthPortAdapterRemoteTest {
             .apply { enqueue(HttpOutcome.Http(401, "服务端错误：401")) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
-        val result = adapter(http).execute(AuthCommand.Remote.ValidateSession(session)).first()
+        val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
 
-        assertEquals(AuthResult.Remote.SessionRejected("服务端错误：401"), result)
+        assertEquals(AuthEvent.SessionRejected("服务端错误：401"), result)
     }
 
     @Test
@@ -133,9 +135,9 @@ class AuthPortAdapterRemoteTest {
         val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Timeout) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
-        val result = adapter(http).execute(AuthCommand.Remote.ValidateSession(session)).first()
+        val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
 
-        assertEquals(AuthResult.Remote.SessionValidationTimeout, result)
+        assertEquals(AuthEvent.SessionValidationTimeout, result)
     }
 
     @Test
@@ -143,10 +145,10 @@ class AuthPortAdapterRemoteTest {
         val api = FakeAccountApi()
 
         val result = adapter(FakeHttpRemote(api)).execute(
-            AuthCommand.Remote.Register("13800000000", "password", "alice", "avatar")
+            AuthEffect.RegisterRemote("13800000000", "password", "alice", "avatar")
         ).first()
 
-        assertEquals(AuthResult.Remote.RegistrationAccepted, result)
+        assertEquals(AuthEvent.RegistrationAccepted, result)
         assertEquals(
             RegisterRequest("alice", "password", "13800000000", "avatar"),
             api.registerRequest
@@ -160,10 +162,10 @@ class AuthPortAdapterRemoteTest {
         }
 
         val result = adapter(FakeHttpRemote(api)).execute(
-            AuthCommand.Remote.Register("13800000000", "password", "alice", "avatar")
+            AuthEffect.RegisterRemote("13800000000", "password", "alice", "avatar")
         ).first()
 
-        assertEquals(AuthResult.Remote.Rejected("手机号已注册"), result)
+        assertEquals(AuthEvent.RemoteRejected("手机号已注册"), result)
     }
 
     private class FakeAccountApi : AccountApi {

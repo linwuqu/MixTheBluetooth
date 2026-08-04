@@ -1,5 +1,7 @@
 package com.biosensor.migratedev.port.auth
 
+import com.biosensor.migratedev.decisioncore.auth.AuthEffect
+import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.port.adapter.localport.EntropyReadResult
@@ -54,12 +56,14 @@ data class ServerResponse<T>(
     fun isOk(): Boolean = success || code == 0 || code == 200
 }
 
-// ===== 业务适配器:能力 → 业务词汇 =====
+// ===== 业务适配器:指令直达 + 分层上报 =====
 
 /**
  * auth 业务协议的全部内容:端点、会话 codec(键名 + gson + TTL + 过期判断)、
- * 传输失败到业务词汇的映射、Timber 日志收口(本地/远端命令各一行)。
- * 契约 [AuthPort] 不变,行为与重构前等价(含 ValidateSession 的超时/401/403 特殊语义)。
+ * 传输失败到领域事件的映射、Timber 日志收口(本地/远端命令各一行)。
+ *
+ * 下行:直接执行 [AuthEffect](指令直达,无 Command 传话);
+ * 上行:底层结果(EntropyReadResult / HttpOutcome)在此翻译成 [AuthEvent](分层上报)。
  */
 class AuthPortAdapter(
     private val kv: StringEntropy,
@@ -70,43 +74,50 @@ class AuthPortAdapter(
 
     private val api: AccountApi by lazy { http.api(AccountApi::class.java) }
 
-    override fun execute(command: AuthCommand): Flow<AuthResult> = when (command) {
-        is AuthCommand.Local -> executeLocal(command)
-        is AuthCommand.Remote -> executeRemote(command)
+    override fun execute(effect: AuthEffect): Flow<AuthEvent> = when (effect) {
+        // 本地:KV + 会话 codec
+        is AuthEffect.ReadSession, is AuthEffect.SaveSession, is AuthEffect.ClearSession ->
+            executeLocal(effect)
+
+        // 远端:端点语义
+        is AuthEffect.LoginRemote, is AuthEffect.RegisterRemote, is AuthEffect.ValidateSession ->
+            executeRemote(effect)
     }
 
     // ── 本地:KV + 会话 codec ──────────────────────────────
 
-    private fun executeLocal(command: AuthCommand.Local): Flow<AuthResult> = flow {
-        emit(runLocal(command))
+    private fun executeLocal(effect: AuthEffect): Flow<AuthEvent> = flow {
+        emit(runLocal(effect))
     }.flowOn(Dispatchers.IO)   // Tink 加解密为 CPU 密集
 
-    private suspend fun runLocal(command: AuthCommand.Local): AuthResult.Local {
-        val result = when (command) {
-            AuthCommand.Local.ReadSession -> when (val read = kv.read(SESSION_KEY)) {
-                EntropyReadResult.Missing -> AuthResult.Local.SessionMissing
+    private suspend fun runLocal(effect: AuthEffect): AuthEvent {
+        val result = when (effect) {
+            is AuthEffect.ReadSession -> when (val read = kv.read(SESSION_KEY)) {
+                EntropyReadResult.Missing -> AuthEvent.SessionMissing
                 is EntropyReadResult.Failed -> corrupted()
                 is EntropyReadResult.Found -> parse(read.value)
             }
 
-            is AuthCommand.Local.SaveSession -> if (save(command.session)) {
-                AuthResult.Local.SessionSaved
+            is AuthEffect.SaveSession -> if (save(effect.session)) {
+                AuthEvent.SessionSaved
             } else {
-                AuthResult.Local.SessionSaveFailed("本地会话写入失败")
+                AuthEvent.SessionSaveFailed("本地会话写入失败")
             }
 
-            AuthCommand.Local.ClearSession -> when (kv.remove(SESSION_KEY)) {
-                EntropyRemoveResult.Removed, EntropyRemoveResult.Missing -> AuthResult.Local.SessionCleared
+            is AuthEffect.ClearSession -> when (kv.remove(SESSION_KEY)) {
+                EntropyRemoveResult.Removed, EntropyRemoveResult.Missing -> AuthEvent.SessionCleared
 
-                is EntropyRemoveResult.Failed -> AuthResult.Local.SessionClearFailed("本地会话清理失败")
+                is EntropyRemoveResult.Failed -> AuthEvent.SessionClearFailed("本地会话清理失败")
             }
+
+            else -> error("不可达")
         }
         Timber.tag(AUTH_TAG)
-            .i("本地命令=%s 结果=%s", command::class.simpleName, result::class.simpleName)
+            .i("本地命令=%s 结果=%s", effect::class.simpleName, result::class.simpleName)
         return result
     }
 
-    private suspend fun parse(raw: String): AuthResult.Local {
+    private suspend fun parse(raw: String): AuthEvent {
         val session = try {
             gson.fromJson(raw, AuthSession::class.java)
         } catch (_: JsonParseException) {
@@ -117,15 +128,15 @@ class AuthPortAdapter(
         if (session == null || session.token.isBlank()) return corrupted()
         val expiresAt = session.expiresAtMillis
         return if (expiresAt != null && clock.millis() >= expiresAt) {
-            AuthResult.Local.SessionExpired
+            AuthEvent.SessionExpired
         } else {
-            AuthResult.Local.SessionFound(session)
+            AuthEvent.SessionFound(session)
         }
     }
 
-    private suspend fun corrupted(): AuthResult.Local {
+    private suspend fun corrupted(): AuthEvent {
         kv.remove(SESSION_KEY)
-        return AuthResult.Local.SessionReadFailed("本地会话无法解密")
+        return AuthEvent.SessionReadFailed("本地会话无法解密")
     }
 
     private suspend fun save(session: AuthSession): Boolean {
@@ -139,51 +150,52 @@ class AuthPortAdapter(
 
     // ── 远端:端点语义 + 传输失败映射 ──────────────────────
 
-    private fun executeRemote(command: AuthCommand.Remote): Flow<AuthResult> = flow {
-        emit(runRemote(command))
+    private fun executeRemote(effect: AuthEffect): Flow<AuthEvent> = flow {
+        emit(runRemote(effect))
     }
 
-    private suspend fun runRemote(command: AuthCommand.Remote): AuthResult.Remote {
-        val result = when (command) {
-            is AuthCommand.Remote.Login -> login(command.phone, command.password)
-            is AuthCommand.Remote.Register -> register(command)
-            is AuthCommand.Remote.ValidateSession -> validate(command.session)
+    private suspend fun runRemote(effect: AuthEffect): AuthEvent {
+        val result = when (effect) {
+            is AuthEffect.LoginRemote -> login(effect.phone, effect.password)
+            is AuthEffect.RegisterRemote -> register(effect)
+            is AuthEffect.ValidateSession -> validate(effect.session)
+            else -> error("不可达")
         }
         Timber.tag(AUTH_TAG)
-            .i("远端命令=%s 结果=%s", command::class.simpleName, result::class.simpleName)
+            .i("远端命令=%s 结果=%s", effect::class.simpleName, result::class.simpleName)
         return result
     }
 
-    private suspend fun login(phone: String, password: String): AuthResult.Remote {
+    private suspend fun login(phone: String, password: String): AuthEvent {
         val login = when (val outcome = http.invoke { api.login(LoginRequest(phone, password)) }) {
             is HttpOutcome.Success -> outcome.data
             else -> return outcome.toRejected()
         }
-        if (!login.isOk()) return AuthResult.Remote.Rejected(login.msg ?: "登录失败")
+        if (!login.isOk()) return AuthEvent.RemoteRejected(login.msg ?: "登录失败")
         val token = login.data?.takeIf { it.isNotBlank() }
-            ?: return AuthResult.Remote.Rejected("登录响应没有 token")
+            ?: return AuthEvent.RemoteRejected("登录响应没有 token")
         val detail = when (val outcome = http.invoke { api.detail(token) }) {
             is HttpOutcome.Success -> outcome.data
             else -> return outcome.toRejected()
         }
         val account = detail.data
         return if (!detail.isOk() || account == null) {
-            AuthResult.Remote.Rejected(detail.msg ?: "用户详情验证失败")
+            AuthEvent.RemoteRejected(detail.msg ?: "用户详情验证失败")
         } else {
-            AuthResult.Remote.Accepted(
+            AuthEvent.RemoteAccepted(
                 AuthSession(account.toDomainUser(), token, clock.millis() + LOCAL_TOKEN_TTL_MS)
             )
         }
     }
 
-    private suspend fun register(command: AuthCommand.Remote.Register): AuthResult.Remote {
+    private suspend fun register(effect: AuthEffect.RegisterRemote): AuthEvent {
         val result = when (val outcome = http.invoke {
             api.register(
                 RegisterRequest(
-                    username = command.nickname,
-                    password = command.password,
-                    phone = command.phone,
-                    avatarUrl = command.avatarUrl
+                    username = effect.nickname,
+                    password = effect.password,
+                    phone = effect.phone,
+                    avatarUrl = effect.avatarUrl
                 )
             )
         }) {
@@ -191,42 +203,42 @@ class AuthPortAdapter(
             else -> return outcome.toRejected()
         }
         return if (result.isOk()) {
-            AuthResult.Remote.RegistrationAccepted
+            AuthEvent.RegistrationAccepted
         } else {
-            AuthResult.Remote.Rejected(result.msg ?: "注册失败")
+            AuthEvent.RemoteRejected(result.msg ?: "注册失败")
         }
     }
 
-    private suspend fun validate(session: AuthSession): AuthResult.Remote {
+    private suspend fun validate(session: AuthSession): AuthEvent {
         val detail = when (val outcome = http.invoke { api.detail(session.token) }) {
             is HttpOutcome.Success -> outcome.data
             else -> return outcome.toSessionFailure()
         }
         val account = detail.data
         if (!detail.isOk() || account == null) {
-            return AuthResult.Remote.SessionRejected(detail.msg ?: "token 已失效")
+            return AuthEvent.SessionRejected(detail.msg ?: "token 已失效")
         }
-        return AuthResult.Remote.SessionVerified(
+        return AuthEvent.SessionVerified(
             AuthSession(account.toDomainUser(), session.token, session.expiresAtMillis)
         )
     }
 
-    // 传输失败 → 业务词汇(登录/注册语义)
-    private fun HttpOutcome<*>.toRejected(): AuthResult.Remote = when (this) {
-        HttpOutcome.Timeout -> AuthResult.Remote.Timeout
-        is HttpOutcome.Network -> AuthResult.Remote.Rejected(message)
-        is HttpOutcome.Http -> AuthResult.Remote.Rejected(message)
+    // 传输失败 → 领域事件(登录/注册语义)
+    private fun HttpOutcome<*>.toRejected(): AuthEvent = when (this) {
+        HttpOutcome.Timeout -> AuthEvent.RemoteTimeout
+        is HttpOutcome.Network -> AuthEvent.RemoteRejected(message)
+        is HttpOutcome.Http -> AuthEvent.RemoteRejected(message)
         is HttpOutcome.Success -> error("不可达")
     }
 
-    // 传输失败 → 业务词汇(会话验证语义:超时/网络/非 401 都视为验证失败)
-    private fun HttpOutcome<*>.toSessionFailure(): AuthResult.Remote = when (this) {
-        HttpOutcome.Timeout -> AuthResult.Remote.SessionValidationTimeout
-        is HttpOutcome.Network -> AuthResult.Remote.SessionValidationTimeout
+    // 传输失败 → 领域事件(会话验证语义:超时/网络/非 401 都视为验证失败)
+    private fun HttpOutcome<*>.toSessionFailure(): AuthEvent = when (this) {
+        HttpOutcome.Timeout -> AuthEvent.SessionValidationTimeout
+        is HttpOutcome.Network -> AuthEvent.SessionValidationTimeout
         is HttpOutcome.Http -> if (code == 401 || code == 403) {
-            AuthResult.Remote.SessionRejected(message)
+            AuthEvent.SessionRejected(message)
         } else {
-            AuthResult.Remote.SessionValidationTimeout
+            AuthEvent.SessionValidationTimeout
         }
 
         is HttpOutcome.Success -> error("不可达")

@@ -2,6 +2,8 @@ package com.biosensor.migratedev.port.connection
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.biosensor.migratedev.database.LocalDatabase
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
+import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
@@ -47,9 +49,9 @@ class ConnectionPortAdapterTest {
         )
 
         assertEquals(
-            listOf(ConnectionResult.BindingSaved("AA:01")),
+            listOf(ConnectionEvent.BindingSaved("AA:01")),
             port.execute(
-                ConnectionCommand.SaveBinding(
+                ConnectionEffect.SaveBinding(
                     userId = "user-1",
                     deviceId = "AA:01"
                 )
@@ -69,9 +71,8 @@ class ConnectionPortAdapterTest {
     }
 
     @Test
-    fun `bluetooth command and stream are passed through unchanged`() =
+    fun `connect device is wrapped into bluetooth command and mapped to event`() =
         runTest {
-            val command = BluetoothCommand.Connect("AA:01")
             bluetooth.results = flowOf(
                 BluetoothResult.Connected(
                     BluetoothDeviceInfo(
@@ -84,21 +85,31 @@ class ConnectionPortAdapterTest {
 
             assertEquals(
                 listOf(
-                    ConnectionResult.Bluetooth(
-                        BluetoothResult.Connected(
-                            BluetoothDeviceInfo(
-                                id = "AA:01",
-                                name = "BT24-S",
-                                isBle = true
-                            )
+                    ConnectionEvent.DeviceConnected(
+                        BluetoothDeviceInfo(
+                            id = "AA:01",
+                            name = "BT24-S",
+                            isBle = true
                         )
                     )
                 ),
                 port.execute(
-                    ConnectionCommand.Bluetooth(command)
+                    ConnectionEffect.ConnectDevice("AA:01")
                 ).toList()
             )
-            assertEquals(command, bluetooth.lastCommand)
+            assertEquals(BluetoothCommand.Connect("AA:01"), bluetooth.lastCommand)
+        }
+
+    @Test
+    fun `disconnect device is wrapped into bluetooth command`() =
+        runTest {
+            bluetooth.results = flowOf(BluetoothResult.Disconnected)
+
+            assertEquals(
+                listOf(ConnectionEvent.DeviceDisconnected),
+                port.execute(ConnectionEffect.DisconnectDevice).toList()
+            )
+            assertEquals(BluetoothCommand.Disconnect, bluetooth.lastCommand)
         }
 
     @Test
