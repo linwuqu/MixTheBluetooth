@@ -16,16 +16,19 @@ import kotlinx.coroutines.CoroutineScope
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
+/**
+ * Android 侧的能力构造工厂:一次创建键值存储、sqlite、文件三个能力。
+ * 只负责构造,不再实现任何捆绑接口。
+ */
 class AndroidLocalPort private constructor(
-    override val entropy: StringEntropy,
-    override val sqlite: LocalDatabase,
-    override val files: LocalFileClient
-) : LocalPort {
+    val entropy: StringEntropy, val sqlite: LocalDatabase, val files: LocalFileClient
+) {
     companion object {
         fun create(
             context: Context, applicationScope: CoroutineScope
         ): AndroidLocalPort {
             val application = context.applicationContext
+            // 创建一个 DataStore 对象 (DataStore 用来替代老旧的 SharedPreferences 它用异步、协程的方式保存键值对)
             val dataStore = PreferenceDataStoreFactory.create(
                 scope = applicationScope, produceFile = {
                     application.preferencesDataStoreFile(
@@ -34,6 +37,7 @@ class AndroidLocalPort private constructor(
                 })
             val fileClient = OkioLocalFileClient(
                 fileSystem = FileSystem.SYSTEM, roots = mapOf(
+                    // 使用相对路径确定绝对路径然后转换成 Path 对象
                     FileSpace.LOGS to application.filesDir.resolve("logs").absolutePath.toPath(),
                     FileSpace.RECEIVED to application.filesDir.resolve("received").absolutePath.toPath(),
                     FileSpace.OUTGOING to application.filesDir.resolve("outgoing").absolutePath.toPath(),
@@ -41,9 +45,9 @@ class AndroidLocalPort private constructor(
                 )
             )
             return AndroidLocalPort(
-                entropy = TinkStringEntropy(
-                    dataStore = dataStore, aead = createAead(application)
-                ), sqlite = LocalDatabaseFactory.create(application), files = fileClient
+                entropy = TinkStringEntropy(dataStore = dataStore, aead = createAead(application)),
+                sqlite = LocalDatabaseFactory.create(application),
+                files = fileClient
             )
         }
 

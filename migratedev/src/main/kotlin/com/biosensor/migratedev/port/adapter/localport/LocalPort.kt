@@ -4,12 +4,6 @@ import com.biosensor.migratedev.database.LocalDatabase
 import okio.Sink
 import okio.Source
 
-interface LocalPort {
-    val entropy: StringEntropy
-    val sqlite: LocalDatabase
-    val files: LocalFileClient
-}
-
 sealed interface EntropyReadResult {
     data class Found(val value: String) : EntropyReadResult
     data object Missing : EntropyReadResult
@@ -38,23 +32,20 @@ interface StringEntropy {
 }
 
 interface LocalFileClient {
+    // 流式输入抽象
     fun source(space: FileSpace, relativePath: String): Source
 
-    fun sink(
-        space: FileSpace, relativePath: String, append: Boolean = false
-    ): Sink
+    // 流式输出抽象
+    fun sink(space: FileSpace, relativePath: String, append: Boolean = false): Sink
 
-    fun list(
-        space: FileSpace, relativePath: String = ""
-    ): List<FileEntry>
+    // 枚举目录内容
+    fun list(space: FileSpace, relativePath: String = ""): List<FileEntry>
 
-    fun delete(
-        space: FileSpace, relativePath: String
-    ): FileDeleteResult
+    // 删除单个文件
+    fun delete(space: FileSpace, relativePath: String): FileDeleteResult
 
-    fun prune(
-        space: FileSpace, policy: RetentionPolicy
-    ): FilePruneResult
+    // 按策略批量清理文件
+    fun prune(space: FileSpace, policy: RetentionPolicy): FilePruneResult
 }
 
 enum class FileSpace {

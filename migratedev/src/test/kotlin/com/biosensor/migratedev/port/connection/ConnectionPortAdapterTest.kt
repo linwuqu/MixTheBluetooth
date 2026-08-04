@@ -6,30 +6,20 @@ import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothResult
-import com.biosensor.migratedev.port.adapter.localport.FileDeleteResult
-import com.biosensor.migratedev.port.adapter.localport.FileEntry
-import com.biosensor.migratedev.port.adapter.localport.FilePruneResult
-import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
-import com.biosensor.migratedev.port.adapter.localport.LocalPort
-import com.biosensor.migratedev.port.adapter.localport.RetentionPolicy
-import com.biosensor.migratedev.port.adapter.localport.StringEntropy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
-import okio.Sink
-import okio.Source
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
-class DefaultConnectionPortTest {
+class ConnectionPortAdapterTest {
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var database: LocalDatabase
     private lateinit var bluetooth: FakeBluetoothPort
-    private lateinit var port: DefaultConnectionPort
+    private lateinit var port: ConnectionPortAdapter
 
     @Before
     fun setUp() {
@@ -37,14 +27,8 @@ class DefaultConnectionPortTest {
         LocalDatabase.Schema.create(driver)
         database = LocalDatabase(driver)
         bluetooth = FakeBluetoothPort()
-        port = DefaultConnectionPort(
-            local = object : LocalPort {
-                override val entropy: StringEntropy
-                    get() = error("not used")
-                override val sqlite: LocalDatabase = database
-                override val files: LocalFileClient
-                    get() = UnusedFiles
-            },
+        port = ConnectionPortAdapter(
+            sqlite = database,
             bluetooth = bluetooth,
             nowMillis = { 1234L }
         )
@@ -138,42 +122,11 @@ class DefaultConnectionPortTest {
         var results: Flow<BluetoothResult> = flowOf()
         var devices: Flow<BluetoothDeviceInfo> = flowOf()
 
-        override fun scanDevices():
-            Flow<BluetoothDeviceInfo> = devices
+        override fun scanDevices(): Flow<BluetoothDeviceInfo> = devices
 
-        override fun execute(
-            command: BluetoothCommand
-        ): Flow<BluetoothResult> {
+        override fun execute(command: BluetoothCommand): Flow<BluetoothResult> {
             lastCommand = command
             return results
         }
-    }
-
-    private object UnusedFiles : LocalFileClient {
-        override fun source(
-            space: FileSpace,
-            relativePath: String
-        ): Source = error("not used")
-
-        override fun sink(
-            space: FileSpace,
-            relativePath: String,
-            append: Boolean
-        ): Sink = error("not used")
-
-        override fun list(
-            space: FileSpace,
-            relativePath: String
-        ): List<FileEntry> = error("not used")
-
-        override fun delete(
-            space: FileSpace,
-            relativePath: String
-        ): FileDeleteResult = error("not used")
-
-        override fun prune(
-            space: FileSpace,
-            policy: RetentionPolicy
-        ): FilePruneResult = error("not used")
     }
 }

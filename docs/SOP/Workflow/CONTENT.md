@@ -11,6 +11,7 @@
 | 02 | 设备连接 | [02-device-connection.md](./02-device-connection.md) | 初稿 |
 | 03 | 拉取缓存明文流 | [03-read-cache-text-stream.md](./03-read-cache-text-stream.md) | 初稿 |
 | 04 | 解析 / 校验 / 重试决策 | [04-parse-validate-cache-text.md](./04-parse-validate-cache-text.md) | 初稿 |
+| 06 | 端口挂载：能力与业务适配器分离（架构） | [06-port-capability-separation.md](./06-port-capability-separation.md) | 设计稿 |
 
 ## 2. 待整理工作流
 

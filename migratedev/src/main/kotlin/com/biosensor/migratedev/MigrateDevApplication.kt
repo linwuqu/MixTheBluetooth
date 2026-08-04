@@ -17,7 +17,7 @@ class MigrateDevApplication : Application() {
         appGraph = AppGraph(this)
         LoggingInitializer.install(
             debug = BuildConfig.DEBUG,
-            files = appGraph.localPort.files,
+            files = appGraph.files,
             applicationScope = appGraph.applicationScope
         )
     }
