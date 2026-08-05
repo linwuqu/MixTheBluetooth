@@ -43,7 +43,10 @@ fun DeviceList(
             .pullRefresh(refreshState)
     ) {
         if (devices.isEmpty()) {
-            EmptyDevices(canInteract = canInteract, onRefresh = onRefresh)
+            EmptyDevices(
+                canInteract = canInteract && !isRefreshing,
+                onRefresh = onRefresh
+            )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(items = devices, key = DeviceItemUi::id) { device ->

@@ -49,14 +49,15 @@ sealed interface AuthEvent {
 
 sealed interface AuthEffect {
     data object ReadSession : AuthEffect
-    data class ValidateSession(val session: AuthSession) : AuthEffect
+    data class SaveSession(val session: AuthSession) : AuthEffect
+    data object ClearSession : AuthEffect
+
     data class LoginRemote(val phone: String, val password: String) : AuthEffect
     data class RegisterRemote(
         val phone: String, val password: String, val nickname: String, val avatarUrl: String? = null
     ) : AuthEffect
 
-    data class SaveSession(val session: AuthSession) : AuthEffect
-    data object ClearSession : AuthEffect
+    data class ValidateSession(val session: AuthSession) : AuthEffect
 }
 
 object AuthDecisionCore : DecisionCore<AuthState, AuthEvent, AuthEffect> {

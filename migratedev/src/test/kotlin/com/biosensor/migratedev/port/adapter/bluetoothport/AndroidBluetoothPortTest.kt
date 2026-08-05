@@ -102,6 +102,108 @@ class AndroidBluetoothPortTest {
     }
 
     @Test
+    fun `shared scan keeps native running until last subscriber leaves`() =
+        runTest {
+            val scanner = FakeNativeBleScanner()
+            val port = AndroidBluetoothPort(
+                client = FakeBluetoothLibraryClient(),
+                scanner = scanner
+            )
+            val resultsA = mutableListOf<BluetoothDeviceInfo>()
+            val resultsB = mutableListOf<BluetoothDeviceInfo>()
+
+            val a = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                port.scanDevices().toList(resultsA)
+            }
+            val b = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                port.scanDevices().toList(resultsB)
+            }
+            scanner.deviceFound(device("AA:01"))
+            runCurrent()
+
+            assertEquals(1, scanner.startCount)
+            assertEquals(listOf(deviceInfo("AA:01")), resultsA)
+            assertEquals(listOf(deviceInfo("AA:01")), resultsB)
+
+            a.cancelAndJoin()
+            runCurrent()
+            assertEquals(0, scanner.stopCount)   // 还有订阅者,不停止
+
+            b.cancelAndJoin()
+            assertEquals(1, scanner.stopCount)   // 最后一个离开才停止
+        }
+
+    @Test
+    fun `rejoin after full departure restarts native scan`() =
+        runTest {
+            val scanner = FakeNativeBleScanner()
+            val port = AndroidBluetoothPort(
+                client = FakeBluetoothLibraryClient(),
+                scanner = scanner
+            )
+
+            val first = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                port.scanDevices().toList()
+            }
+            first.cancelAndJoin()
+            runCurrent()
+            assertEquals(1, scanner.stopCount)
+
+            val second = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                port.scanDevices().toList()
+            }
+            scanner.deviceFound(device("AA:01"))
+            runCurrent()
+
+            assertEquals(2, scanner.startCount)
+            second.cancelAndJoin()
+        }
+
+    @Test
+    fun `native scan failure is delivered to every subscriber`() =
+        runTest {
+            val scanner = FakeNativeBleScanner()
+            val port = AndroidBluetoothPort(
+                client = FakeBluetoothLibraryClient(),
+                scanner = scanner
+            )
+            var failureA: Throwable? = null
+            var failureB: Throwable? = null
+
+            val a = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                failureA = runCatching {
+                    port.scanDevices().toList()
+                }.exceptionOrNull()
+            }
+            val b = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                failureB = runCatching {
+                    port.scanDevices().toList()
+                }.exceptionOrNull()
+            }
+            scanner.scanFailed("蓝牙扫描过于频繁")
+            a.join()
+            b.join()
+
+            assertTrue(failureA is BluetoothScanException)
+            assertTrue(failureB is BluetoothScanException)
+            assertEquals("蓝牙扫描过于频繁", failureA?.message)
+            assertEquals("蓝牙扫描过于频繁", failureB?.message)
+            assertEquals(1, scanner.stopCount)
+        }
+
+    @Test
     fun `native scan failure closes flow with business message`() =
         runTest {
             val scanner = FakeNativeBleScanner()

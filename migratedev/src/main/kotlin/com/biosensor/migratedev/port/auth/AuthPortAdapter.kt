@@ -76,12 +76,14 @@ class AuthPortAdapter(
 
     override fun execute(effect: AuthEffect): Flow<AuthEvent> = when (effect) {
         // 本地:KV + 会话 codec
-        is AuthEffect.ReadSession, is AuthEffect.SaveSession, is AuthEffect.ClearSession ->
-            executeLocal(effect)
+        is AuthEffect.ReadSession, is AuthEffect.SaveSession, is AuthEffect.ClearSession -> executeLocal(
+            effect
+        )
 
         // 远端:端点语义
-        is AuthEffect.LoginRemote, is AuthEffect.RegisterRemote, is AuthEffect.ValidateSession ->
-            executeRemote(effect)
+        is AuthEffect.LoginRemote, is AuthEffect.RegisterRemote, is AuthEffect.ValidateSession -> executeRemote(
+            effect
+        )
     }
 
     // ── 本地:KV + 会话 codec ──────────────────────────────
@@ -167,10 +169,12 @@ class AuthPortAdapter(
     }
 
     private suspend fun login(phone: String, password: String): AuthEvent {
+        // outcome 只确定是否拿到了 Http 响应
         val login = when (val outcome = http.invoke { api.login(LoginRequest(phone, password)) }) {
             is HttpOutcome.Success -> outcome.data
             else -> return outcome.toRejected()
         }
+        // isOk 判断是否业务成功
         if (!login.isOk()) return AuthEvent.RemoteRejected(login.msg ?: "登录失败")
         val token = login.data?.takeIf { it.isNotBlank() }
             ?: return AuthEvent.RemoteRejected("登录响应没有 token")

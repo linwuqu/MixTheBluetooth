@@ -1,213 +1,166 @@
-# 流全景与 combine 建模:抗压与低能耗刷新的边界
+# 流的分类与建模:三类流如何回答抗压与低能耗
 
 > 范围:梳理,不改代码。
-> 目标:① 列出项目里**所有流**,每个流做什么、怎么做,作为 combine 的铺垫;② 讲清 combine 在这个代码库里的机制;③ 提炼**写流时的边界检查清单**(六问 + 准则),让以后每次写流都有据可依。
-> 背景关切:抗压能力如何、刷新事件如何低能耗处理。
+> 思路:① 列出全部 14 个流,每句话讲清"它做了什么";② 找出共性,约化成三类流 + 组合算子;③ 对每一类回答四个问题(分/合流、独/汇集、失败与解决、流量与解决);④ 用模型回答"抗压能力如何、刷新如何低能耗"。
 
 ## 0. 一句话
 
-**流的全景 = 3 个状态机流(StateFlow)+ 1 个事件队列(Channel)+ 1 个派生 UI 流(combine + stateIn)+ 3 个协程事务(两个 combine + 一个直收)+ 4 个冷流(callbackFlow/flow)。**
-combine 是"多个来源的最新值投影成新值,任一来源变化就重算";低能耗的关键在 combine 输出用 `distinctUntilChanged` 按值去重,让 `flatMapLatest` **不重启**底层资源流。
+**14 个流可以约化成三类:状态流(表达"当前是什么")、事件流(表达"发生了什么")、资源流(表达"一次资源的开始到结束")。**
+抗压和低能耗的答案不在某个具体流里,而在每一类的**类型特征**里——这是建模的目的。
 
-## 1. 流全景
+## 1. 流的清单:14 个流各自做了什么
 
-### 1.1 全景图
+### 1.1 状态流(8 个):表达"当前是什么"
 
-```mermaid
-flowchart LR
-  subgraph State["状态源(StateFlow,可复现)"]
-    OS["orchestrator.state<br/>ConnectionState"]
-    B["binding<br/>BindingSnapshot"]
-    D["devices<br/>List&lt;DeviceItemUi&gt;"]
-    AG["bluetoothAccessGranted"]
-    V["visible"]
-    SR["scanRestart"]
-  end
-  subgraph Jobs["协程事务(Job)"]
-    BC["bindingCollection<br/>port.readBinding → binding"]
-    SC["scanCollection<br/>combine×4 → flatMapLatest → scanFlow"]
-    AC["autoConnectCollection<br/>combine×2 → 自动连接"]
-  end
-  subgraph UI["UI"]
-    U["uiState(combine×3 → stateIn)"]
-  end
-  subgraph Port["冷流(callbackFlow/flow,按订阅)"]
-    SD["port.scanDevices()<br/>callbackFlow 单飞"]
-    CON["port.execute(Connect)<br/>callbackFlow 单飞"]
-    DIS["port.execute(Disconnect)<br/>flow"]
-    RB["port.readBinding<br/>flow"]
-  end
-
-  RB --> BC --> B
-  AG --> SC
-  V --> SC
-  OS --> SC
-  SR --> SC
-  SC --> SD
-  SD --> D
-  B --> AC
-  D --> AC
-  OS --> U
-  B --> U
-  D --> U
-  CON --> OS
-  DIS --> OS
-```
-
-### 1.2 流清单(全部)
-
-| # | 流 | 类型 | 生产 | 消费 | 生命周期 / 结束 |
-|---|---|---|---|---|---|
-| 1 | `root.state` | StateFlow | Root 状态机主循环([WorkflowOrchestrator.kt:63-64](migratedev/src/main/kotlin/com/biosensor/migratedev/orchestrator/WorkflowOrchestrator.kt#L63-L64)) | AppMain(导航 + 路由) | rootWorkflow.close |
-| 2 | `auth.uiState` | StateFlow | `orchestrator.state.map(toUiState).stateIn(Eagerly)` | AuthRoute | viewModelScope |
-| 3 | `connection.uiState` | StateFlow | **combine×3 → stateIn(Eagerly)**(见 2.3) | ConnectionRoute | viewModelScope |
-| 4 | `events`(orchestrator 内部) | Channel(UNLIMITED) | `dispatch()` + effect 反馈([WorkflowOrchestrator.kt:57](migratedev/src/main/kotlin/com/biosensor/migratedev/orchestrator/WorkflowOrchestrator.kt#L57)) | 状态机主循环 | orchestrator.close |
-| 5 | `binding` | MutableStateFlow | bindingCollection(port.readBinding) | uiState、autoConnect | bindingCollection 取消 |
-| 6 | `devices` | MutableStateFlow | scanCollection 收集 | uiState、autoConnect | scanCollection 取消 |
-| 7 | `bluetoothAccessGranted` | MutableStateFlow | `submit(BluetoothAccessGranted)` | scanCollection | — |
-| 8 | `visible` | MutableStateFlow | `submit(BecameVisible/Hidden)` | scanCollection | — |
-| 9 | `scanRestart` | MutableStateFlow(Int) | `submit(Refresh)`(**仅 `!scanActive` 时 +1**) | scanCollection | — |
-| 10 | `scanFlow()` | cold Flow | `port.scanDevices()` + onStart/onCompletion/catch | scanCollection(flatMapLatest) | 每次 flatMapLatest 重启 |
-| 11 | `port.scanDevices()` | **callbackFlow**(单飞) | Android 原生扫描回调 | scanFlow | awaitClose → stop;竞争失败 → close(ScanFailed) |
-| 12 | `port.execute(Connect)` | **callbackFlow**(单飞) | HC 库连接回调 | orchestrator(经 effect→事件) | awaitClose / 超时协程 |
-| 13 | `port.execute(Disconnect)` | cold flow | — | orchestrator | emit 一次即完 |
-| 14 | `port.readBinding` | cold flow | sqlite 查询 | bindingCollection | 持续收集 |
-
-### 1.3 关键流逐个说
-
-**① `port.scanDevices()`([AndroidBluetoothPort.kt:63-111](migratedev/src/main/kotlin/com/biosensor/migratedev/port/adapter/bluetoothport/AndroidBluetoothPort.kt#L63-L111))——最底层的冷流**
-callbackFlow 每次**按订阅**启动一个扫描会话:注册 `NativeBleScanListener` → `synchronized(lock)` 竞争 `activeScan` 单飞位 → 失败直接 `close("蓝牙扫描已经在进行中")` → `scanner.start(listener)` 启 native 扫描 → `awaitClose { finishActiveScan() }` 收尾。监听回调里过 `Bt24AdvertisementFilter`,并把结果写入 `discovered` 缓存 + `trySend` 给订阅者。
-**代价**:每次订阅 = 一次完整的 start/stop 往返;单飞拒绝路径 = "蓝牙扫描已经在进行中"。
-
-**② `scanFlow()`([ConnectionTranslation.kt:175-186](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L175-L186))——translation 侧的扫描包装**
-`port.scanDevices().onStart { clearDevices(); scanActive = true }.onCompletion { scanActive = false }.catch { dispatch(ScanFailed) }`。
-**注意两个边界**:`onStart` 无条件清空列表(0.4-0.5s 感知的根源);`catch` 吞掉错误且不重抛——**流正常完成,管道死亡,只能等用户手动刷新**(失败无自愈)。
-
-**③ `scanCollection`([ConnectionTranslation.kt:116-130](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L116-L130))——combine + flatMapLatest 的开关事务**
-`combine(bluetoothAccessGranted, visible, orchestrator.state, scanRestart)` → `ScanRequest(enabled, restart)`(data class)→ `distinctUntilChanged` → `flatMapLatest { if (enabled) scanFlow() else emptyFlow() }` → `collect { discovered[id] = it; devices.value = ... }`。
-**这就是"刷新低能耗"的核心**:enabled 和 restart 不变 → 值相等 → distinct 吞掉 → flatMapLatest 不重启 → native 扫描零感知。
-
-**④ `autoConnectCollection`([ConnectionTranslation.kt:132-140](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L132-L140))——自动连接事务**
-`combine(binding, devices)` → `(Found)?.deviceId?.takeIf { it in currentDevices }` → `distinctUntilChanged` → `collect { requestConnection(it, automatic = true) }`。
-记住的设备一出现在列表里就自动连接;`autoConnectConsumed` 哨兵保证只连一次。
-
-**⑤ `uiState`([ConnectionTranslation.kt:96-104](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L96-L104))——给 UI 的纯投影**
-`combine(orchestrator.state, binding, devices)` → `state.toUiState(binding, devices)` → `stateIn(Eagerly)`。
-UI 只消费这一个流;排序、置灰(remembered 优先)、消息选择都在投影函数里([ConnectionTranslation.kt:249-291](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L249-L291))。
-
-## 2. combine 机制详解
-
-### 2.1 combine 是什么(语义)
-
-```kotlin
-combine(a, b, c) { va, vb, vc -> 投影(va, vb, vc) }
-```
-
-- **输入**:任意多个流(代码库里有 2、3、4 输入三种用法);
-- **触发**:任一输入发射新值 → 用**各自最新值**重算投影 → 发射结果(不等其他输入,不等待"同时变化");
-- **首值**:每个输入至少发过一个值才开始(本项目输入全是 StateFlow,恒有值,无此问题);
-- **背压**:combine 是逐事件合并,发射挂起时输入事件排队,**不丢值**(队列隐式存在);真正的丢值发生在**回调驱动**的 `callbackFlow.trySend`(channel 容量 64,满了返回 false 直接丢)——扫描广播洪峰时,丢的是"UI 列表少更新一次",下一条广播自愈,可接受;
-- **结果流是冷流**:没人收集就不干活——所以 UI 流用 `stateIn(Eagerly)` 主动拉起。
-
-### 2.2 三个实例的输入-输出-触发器
-
-| 实例 | 输入 | 投影 | 去重 | 下游 |
-|---|---|---|---|---|
-| scanCollection | access、visible、state、restart | `ScanRequest(enabled, restart)` | `distinctUntilChanged`(data class 值比较) | `flatMapLatest` 开关 native 扫描 |
-| autoConnectCollection | binding、devices | `Found.deviceId?.takeIf { 在列表里 }` | `distinctUntilChanged`(String? 值比较) | `requestConnection` |
-| uiState | state、binding、devices | `toUiState()`(排序/置灰/消息) | 无(每次重算,交给 stateIn 的 conflate) | Compose 重组 |
-
-### 2.3 抗压能力评估
-
-| 压力场景 | 行为 | 结论 |
+| # | 流 | 一句话描述(做了什么) |
 |---|---|---|
-| 广播洪峰(native 高频回调) | callbackFlow trySend 缓冲 64,满则丢 | 可自愈(下条覆盖),UI 少一次更新,可接受 |
-| 扫描中反复下拉刷新 | state 变化 → combine 重算 → ScanRequest 值相等 → distinct 吞 → flatMapLatest 不重启 | **零成本**,native 无感知 |
-| Failed 后刷新 / 生命周期抖动 | restart bump / enabled 翻转 → flatMapLatest 取消旧流启新流 | **真正的成本与风险点**:stop/start 竞争(见 3.2) |
-| Connecting/Connected 时刷新 | `submit(Refresh)` 无条件 `clearDevices()` 但 decisioncore no-op | 列表闪空一次,状态机无感知(前端问题,非流问题) |
-| uiState 高频变化 | stateIn conflate 跳中间值,Compose 只收最新 | 天然合并,无压 |
+| 1 | `root.state` | 全局业务阶段:正在登录、正在连接、正在退出。AppMain 靠它决定显示哪个页面、执行什么导航 |
+| 2 | `auth.uiState` | 登录页此刻该显示什么:输入框、加载中、错误、注册成功——由 auth 状态机投影而来 |
+| 3 | `connection.uiState` | 连接页此刻该显示什么:阶段文案 + 设备列表 + 提示消息——由三个来源合成(见 2.4) |
+| 4 | `binding` | 当前用户绑定的设备:读取中 / 无 / 有 / 读取失败 |
+| 5 | `devices` | 扫描已发现的设备列表:给列表 UI 展示,也给自动连接做判断依据 |
+| 6 | `bluetoothAccessGranted` | 门:用户是否已授予蓝牙权限 |
+| 7 | `visible` | 门:页面当前是否可见(决定扫描开不开) |
+| 8 | `scanRestart` | 信号:"请重启扫描"的请求版本号,每 bump 一次代表一次重扫诉求 |
 
-### 2.4 刷新事件的低能耗路径(完整链路)
+### 1.2 事件流(3 个):表达"发生了什么"
+
+| # | 流 | 一句话描述 |
+|---|---|---|
+| 9-11 | root / auth / connection 各一个 `events` 队列 | 状态机的输入通道:UI 提交的意图、资源流产生的结果、子业务上报的事件,全部排队进入,由状态机主循环逐个消费 |
+
+### 1.3 资源流(4 个):表达"一次资源的开始到结束"
+
+| # | 流 | 一句话描述 |
+|---|---|---|
+| 12 | `port.scanDevices()` | 一次扫描会话:订阅时启动系统蓝牙扫描,广播一条条过滤后送达,取消订阅时停止。**同一时刻只允许一个会话** |
+| 13 | `port.execute(Connect)` | 一次连接尝试:成功、失败、超时三种结局之一,结束后流关闭。**同一时刻只允许一个连接会话** |
+| 14 | `port.execute(Disconnect)` | 一次断开操作:执行完发一个结果就结束 |
+| (包装) | `scanFlow()` | 扫描会话的装饰:开始清空列表、结束标记状态、出错上报给状态机 |
+
+> 合计 14 个:8 状态 + 3 事件 + 4 资源(scanFlow 是 scanDevices 的包装,不算新类型)。
+
+## 2. 共性约化:三类流 + 组合算子
+
+### 2.1 为什么能约化成三类
+
+每个流问自己三个问题,答案落进同一类的流共享同一组答案:
+
+| 问题 | 状态流(A) | 事件流(B) | 资源流(C) |
+|---|---|---|---|
+| 表达什么 | 当前是什么 | 发生了什么 | 一次资源的起止 |
+| 什么时候存在 | 常驻,独立于订阅者(热) | 常驻,独立于订阅者(热) | 订阅时创建,取消时销毁(冷) |
+| 订阅者能看到什么 | 最新值(可复现) | 订阅后发生的事(不可复现) | 从订阅时刻起的完整序列 |
+| 值丢了会怎样 | 无所谓(总能读最新) | 不能丢(丢了就是少了一次业务) | 丢了可能可自愈(看数据性质) |
+
+### 2.2 三类流的特征(类型定义)
+
+**A 状态流(StateFlow)**
+- 全局一份,多消费者读同一份(汇集)
+- 值语义:可复现、可比较、永远读得到最新值
+- 天然抗压:`conflate` 语义——变化太密时中间值自动合并,消费者只收最新
+- 失败不发生在流上:失败被**建模成值**(比如 `BindingSnapshot.Failed`、`ConnectionState.Failed`)
+
+**B 事件流(Channel)**
+- 一个队列,多生产者往里写(合流),单消费者串行读
+- 一次性:消费即消失,不可复现——所以不能丢
+- `UNLIMITED` 缓冲:生产永远不被阻塞(无背压),代价是消费慢时会积压
+- 失败 = 队列关闭:关闭后写入失败,这是 orchestrator 生命周期的终点信号
+
+**C 资源流(callbackFlow / cold flow)**
+- 每个订阅者一个实例(分流);资源本身**独占**(原生扫描只允许一个)
+- 订阅开始 = 资源开始,取消 = 资源结束;取消是异步的,于是存在"新旧交接"的竞争窗口
+- 失败是常态(硬件、权限、超时):以异常关闭流终止;**流终止后谁来恢复,是这类流的核心设计问题**
+
+### 2.3 组合算子(不是流,是流的组合方式)
+
+| 算子 | 角色 | 代码库中的实例 |
+|---|---|---|
+| `combine` | 合流:多个状态流 → 一个派生状态流 | uiState(3 合 1)、scanRequest(4 合 1)、autoConnect(2 合 1) |
+| `flatMapLatest` | 分流:信号流 → 资源流的开关 | 扫描开关:enabled/restart 变化 → 启停 scanFlow |
+| `distinctUntilChanged` | 去重:值相等则不下发 | 挡住"刷新后状态没变"的无效重启 |
+| `stateIn` | 热化:把派生流变成常驻状态流 | uiState 的 Eagerly |
+
+### 2.4 三个合流实例(combine 在这套代码里怎么用)
+
+combine 的语义一句话:**多个输入各自保留最新值,任何一个变化就用所有最新值重算一次结果**。
+
+| 实例 | 输入 | 合成什么 | 变化来源 | 结果用途 |
+|---|---|---|---|---|
+| scanCollection 的 ScanRequest | 权限门、可见门、状态机阶段、重启信号 | "扫描应该开吗 + 是否需要重启" | 任一变化 | 控制扫描资源的启停 |
+| autoConnectCollection | 绑定状态、设备列表 | "记住的设备现在在列表里吗" | 绑定/列表变化 | 触发自动连接 |
+| uiState | 状态机阶段、绑定、设备列表 | 页面该显示的一切 | 任一变化 | 驱动 UI 重组 |
+
+## 3. 逐类建模:每一类回答四个问题
+
+### 3.1 状态流(A)
+
+| 问题 | 回答 |
+|---|---|
+| 分流还是合流 | **合流是常态**:派生状态流就是合流的产物(uiState、ScanRequest)。合流时用 `combine`,投影是纯函数,不产生副作用。**分流天生支持**:多消费者订阅同一实例,无需任何额外设计 |
+| 独占还是汇集 | **汇集**:数据是公共的,一个生产者写、多个消费者读(devices 同时被列表 UI 和自动连接用)。写者必须唯一(单写),读者不限 |
+| 什么情况会失败,怎么解决 | **流本身不失败**——失败被建模成值。读数据库失败 → `BindingSnapshot.Failed`;扫描失败 → 状态机进 Failed 阶段。这是状态流最重要的约定:永远把"出了错"变成"当前是什么"的一种 |
+| 流量大不大,怎么解决 | 低频(状态变化),且 `conflate` 天然合并中间值——变化再密,消费者也只收最新。**状态流几乎没有压力问题**,这是它作为"页面数据源"的根本原因 |
+
+### 3.2 事件流(B)
+
+| 问题 | 回答 |
+|---|---|
+| 分流还是合流 | **合流是常态**:UI 意图、资源结果、子业务上报,三个来源写进同一个队列。**单消费者**串行消费,天然顺序化,不需要锁 |
+| 独占还是汇集 | **队列独占**于 orchestrator,写入开放给任何持有引用的生产者 |
+| 什么情况会失败,怎么解决 | 队列自身不失败;**失败 = 关闭**——orchestrator.close() 后写入即失败,这是生命周期终点,不是错误路径。真正要防的是"关闭后还在写"(竞态),dispatch 前不做检查会抛,靠 `trySend` 的返回值兜住 |
+| 流量大不大,怎么解决 | 事件量 = 状态机事件频率,量小;`UNLIMITED` 缓冲 + 消费端是纯函数(reduce)非常快,积压风险低。**理论上无背压,依赖消费速度兜底**——这是唯一需要留意的点,如果未来事件量剧增(高频上报),要改成有界队列 |
+
+### 3.3 资源流(C)
+
+| 问题 | 回答 |
+|---|---|
+| 分流还是合流 | **分流是常态**:每个订阅者一个实例,订阅即开始、取消即结束。**合流需要显式设计**:多个订阅者共享同一个底层资源(扫描),要么单飞拒绝(现状),要么共享 + 引用计数(演进方向) |
+| 独占还是汇集 | **资源独占**:原生扫描同一时刻只允许一个,所以必须有单飞位(`activeScan`)+ 拒绝路径(`check(active == null)`)。**独占的代价**:第二个订阅者会被拒绝;取消旧订阅与新订阅的交接是异步的,可能撞上拒绝路径 → 新流以失败关闭 → 管道死 |
+| 什么情况会失败,怎么解决 | 失败是常态:硬件不可用、权限缺失、系统限流、超时。失败以异常关闭流终止。**关键问题:流终止后谁恢复?** 现状是 catch 吞掉错误、流正常结束、靠用户手动刷新重启;更好的答案是自愈重试或共享扫描让重启成本趋近于零 |
+| 流量大不大,怎么解决 | 两个维度:**元素流量**——广播洪峰时 `callbackFlow` 内部缓冲(64)满了会丢值,但广播是覆盖型数据(下一条更新同地址),丢一条自愈;**启停频率**——每次重启 = stop/start 往返 + 系统 30 秒 5 次限流,这才是资源流真正的"流量"问题,靠减少重启(前端挡连发、共享扫描)解决 |
+
+## 4. 用模型回答问题
+
+### 4.1 抗压能力如何?
+
+| 压力 | 涉及类型 | 模型给出的答案 |
+|---|---|---|
+| 广播洪峰 | C | 覆盖型数据,丢值自愈;不致命 |
+| 高频刷新 | A + C | 刷新只改状态流 → 合流重算 → 值相等被 `distinctUntilChanged` 挡住 → 不触碰资源流。**抗压的关键是"把高频操作挡在状态流层,别漏到资源流层"** |
+| 状态机事件风暴 | B | 队列无背压 + 消费极快,暂不成问题;事件量剧增时要换有界队列 |
+| 真正会受伤的 | C | 重启竞争 → 单飞拒绝 → 管道死;系统限流。这是唯一需要工程加固的点 |
+
+### 4.2 刷新如何低能耗?
+
+完整链路,标注每一跳落在哪一类:
 
 ```text
-下拉/按钮 → submit(Refresh)
-  → clearDevices()                       ← 唯一的前端成本(列表清空)
-  → dispatch(RefreshRequested)           → state: Scanning.copy(message=null)
-  → if (!scanActive) scanRestart += 1    ← 扫描中不 bump
-  → combine 四输入:state 变了 → 重算 ScanRequest(enabled, restart)
-  → enabled 不变 + restart 不变 → distinctUntilChanged 吞掉
-  → flatMapLatest 不重启 → native 扫描零感知        ← 低能耗的关键
+下拉/按钮 → 状态流门控:isRefreshing(现在恒 false,连发没被挡)   ← 前端第一道闸
+  → submit(Refresh) → 事件流:进状态机,Scanning.copy(message=null)
+  → 状态流合流:ScanRequest 重算 → 值没变 → distinct 吞掉        ← 第二道闸(已生效)
+  → 资源流:不重启,native 零感知                                ← 结论:扫描中刷新零能耗
 ```
 
-**要重启的只有三条路**:Failed→Scanning、BecameHidden→BecameVisible、refresh 恰在扫描未启动时。这三条路才有 stop/start 成本与竞争。
+**要重启的三条路**(Failed→Scanning、页面隐藏→可见、扫描未启动时刷新)都有真实的 stop/start 成本——**低能耗的目标不是"刷新更快",而是"少触发 C 类的重启"**:
+- 前端:isRefreshing 变真挡连发(挡在第一道闸)
+- 列表:刷新不清空(把感知成本从"等广播"降到"无感增量")
+- 后端:共享扫描 + 串行化(把重启成本从"stop/start 往返"降到"引用切换")
 
-## 3. 边界建模:写流之前的检查清单
+## 5. 写流之前的建模清单
 
-### 3.1 流的六问(每个流落笔前问一遍)
+落笔前先做两步,然后按类型套问题:
 
-| 问 | 要答出什么 | 代码库中的对应案例 |
-|---|---|---|
-| ① 谁生产? | 单生产者还是多?多生产者需要合并还是互斥? | `discovered` 缓存 + 扫描单飞(互斥) |
-| ② 谁消费? | 一个还是多个?多个要 StateFlow 共享,避免 cold 流重复订阅 | `orchestrator.state` 被 3 个 combine 共享 |
-| ③ 何时开始? | 冷流按订阅;热流用 `stateIn` 的时机(Eagerly/WhileSubscribed) | uiState 用 Eagerly |
-| ④ 何时结束? | `awaitClose`/`onCompletion` 是否覆盖所有出口?取消是否干净? | flatMapLatest 取消**不等待旧流收尾**(竞争源) |
-| ⑤ 失败怎么办? | catch 吞掉 = 流正常完成 = 管道死。要重抛、自愈重试、或至少上报 | `scanFlow().catch` 只 dispatch,管道死亡 |
-| ⑥ 背压怎么办? | 挂起式 emit 排队;回调式 trySend 丢值。丢值是否可自愈? | callbackFlow 64 缓冲丢广播,下条自愈 |
+**第一步:判断类型**——这个流表达"当前是什么"(A)、"发生了什么"(B)、还是"一次资源的起止"(C)?
 
-### 3.2 三类流的边界
+**第二步:按类型套检查**
 
-| 类别 | 特征 | 适合 | 注意 |
+| 检查 | A 状态流 | B 事件流 | C 资源流 |
 |---|---|---|---|
-| **状态流**(StateFlow) | 可复现、读最新、conflate 跳中间值 | "当前是什么":状态机 state、binding、devices、UI 门控 | 别拿它传一次性事件 |
-| **事件流**(Channel/SharedFlow) | 一次性、不缓存、消费即消失 | "发生了什么":orchestrator 事件队列 | 本项目统一走 Channel(UNLIMITED),天然排队 |
-| **数据流**(cold Flow/callbackFlow) | 按订阅启动、随订阅结束 | 资源型:扫描、连接、sqlite 查询 | 每次订阅都有启停成本;**高频重启场景要共享或幂等** |
+| 写者唯一吗? | 必须唯一 | 多写者合法,消费串行 | 资源独占,有拒绝路径 |
+| 失败去哪了? | 建模成值,不进流 | 队列关闭即终点 | 以异常终止;**必须回答"谁恢复"** |
+| 流量怎么看? | conflate 兜底,无需处理 | 无背压,靠消费速度 | 元素流量丢值自愈;启停频率是真正的成本 |
+| 合流/分流? | 合流用 combine,投影纯函数 | 合流天然;单消费 | 分流天然;合流要共享设计 |
+| 常见的坑 | 拿它传一次性事件 | 关闭后写入 | 取消与新启竞争;catch 吞错误 = 管道死 |
 
-### 3.3 combine / flatMapLatest / distinctUntilChanged 使用准则
-
-| 算子 | 什么时候用 | 什么时候别用 |
-|---|---|---|
-| `combine` | 多个**独立来源** → 一个**派生视图**(uiState 投影) | 输入超 3-4 个说明视图太复杂,该拆(ScanRequest 的 4 输入是边界) |
-| `flatMapLatest` | 上游信号**控制下游资源流的生命周期**(扫描开关) | 下游无资源成本时用 `mapLatest`/`flatMapConcat` 就够;且要意识到**取消不等待收尾** |
-| `distinctUntilChanged` | 输出是 data class/等价值,防下游重复触发 | 输出本来就单调变化时是浪费 |
-| `stateIn` | 把派生流变成 UI 可观察的热流 | 冷流场景(每订阅都要新结果)别用 |
-
-### 3.4 资源单飞与取消竞争(最容易踩的坑)
-
-资源型流(扫描、连接)必须**单飞**:`activeScan` / `connectionSession` + `check(active == null)`([AndroidNativeBleScanner.kt:73](migratedev/src/main/kotlin/com/biosensor/migratedev/port/adapter/bluetoothport/AndroidNativeBleScanner.kt#L73))。
-但单飞 + check 意味着:**拒绝路径永远存在**。当 `flatMapLatest` 取消旧流(异步生效)与新流启动(立即执行)竞争时,新流的 `check` 会撞上未收尾的旧扫描 → 新流以 ScanFailed 关闭 → 管道死。防御方向:
-- **串行化**:start/stop 过 `Mutex`,消除取消竞争;
-- **共享引用计数**:第一个订阅者起扫描,后续订阅挂到同一 active scan,最后一个离开才 stop——重启成本趋近于零,拒绝路径消失;
-- **幂等 start**:listener 相同时直接返回。
-
-### 3.5 刷新 / 复位操作的建模(三档)
-
-| 档 | 做法 | 成本 | 适用 |
-|---|---|---|---|
-| 幂等复位 | clear + 重扫,配 guard(isRefreshing/scanActive)防连发 | 感知成本(等第一个广播 0.4-0.5s) | 现在 |
-| 增量更新 | **stale-while-revalidate**:保留旧列表,新广播增量覆盖,旧条目置灰 | 无感;autoConnect 更稳(记住的设备不消失) | 建议目标 |
-| 事件合并 | translation 层 coalesce(400ms 内重复 refresh 忽略) | 防连发兜底 | 可选 |
-
-### 3.6 失败自愈准则
-
-`catch { 只上报 }` = 流正常完成 = **管道死亡**。三条出路:① 重抛(让上层知道);② 受限重试(退避 2 次);③ 至少让状态机进入 Failed,把"重试"变成显式用户操作(现在就是这样,但用户要手动刷新才自愈)。
-
-## 4. 对两个问题的回答
-
-**Q1:抗压能力如何?**
-- **广播洪峰**:可承受。trySend 丢值自愈,combine 不丢值,stateIn conflate 合并,UI 只收最新。
-- **连发刷新**:可承受。distinctUntilChanged 值比较挡住,扫描中刷新零 native 成本。
-- **真正的弱点**:重启路径(Failed→Scanning、生命周期抖动)的 stop/start 竞争 → 单飞 check 拒绝 → 管道死;以及 30 秒内启停 5 次被 Android 限流(SCAN_FAILED_SCANNING_TOO_FREQUENTLY)。**这两个都是"重启成本"问题,不是"刷新次数"问题**,治本在 port 层(共享扫描 + 串行化)。
-
-**Q2:刷新事件如何低能耗处理?**
-已在 2.4 给出完整链路:扫描中刷新 = 零 native 成本(distinct 挡住);真正有成本的是"重启"而非"刷新"。前端把 `isRefreshing` 变真(现在恒为 false,[ConnectionTranslation.kt:288](migratedev/src/main/kotlin/com/biosensor/migratedev/translation/connection/ConnectionTranslation.kt#L288))即可挡住下拉连发;根治感知延迟是 3.5 的增量更新。
-
-## 5. 落地优先级(建议,未实施)
-
-| 优先级 | 事项 | 层 | 效果 |
-|---|---|---|---|
-| 1 | `isRefreshing` 反映 `scanActive`,按钮/下拉禁用 | translation | 堵住连发入口,10 分钟 |
-| 2 | 刷新不清空列表(stale-while-revalidate) | translation | 0.4-0.5s 感知消失,autoConnect 更稳 |
-| 3 | port 层共享扫描 + start/stop 串行化 | port | 重启竞争与限流风险根治 |
-| 4 | 失败自愈重试 | translation/port | 管道不再死 |
-
-> 1-2 是纯前端收益,3-4 是后端健壮性。每项都可独立落地,随时可做。
+> 一句总纲:**高频操作挡在状态流层,资源生命周期只由明确的开关触发,失败永远有恢复路径。**

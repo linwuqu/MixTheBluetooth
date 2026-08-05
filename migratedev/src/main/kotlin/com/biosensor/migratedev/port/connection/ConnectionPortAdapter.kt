@@ -27,6 +27,7 @@ class ConnectionPortAdapter(
 
     override fun scanDevices(): Flow<BluetoothDeviceInfo> = bluetooth.scanDevices()
 
+    // 调用 sqlite 能力从 deviceBinding 表搜索绑定信息
     override fun readBinding(userId: String): Flow<BindingSnapshot> = flow {
         val result = runCatching {
             sqlite.deviceBindingQueries.findByUserId(userId).executeAsOneOrNull()
