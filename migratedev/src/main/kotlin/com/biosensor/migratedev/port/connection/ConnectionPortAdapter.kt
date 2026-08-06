@@ -3,10 +3,10 @@ package com.biosensor.migratedev.port.connection
 import com.biosensor.migratedev.database.LocalDatabase
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEffect
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -44,11 +44,11 @@ class ConnectionPortAdapter(
         is ConnectionEffect.SaveBinding -> saveBinding(effect.userId, effect.deviceId)
 
         is ConnectionEffect.ConnectDevice -> bluetooth.execute(
-            BluetoothCommand.Connect(effect.deviceId)
+            BluetoothEffect.Connect(effect.deviceId)
         ).map { it.toEvent() }
 
         ConnectionEffect.DisconnectDevice -> bluetooth.execute(
-            BluetoothCommand.Disconnect
+            BluetoothEffect.Disconnect
         ).map { it.toEvent() }
     }
 
@@ -66,11 +66,11 @@ class ConnectionPortAdapter(
         emit(result)
     }.flowOn(Dispatchers.IO)
 
-    private fun BluetoothResult.toEvent(): ConnectionEvent = when (this) {
-        is BluetoothResult.Connected -> ConnectionEvent.DeviceConnected(device)
-        is BluetoothResult.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(message)
-        BluetoothResult.ConnectTimeout -> ConnectionEvent.DeviceConnectTimeout
-        BluetoothResult.Disconnected -> ConnectionEvent.DeviceDisconnected
+    private fun BluetoothEvent.toEvent(): ConnectionEvent = when (this) {
+        is BluetoothEvent.Connected -> ConnectionEvent.DeviceConnected(device)
+        is BluetoothEvent.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(message)
+        BluetoothEvent.ConnectTimeout -> ConnectionEvent.DeviceConnectTimeout
+        BluetoothEvent.Disconnected -> ConnectionEvent.DeviceDisconnected
     }
 
     private companion object {

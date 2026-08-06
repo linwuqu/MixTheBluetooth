@@ -12,10 +12,9 @@
 | 03 | 拉取缓存明文流 | [03-read-cache-text-stream.md](./03-read-cache-text-stream.md) | 初稿 |
 | 04 | 解析 / 校验 / 重试决策 | [04-parse-validate-cache-text.md](./04-parse-validate-cache-text.md) | 初稿 |
 | 06 | 端口挂载：能力与业务适配器分离（架构） | [06-port-capability-separation.md](./06-port-capability-separation.md) | 已落地 |
-| 07 | 指令直达，分层上报：Effect/Command 映射收敛（架构） | [07-direct-command-hierarchical-report.md](./07-direct-command-hierarchical-report.md) | 已落地 |
+| 07 | 指令直达，分层上报：词汇统一与契约收尾（架构·修订） | [07-direct-command-hierarchical-report.md](./07-direct-command-hierarchical-report.md) | 修订稿 |
 | 08 | UI 分层：Route 业务转移 / Screen 纯呈现 + 组件拆分与 Preview（架构） | [08-ui-route-screen-split.md](./08-ui-route-screen-split.md) | 已落地 |
 | 09 | 流的分类与建模：三类流如何回答抗压与低能耗（架构） | [09-flow-landscape-and-combine.md](./09-flow-landscape-and-combine.md) | 梳理稿 |
-| 10 | 刷新链路的两点改进：反馈可见、重启无成本（架构） | [10-refresh-chain-improvements.md](./10-refresh-chain-improvements.md) | 已落地 |
 
 ## 2. 待整理工作流
 

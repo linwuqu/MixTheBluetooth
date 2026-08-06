@@ -2,8 +2,8 @@ package com.biosensor.migratedev.orchestrator
 
 import com.biosensor.migratedev.decisioncore.DecisionCore
 import com.biosensor.migratedev.decisioncore.Transition
-import com.biosensor.migratedev.port.CommandPort
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -27,7 +27,7 @@ class WorkflowOrchestratorTest {
                     else -> Transition(state)
                 }
             },
-            effectExecutor = CommandPort { flowOf<TestEvent>() },
+            effectExecutor = { flowOf<TestEvent>() },
             scope = this,
             onTransition = {
                     previous: TestState,
@@ -66,7 +66,7 @@ class WorkflowOrchestratorTest {
                 else -> Transition(state)
             }
         }
-        val effectExecutor = CommandPort<TestEffect, TestEvent> { effect ->
+        val effectExecutor: (TestEffect) -> Flow<TestEvent> = { effect ->
             when (effect) {
                 TestEffect.Finish -> flowOf(TestEvent.Finished)
             }

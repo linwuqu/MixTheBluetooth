@@ -62,7 +62,7 @@ class AuthTranslation private constructor(
     private val orchestrator = WorkflowOrchestrator(
         initialState = AuthState.Idle,
         decisionCore = AuthDecisionCore,
-        effectExecutor = port,
+        effectExecutor = port::execute,
         scope = viewModelScope,
         logTag = "Auth.Workflow",
         onTransition = ::reportRootOutput

@@ -1,11 +1,11 @@
 package com.biosensor.migratedev.orchestrator
 
 import com.biosensor.migratedev.decisioncore.DecisionCore
-import com.biosensor.migratedev.port.CommandPort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +14,7 @@ import timber.log.Timber
 
 /**
  * 抓大放小 简单的理解一下 Orchestrator 即
- * decisionCore.reduce(initialState, onEvent(event)) -> newState, effectExecutor.execute(effects).collect { newEvent -> onEvent(newEvent)}
+ * decisionCore.reduce(initialState, onEvent(event)) -> newState, effectExecutor(effects).collect { newEvent -> onEvent(newEvent)}
  *
  * 1. initialState 和 newState 不会向外通知变更 所以进行包装 形成 StateFlow(Readable) MutableStateFlow(Readable & Writeable)
  * 这样所有收集这个信息的主体都可以收到变更通知 by using .collectAsStateWithLifecycle()
@@ -28,7 +28,7 @@ import timber.log.Timber
  *     }
  * }
  *
- * 3. effectExecutor.execute(effects).collect { newEvent -> onEvent(newEvent) 这个过程是异步的 可能会很慢 它不应该拖累主循环
+ * 3. effectExecutor(effects).collect { newEvent -> onEvent(newEvent) 这个过程是异步的 可能会很慢 它不应该拖累主循环
  * 所以单独赋予一个子作用域
  * private val effectScope = CoroutineScope(
  *     scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
@@ -36,7 +36,7 @@ import timber.log.Timber
  * 这样就可以做到
  * transition.effects.forEach { effect ->
  *       effectScope.launch {
- *              effectExecutor.execute(effect).collect(events::send)
+ *              effectExecutor(effect).collect(events::send)
  *      }
  * }
  *
@@ -47,7 +47,7 @@ import timber.log.Timber
 class WorkflowOrchestrator<State, Event, Effect>(
     initialState: State,
     private val decisionCore: DecisionCore<State, Event, Effect>,
-    private val effectExecutor: CommandPort<Effect, Event>,
+    private val effectExecutor: (Effect) -> Flow<Event>,
     scope: CoroutineScope,
     private val logTag: String = "Workflow",
     private val onTransition: (
@@ -85,7 +85,7 @@ class WorkflowOrchestrator<State, Event, Effect>(
             )
             transition.effects.forEach { effect ->
                 effectScope.launch {
-                    effectExecutor.execute(effect).collect(events::send)
+                    effectExecutor(effect).collect(events::send)
                 }
             }
         }

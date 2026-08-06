@@ -35,7 +35,7 @@ class AuthWorkflowTest {
         val orchestrator = WorkflowOrchestrator(
             initialState = AuthState.Idle,
             decisionCore = AuthDecisionCore,
-            effectExecutor = FakeAuthPort(session),
+            effectExecutor = FakeAuthPort(session)::execute,
             scope = scope
         )
 
@@ -54,7 +54,7 @@ class AuthWorkflowTest {
         val orchestrator = WorkflowOrchestrator(
             initialState = AuthState.Idle,
             decisionCore = AuthDecisionCore,
-            effectExecutor = port,
+            effectExecutor = port::execute,
             scope = scope
         )
 

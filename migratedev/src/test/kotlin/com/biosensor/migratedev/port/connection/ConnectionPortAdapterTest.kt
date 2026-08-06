@@ -4,10 +4,10 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.biosensor.migratedev.database.LocalDatabase
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothCommand
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEffect
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
-import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -74,7 +74,7 @@ class ConnectionPortAdapterTest {
     fun `connect device is wrapped into bluetooth command and mapped to event`() =
         runTest {
             bluetooth.results = flowOf(
-                BluetoothResult.Connected(
+                BluetoothEvent.Connected(
                     BluetoothDeviceInfo(
                         id = "AA:01",
                         name = "BT24-S",
@@ -97,19 +97,19 @@ class ConnectionPortAdapterTest {
                     ConnectionEffect.ConnectDevice("AA:01")
                 ).toList()
             )
-            assertEquals(BluetoothCommand.Connect("AA:01"), bluetooth.lastCommand)
+            assertEquals(BluetoothEffect.Connect("AA:01"), bluetooth.lastEffect)
         }
 
     @Test
     fun `disconnect device is wrapped into bluetooth command`() =
         runTest {
-            bluetooth.results = flowOf(BluetoothResult.Disconnected)
+            bluetooth.results = flowOf(BluetoothEvent.Disconnected)
 
             assertEquals(
                 listOf(ConnectionEvent.DeviceDisconnected),
                 port.execute(ConnectionEffect.DisconnectDevice).toList()
             )
-            assertEquals(BluetoothCommand.Disconnect, bluetooth.lastCommand)
+            assertEquals(BluetoothEffect.Disconnect, bluetooth.lastEffect)
         }
 
     @Test
@@ -129,14 +129,14 @@ class ConnectionPortAdapterTest {
         }
 
     private class FakeBluetoothPort : BluetoothPort {
-        var lastCommand: BluetoothCommand? = null
-        var results: Flow<BluetoothResult> = flowOf()
+        var lastEffect: BluetoothEffect? = null
+        var results: Flow<BluetoothEvent> = flowOf()
         var devices: Flow<BluetoothDeviceInfo> = flowOf()
 
         override fun scanDevices(): Flow<BluetoothDeviceInfo> = devices
 
-        override fun execute(command: BluetoothCommand): Flow<BluetoothResult> {
-            lastCommand = command
+        override fun execute(effect: BluetoothEffect): Flow<BluetoothEvent> {
+            lastEffect = effect
             return results
         }
     }
