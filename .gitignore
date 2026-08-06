@@ -13,7 +13,7 @@
 .externalNativeBuild
 .cursorrules
 .cursor/
-.claude/
+.claude/settings.local.json
 .codegraph/
 .idea/
 tools/

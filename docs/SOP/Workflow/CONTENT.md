@@ -1,20 +1,15 @@
-# Workflow 目录
+# 业务工作流目录
 
-这里只放工作流目录，不放长篇解释。
+本目录只放**业务工作流**（auth、connection 这类业务）。架构设计见 [../架构/CONTENT.md](../架构/CONTENT.md)。
 
 ## 1. 已有工作流
 
 | 顺序 | 工作流 | 文件 | 状态 |
 |---|---|---|---|
-| 00 | 父子编排器 | [00-father-son orchestrator.md](<./00-father-son orchestrator.md>) | 已落地 |
-| 01 | 注册 / 登录 | [01-register-login.md](./01-register-login.md) | 初稿 |
-| 02 | 设备连接 | [02-device-connection.md](./02-device-connection.md) | 初稿 |
-| 03 | 拉取缓存明文流 | [03-read-cache-text-stream.md](./03-read-cache-text-stream.md) | 初稿 |
-| 04 | 解析 / 校验 / 重试决策 | [04-parse-validate-cache-text.md](./04-parse-validate-cache-text.md) | 初稿 |
-| 06 | 端口挂载：能力与业务适配器分离（架构） | [06-port-capability-separation.md](./06-port-capability-separation.md) | 已落地 |
-| 07 | 指令直达，分层上报：词汇统一与契约收尾（架构·修订） | [07-direct-command-hierarchical-report.md](./07-direct-command-hierarchical-report.md) | 修订稿 |
-| 08 | UI 分层：Route 业务转移 / Screen 纯呈现 + 组件拆分与 Preview（架构） | [08-ui-route-screen-split.md](./08-ui-route-screen-split.md) | 已落地 |
-| 09 | 流的分类与建模：三类流如何回答抗压与低能耗（架构） | [09-flow-landscape-and-combine.md](./09-flow-landscape-and-combine.md) | 梳理稿 |
+| 01 | 注册 / 登录 | [01-注册登录.md](./01-注册登录.md) | 初稿 |
+| 02 | 设备连接 | [02-设备连接.md](./02-设备连接.md) | 初稿 |
+| 03 | 拉取缓存明文流 | [03-缓存明文流.md](./03-缓存明文流.md) | 初稿 |
+| 04 | 解析 / 校验 / 重试决策 | [04-解析校验与重试.md](./04-解析校验与重试.md) | 初稿 |
 
 ## 2. 待整理工作流
 
@@ -25,8 +20,10 @@
 | 07 | 拉取任务 | 轮询远端生成结果 |
 | 08 | 前端展示 | 结果回传、状态展示、删除确认 |
 
+> 注：待整理编号是业务规划编号，与[架构](../架构/CONTENT.md)的 05-09 编号无关，不冲突。
+
 ## 3. 沉淀顺序
 
 1. 先写单个工作流初稿。
-2. 讨论后修正 `Intent / Callback`、`State / Event / Effect`、`Command / Result`。
-3. 稳定后回填到总蓝图。
+2. 讨论后修正 `Intent / Callback`、`State / Event / Effect`。
+3. 稳定后回填到总蓝图（[../README.md](../README.md)）。

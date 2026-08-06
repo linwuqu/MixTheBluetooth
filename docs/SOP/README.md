@@ -37,8 +37,8 @@ flowchart LR
   T -->|Intent| O
   O -->|Event| D
   D -->|State + Effect| O
-  O -->|Command| Port
-  Port -->|Result| O
+  O -->|Effect| Port
+  Port -->|Event| O
   O -->|Callback / UiState| T
   T -->|UiState| UI
 ```
@@ -58,14 +58,12 @@ reduce(currentState, event) -> nextState + effects
 | `State` | 当前工作流状态 |
 | `Event` | 驱动状态变化的事件，可能来自 UI，也可能来自 Port |
 | `Effect` | 状态机要求执行的副作用 |
-| `Command` | Orchestrator 把 Effect 翻译成 Port 能执行的命令 |
-| `Result` | Port 返回的结果 |
 
 补充约定：
 
 - `Event` 属于状态机。
-- `Result` 属于 Port 边界。
-- `Orchestrator` 负责把 `Result` 归一成 `Event`，再送回 `DecisionCore`。
+- `Effect` 由 Orchestrator 直接交给 Port 的 `execute`，Port 返回 `Event` 流再送回 `DecisionCore`。
+- 全库只有一种词汇形态：`effect → event`。不存在 `Command / Result` 中间词汇（07 修订，见[词汇表](./说明/词汇表.md)）。
 
 注意：
 
@@ -82,7 +80,7 @@ reduce(currentState, event) -> nextState + effects
 | `Translation` | 不持有业务状态，不做业务分支 |
 | `Orchestrator` | 不决定业务状态，只执行 Effect |
 | `DecisionCore` | 不做 IO，不知道 SDK、HTTP、文件细节 |
-| `Port` | 不知道业务状态机，只返回 Result |
+| `Port` | 不知道业务状态机，只返回 Event |
 
 ## 5. 工作流文档怎么写
 
@@ -90,7 +88,7 @@ reduce(currentState, event) -> nextState + effects
 
 1. `Intent / Callback`。
 2. `State / Event / Effect`。
-3. `Command / Result`。
+3. 词汇形态与翻译边界（Effect/Event 直通，翻译止步于 Port）。
 4. 这个工作流做什么。
 5. 它对应哪个 UI 状态机。
 6. `Port` 需要提供哪些能力。
@@ -100,8 +98,16 @@ reduce(currentState, event) -> nextState + effects
 不要把一个简单工作流写成多层消息百科。  
 先写这三段，再解释状态机和副作用怎么执行。
 
-## 6. 当前沉淀方式
+## 6. 文档体系
 
-- `README.md`：只放总蓝图。
-- `Workflow/CONTENT.md`：只放工作流目录。
-- `Workflow/*.md`：逐个工作流细化。
+```
+SOP/
+├── README.md      # 本总蓝图（核心模型 / 拓扑 / 状态机公式）
+├── Workflow/      # 业务工作流（注册登录、设备连接等业务）
+├── 架构/          # 架构设计（编排器、端口挂载、词汇统一等）
+├── 需求/          # 滚动：需求清单与演进
+├── 简报/          # 滚动：周期性汇报
+└── 说明/          # 沉淀：项目树 / 拓扑 / 词汇表 / 演进史
+```
+
+写作规范（分类、模板、命名、滚动更新规则）见 [doc-writer skill](../../.claude/skills/doc-writer/SKILL.md)。
