@@ -1,6 +1,21 @@
 # MixTheBluetooth 开发接力 README
 
-> **使用方式**：下次开发时，让 Cursor 读这个文件 + `docs/superpowers/plans/` 里最近一两个 plan 文件，就能快速进入状态。
+> **⚠ 本文下方章节是旧版 `app/`（Java）模块的接力手册，已不是主战场。当前开发入口见下面"开发入口"小节。**
+
+## 开发入口（2026-08）
+
+**主战场：`migratedev` 模块**（Kotlin，扩展 MVVM：`UI → Translation → Orchestrator ↔ DecisionCore → Port`）。当前分支：`dev-2.1-BypassAuth`。
+
+文档体系在 `docs/SOP/`，按此顺序进入：
+
+1. [docs/SOP/说明/项目树.md](docs/SOP/说明/项目树.md) — 覆盖面快照（先读）
+2. [docs/SOP/说明/拓扑.md](docs/SOP/说明/拓扑.md) — 分层与数据流
+3. [docs/SOP/说明/词汇表.md](docs/SOP/说明/词汇表.md) — 全库统一词汇
+4. [docs/SOP/Workflow/CONTENT.md](docs/SOP/Workflow/CONTENT.md) — 业务说明书（了解一个业务的最小切面）
+5. [docs/SOP/架构/CONTENT.md](docs/SOP/架构/CONTENT.md) — 架构设计（过程文档，已施工的可归档删除）
+6. [docs/SOP/需求/00-需求清单.md](docs/SOP/需求/00-需求清单.md) — 需求入口
+
+工作流：**需求 → 对话 → 架构 → 施工 → 沉淀**（自动化规则见 `.claude/skills/doc-writer/`）。新代码一律写 `migratedev`；下文旧章节仅作为 `app/` 遗留参考。
 
 ---
 

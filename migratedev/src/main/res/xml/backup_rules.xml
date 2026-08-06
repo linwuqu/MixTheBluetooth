@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份排除规则（cloud backup / device transfer，Android 12 以下走 fullBackupContent）。
+  排除原因：会话密文 + Tink keyset 依赖设备本地 Keystore master key，
+  跨设备恢复会导致 keyset 与密文不匹配 → 永久解密失败，宁可丢失会话重新登录。
+-->
 <full-backup-content>
+    <!-- 旧版会话密文（SharedPreferences，遗留） -->
     <exclude domain="sharedpref" path="auth_session_secure.xml" />
+    <!-- 当前会话密文：DataStore Preferences（files/datastore/string_entropy.preferences_pb） -->
+    <exclude domain="file" path="datastore/string_entropy.preferences_pb" />
+    <!-- Tink keyset（SharedPreferences，密文由 Keystore master key 保护，随设备绑定） -->
+    <exclude domain="sharedpref" path="string_entropy_keyset_preferences.xml" />
 </full-backup-content>

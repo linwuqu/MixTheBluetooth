@@ -63,7 +63,7 @@ reduce(currentState, event) -> nextState + effects
 
 - `Event` 属于状态机。
 - `Effect` 由 Orchestrator 直接交给 Port 的 `execute`，Port 返回 `Event` 流再送回 `DecisionCore`。
-- 全库只有一种词汇形态：`effect → event`。不存在 `Command / Result` 中间词汇（07 修订，见[词汇表](./说明/词汇表.md)）。
+- 全库只有一种词汇形态：`effect → event`。不存在 `Command / Result` 中间词汇（04 修订，见[词汇表](./说明/词汇表.md)）。
 
 注意：
 
