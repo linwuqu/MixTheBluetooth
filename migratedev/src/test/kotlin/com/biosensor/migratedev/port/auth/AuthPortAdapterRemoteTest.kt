@@ -22,7 +22,12 @@ class AuthPortAdapterRemoteTest {
     private val ttl = 7L * 24 * 60 * 60 * 1000
 
     private fun adapter(http: FakeHttpRemote) =
-        AuthPortAdapter(kv = InMemoryStringEntropy(), http = http, clock = clock)
+        AuthPortAdapter(
+            kv = InMemoryStringEntropy(),
+            http = http,
+            clock = clock,
+            debugOfflineMode = false   // 测试不启用调试离线会话
+        )
 
     @Test
     fun loginLoadsAccountBeforeReturningACompleteSession() = runTest {

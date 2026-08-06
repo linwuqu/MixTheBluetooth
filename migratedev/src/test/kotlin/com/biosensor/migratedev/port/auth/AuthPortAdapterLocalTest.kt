@@ -28,7 +28,12 @@ class AuthPortAdapterLocalTest {
     private val gson = Gson()
 
     private fun adapter(entropy: StringEntropy) =
-        AuthPortAdapter(kv = entropy, http = NoopHttpRemote, clock = clock)
+        AuthPortAdapter(
+            kv = entropy,
+            http = NoopHttpRemote,
+            clock = clock,
+            debugOfflineMode = false   // 测试不启用调试离线会话
+        )
 
     private fun seededEntropy(raw: String): InMemoryStringEntropy =
         InMemoryStringEntropy().apply { values[AuthPortAdapter.SESSION_KEY] = raw }

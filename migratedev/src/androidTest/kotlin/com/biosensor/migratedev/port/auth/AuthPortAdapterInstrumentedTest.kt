@@ -33,7 +33,8 @@ class AuthPortAdapterInstrumentedTest {
                 val port = AuthPortAdapter(
                     kv = local.entropy,
                     http = NoopHttpRemote,
-                    clock = java.time.Clock.systemUTC()
+                    clock = java.time.Clock.systemUTC(),
+                    debugOfflineMode = false   // 测试不启用调试离线会话
                 )
                 val session = AuthSession(
                     User("instrumented-user", "instrumented", "13800000000"),
