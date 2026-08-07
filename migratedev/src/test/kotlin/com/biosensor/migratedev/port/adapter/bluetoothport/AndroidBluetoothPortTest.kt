@@ -177,10 +177,20 @@ class AndroidBluetoothPortTest {
                 ),
                 connectionResults
             )
-            assertTrue(connection.isActive)
-
-            client.connectionLost("AA:02")
+            // Connected 是连接期终态事件:发出即结束,让出通道消费者地位给命令 flow
             connection.join()
+
+            // 连接 flow 已结束,断开事件不再上报给连接业务(由命令 flow 转发)
+            client.connectionLost("AA:02")
+            runCurrent()
+            assertEquals(
+                listOf(
+                    BluetoothEvent.Connected(
+                        deviceInfo("AA:02")
+                    )
+                ),
+                connectionResults
+            )
         }
 
     @Test
@@ -304,6 +314,16 @@ class AndroidBluetoothPortTest {
 
         override fun disconnect(deviceId: String?) {
             disconnectedDeviceIds += deviceId
+        }
+
+        override fun sendData(deviceId: String, data: ByteArray): Boolean {
+            calls += "sendData:$deviceId"
+            return true
+        }
+
+        override fun requestMtu(deviceId: String, mtu: Int): Boolean {
+            calls += "requestMtu:$deviceId"
+            return true
         }
 
         fun connected(device: ScannedBleDevice) {

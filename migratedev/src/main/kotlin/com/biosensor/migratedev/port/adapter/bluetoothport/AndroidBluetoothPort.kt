@@ -1,12 +1,15 @@
 package com.biosensor.migratedev.port.adapter.bluetoothport
 
 import android.app.Application
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.time.Duration.Companion.milliseconds
@@ -53,6 +56,23 @@ class AndroidBluetoothPort internal constructor(
 
         override fun onConnectionLost(deviceId: String?) {
             handleConnectionLost(deviceId)
+        }
+
+        override fun onDataReceived(data: ByteArray) {
+            // 设备推送字节块:路由到当前连接会话的事件通道(架构 07 §1.4 单一通道)
+            val session = synchronized(lock) { connectionSession }
+            session?.output?.trySend(BluetoothEvent.DataReceived(data))
+        }
+
+        override fun onDataSent(bytesSent: Int) {
+            // readNumber 无设备参数(SDK 限制)→ 只能路由给当前连接会话,串行会话天然满足
+            val session = synchronized(lock) { connectionSession }
+            session?.output?.trySend(BluetoothEvent.DataSent(bytesSent))
+        }
+
+        override fun onMtuChanged(mtu: Int) {
+            val session = synchronized(lock) { connectionSession }
+            session?.output?.trySend(BluetoothEvent.MtuChanged(mtu))
         }
     }
 
@@ -115,6 +135,66 @@ class AndroidBluetoothPort internal constructor(
     ): Flow<BluetoothEvent> = when (effect) {
         is BluetoothEffect.Connect -> connect(effect.deviceId, effect.timeoutMillis)
         BluetoothEffect.Disconnect -> disconnect()
+        is BluetoothEffect.SendData -> sendData(effect.data)
+        is BluetoothEffect.RequestMtu -> requestMtu(effect.mtu)
+    }
+
+    /**
+     * 发送指令数据:转发当前会话事件通道给调用方,直到命令结束。
+     * 消费权转移(架构 07 §1.7/§3.3):新命令启动时 cancel 旧收集器——旧 flow 收不到事件
+     * 自然失效,不会出现双命令并发收集,通道时分复用得以维持。
+     */
+    private fun sendData(data: ByteArray): Flow<BluetoothEvent> = callbackFlow {
+        val session = synchronized(lock) {
+            connectionSession?.takeIf { it.connected }
+        } ?: run {
+            trySend(BluetoothEvent.ConnectFailed("未连接,无法发送"))
+            close()
+            return@callbackFlow
+        }
+        val sent = runCatching { client.sendData(session.deviceId, data) }
+        if (sent.isFailure || !sent.getOrDefault(false)) {
+            trySend(BluetoothEvent.ConnectFailed("发送失败"))
+            close()
+            return@callbackFlow
+        }
+
+        synchronized(lock) {
+            session.dataCollector?.cancel()   // 消费权转移:夺走通道收集权
+        }
+        val collector = launch {
+            synchronized(lock) {
+                session.dataCollector = coroutineContext[Job]
+            }
+            session.output.receiveAsFlow().collect { event ->
+                when (event) {
+                    // 命令期事件:全部转发(类型即身份,不靠顺序猜)
+                    is BluetoothEvent.DataReceived,
+                    is BluetoothEvent.DataSent,
+                    is BluetoothEvent.MtuChanged,
+                    is BluetoothEvent.Disconnected -> trySend(event)
+                    // 连接期事件在命令期不会出现,丢弃是安全兜底
+                    is BluetoothEvent.Connected,
+                    is BluetoothEvent.ConnectFailed,
+                    BluetoothEvent.ConnectTimeout -> Unit
+                }
+            }
+        }
+        awaitClose {
+            collector.cancel()
+            synchronized(lock) {
+                if (session.dataCollector === coroutineContext[Job]) {
+                    session.dataCollector = null
+                }
+            }
+        }
+    }
+
+    private fun requestMtu(mtu: Int): Flow<BluetoothEvent> = flow {
+        val deviceId = synchronized(lock) {
+            connectionSession?.deviceId
+        } ?: return@flow
+        runCatching { client.requestMtu(deviceId, mtu) }
     }
 
     private fun finishActiveScan(
@@ -143,7 +223,10 @@ class AndroidBluetoothPort internal constructor(
             return@callbackFlow
         }
 
-        val session = ConnectionSession(deviceId = deviceId, output = channel)
+        // ProducerScope.channel 声明为 SendChannel,运行时即 Channel(唯一通道,命令 flow 也用它)
+        // 统一事件通道(架构 07 §1.4):独立于本 flow 的 channel,由 BUFFERED(容量 64)创建。
+        // 连接期由下方 collector 消费;命令期由 sendData flow 消费;互不竞争。
+        val session = ConnectionSession(deviceId = deviceId, output = Channel())
         val accepted = synchronized(lock) {
             if (connectionSession != null) false
             else {
@@ -187,8 +270,29 @@ class AndroidBluetoothPort internal constructor(
             }
         }
 
+        // 连接期收集者(架构 07 §1.4):本 flow 的 channel 独立于 session.output,
+        // 不会与命令 flow 竞争。只转发连接期事件;终态事件发出即 close——连接 flow
+        // 让出消费者地位,命令 flow 启动后独占 session.output。
+        val collector = launch {
+            session.output.receiveAsFlow().collect { event ->
+                when (event) {
+                    is BluetoothEvent.Connected,
+                    is BluetoothEvent.ConnectFailed,
+                    BluetoothEvent.ConnectTimeout,
+                    is BluetoothEvent.Disconnected -> {
+                        if (trySend(event).isSuccess) close()
+                    }
+                    // 命令期事件在连接期不会出现,丢弃是安全兜底
+                    is BluetoothEvent.DataReceived,
+                    is BluetoothEvent.DataSent,
+                    is BluetoothEvent.MtuChanged -> Unit
+                }
+            }
+        }
+
         awaitClose {
             timeout.cancel()
+            collector.cancel()
             val ownsConnection = synchronized(lock) {
                 if (connectionSession === session) {
                     connectionSession = null
@@ -242,8 +346,10 @@ class AndroidBluetoothPort internal constructor(
 
     private class ConnectionSession(
         val deviceId: String,
-        val output: SendChannel<BluetoothEvent>,
-        var connected: Boolean = false
+        // Channel 兼具 Send/Receive 两侧:监听方 trySend 投递,命令方 receiveAsFlow 消费
+        val output: Channel<BluetoothEvent>,
+        var connected: Boolean = false,
+        var dataCollector: Job? = null
     )
 
     private companion object {

@@ -71,6 +71,10 @@ class ConnectionPortAdapter(
         is BluetoothEvent.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(message)
         BluetoothEvent.ConnectTimeout -> ConnectionEvent.DeviceConnectTimeout
         BluetoothEvent.Disconnected -> ConnectionEvent.DeviceDisconnected
+        // 命令期事件(数据收发/MTU):连接期收集者已过滤(架构 07 §1.4),实际不可达,穷举占位
+        is BluetoothEvent.DataReceived,
+        is BluetoothEvent.DataSent,
+        is BluetoothEvent.MtuChanged -> ConnectionEvent.DeviceDisconnected
     }
 
     private companion object {

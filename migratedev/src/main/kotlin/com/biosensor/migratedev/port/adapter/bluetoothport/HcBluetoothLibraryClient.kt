@@ -19,14 +19,17 @@ data class LegacyBluetoothParameters(
 internal interface BluetoothLibraryListener {
     fun onConnected(device: BluetoothDeviceInfo)
     fun onConnectionLost(deviceId: String?)
+    fun onDataReceived(data: ByteArray)        // 旧库 readData 桥接:设备推送的字节块
+    fun onDataSent(bytesSent: Int)             // 旧库 readNumber 桥接:每包 GATT 写成功回调
+    fun onMtuChanged(mtu: Int)                 // 旧库 callbackMTU 桥接
 }
 
 internal interface BluetoothLibraryClient {
     fun setListener(listener: BluetoothLibraryListener?)
     fun connect(device: ScannedBleDevice): Boolean
     fun disconnect(deviceId: String?)
-    // TODO: sendData(deviceId: String, data: ByteArray?)
-    //  readData(): Flow<ByteArray> 等等函数的实现
+    fun sendData(deviceId: String, data: ByteArray): Boolean
+    fun requestMtu(deviceId: String, mtu: Int): Boolean
 }
 
 /**
@@ -56,7 +59,9 @@ internal class HcBluetoothLibraryClient(
 
             override fun updateMessyCode(deviceModule: DeviceModule?) = Unit
 
-            override fun readData(mac: String?, data: ByteArray?) = Unit
+            override fun readData(mac: String?, data: ByteArray?) {
+                data?.takeIf { it.isNotEmpty() }?.let { listener?.onDataReceived(it) }
+            }
 
             override fun reading(isStart: Boolean) = Unit
 
@@ -66,13 +71,18 @@ internal class HcBluetoothLibraryClient(
                 )
             }
 
-            override fun readNumber(number: Int) = Unit
+            override fun readNumber(number: Int) {
+                // 旧库:每包 GATT 写成功后回调,值为该包字节数(架构 07 §3.1)
+                listener?.onDataSent(number)
+            }
 
             override fun readLog(className: String?, data: String?, lv: String?) = Unit
 
             override fun readVelocity(velocity: Int) = Unit
 
-            override fun callbackMTU(mtu: Int) = Unit
+            override fun callbackMTU(mtu: Int) {
+                listener?.onMtuChanged(mtu)
+            }
         })
 
     init {
@@ -113,6 +123,20 @@ internal class HcBluetoothLibraryClient(
 
     override fun disconnect(deviceId: String?) {
         manager.disconnect(deviceId?.let(nativeDevices::get))
+    }
+
+    override fun sendData(deviceId: String, data: ByteArray): Boolean {
+        val module = nativeDevices[deviceId] ?: return false
+        // 旧库内部分包(sendMultiple)+ 信号量逐包发送;每包成功后 readNumber 上报
+        manager.sendData(module, data)
+        return true
+    }
+
+    override fun requestMtu(deviceId: String, mtu: Int): Boolean {
+        val module = nativeDevices[deviceId] ?: return false
+        // 默认业务不调用(架构 07 §1.4):MTU 由库自适应,这里保留能力
+        manager.setMTU(module, mtu)
+        return true
     }
 
     private fun DeviceModule.toDeviceInfo() =
