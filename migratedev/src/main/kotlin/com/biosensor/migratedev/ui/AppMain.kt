@@ -21,11 +21,13 @@ import com.biosensor.migratedev.decisioncore.root.RootScreen
 import com.biosensor.migratedev.decisioncore.root.RootState
 import com.biosensor.migratedev.decisioncore.root.screen
 import com.biosensor.migratedev.ui.auth.AuthRoute
+import com.biosensor.migratedev.ui.cgm.CgmRoute
 import com.biosensor.migratedev.ui.connection.ConnectionRoute
 
 private const val SESSION_GRAPH = "session"
 private const val AUTH_ROUTE = "auth"
 private const val CONNECTION_ROUTE = "connection/{userId}"
+private const val CGM_ROUTE = "cgm/{deviceId}"
 
 /**
  * Navigation 框架下的 View 管理
@@ -77,6 +79,15 @@ fun AppMain(graph: AppGraph) {
                     ConnectionRoute(connection)
                 }
             }
+
+            composable(CGM_ROUTE) {
+                val cgm = root.cgmOrNull()
+                if (cgm == null) {
+                    AppLoading()
+                } else {
+                    CgmRoute(cgm)
+                }
+            }
         }
     }
 }
@@ -103,6 +114,16 @@ private fun RootNavigationEffect(
                 navController.navigate(route) {
                     popUpTo(AUTH_ROUTE) {
                         inclusive = true
+                    }
+                    launchSingleTop = true
+                }
+            }
+
+            is RootScreen.Cgm -> {
+                val route = "cgm/${Uri.encode(screen.deviceId)}"
+                navController.navigate(route) {
+                    popUpTo(CONNECTION_ROUTE) {
+                        inclusive = false
                     }
                     launchSingleTop = true
                 }

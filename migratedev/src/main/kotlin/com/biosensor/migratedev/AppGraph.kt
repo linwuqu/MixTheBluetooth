@@ -12,6 +12,8 @@ import com.biosensor.migratedev.port.adapter.remoteport.HttpRemote
 import com.biosensor.migratedev.port.adapter.remoteport.OkHttpRemote
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.auth.AuthPortAdapter
+import com.biosensor.migratedev.port.cgm.CgmPort
+import com.biosensor.migratedev.port.cgm.CgmPortAdapter
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.port.connection.ConnectionPortAdapter
 import java.time.Clock
@@ -40,6 +42,7 @@ class AppGraph(application: Application) {
     // ── 业务组装区:薄适配器,只表达业务协议 ──────────────────────
     private val authPort: AuthPort = AuthPortAdapter(kv, http, clock)
     private val connectionPort: ConnectionPort = ConnectionPortAdapter(sqlite, ble)
+    private val cgmPort: CgmPort = CgmPortAdapter(bluetooth = ble, fileClient = files)
 
-    val rootWorkflow = RootWorkflow(authPort, connectionPort, scope = rootScope)
+    val rootWorkflow = RootWorkflow(authPort, connectionPort, cgmPort, scope = rootScope)
 }

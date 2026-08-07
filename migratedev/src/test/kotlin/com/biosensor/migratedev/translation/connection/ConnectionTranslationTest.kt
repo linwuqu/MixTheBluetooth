@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -262,6 +263,62 @@ class ConnectionTranslationTest {
         }
 
     @Test
+    fun `connection success reports Connected with device id`() = runTest {
+        Dispatchers.setMain(
+            StandardTestDispatcher(testScheduler)
+        )
+        val store = ViewModelStore()
+        val outputs = mutableListOf<ConnectionOutput>()
+        val port = RecordingConnectionPort()
+        val device = BluetoothDeviceInfo(
+            id = "AA:BB:CC:DD:EE:FF",
+            name = "BT24-S",
+            isBle = true,
+            rssi = -40
+        )
+        port.executeResults = { effect ->
+            when (effect) {
+                is ConnectionEffect.ConnectDevice ->
+                    flowOf(ConnectionEvent.DeviceConnected(device))
+
+                else -> emptyFlow()
+            }
+        }
+        try {
+            val translation = ViewModelProvider(
+                store,
+                ConnectionTranslation.factory(
+                    userId = "user-1",
+                    port = port,
+                    report = outputs::add
+                )
+            )[ConnectionTranslation::class.java]
+
+            translation.submit(ConnectionIntent.BecameVisible)
+            translation.submit(ConnectionIntent.BluetoothAccessGranted)
+            advanceUntilIdle()
+            port.devices.emit(device)
+            advanceUntilIdle()
+
+            translation.submit(ConnectionIntent.SelectDevice(device.id))
+            advanceUntilIdle()
+
+            assertEquals(
+                ConnectionPhase.Connected,
+                translation.uiState.value.phase
+            )
+            assertEquals(
+                listOf(ConnectionOutput.Connected(device.id)),
+                outputs
+            )
+        } finally {
+            store.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `refresh clears devices without restarting active scan`() =
         runTest {
             Dispatchers.setMain(
@@ -320,6 +377,7 @@ class ConnectionTranslationTest {
             )
         var scanCollections = 0
         var scanStops = 0
+        var executeResults: (ConnectionEffect) -> Flow<ConnectionEvent> = { emptyFlow() }
 
         override fun readBinding(
             userId: String
@@ -342,7 +400,7 @@ class ConnectionTranslationTest {
             effect: ConnectionEffect
         ): Flow<ConnectionEvent> {
             commands += effect
-            return emptyFlow()
+            return executeResults(effect)
         }
     }
 }

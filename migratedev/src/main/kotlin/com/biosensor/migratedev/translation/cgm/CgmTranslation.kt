@@ -15,6 +15,7 @@ import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.translation.Translation
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -40,7 +41,9 @@ data class CgmUiState(
     val progressPoints: Int,          // 已接收 EIS 点数
     val roundCount: Int,              // 已接收完整轮数(近似)
     val recentLines: List<String>,    // 最近 10 条记录文本(数据看板)
-    val shortResult: CgmShortResult?  // 最近一次短命令结果
+    val shortResult: CgmShortResult?, // 最近一次短命令结果
+    /** 冲突拒绝提示(§1.7 ②):按钮常亮可点,冲突由 submit 拒绝并展示,至下次操作消失。 */
+    val hint: String? = null
     // 无可用态字段:按钮常亮可点,冲突由 submit 拒绝并 toast(架构 07 §1.7 ①②)
 )
 
@@ -80,12 +83,15 @@ class CgmTranslation private constructor(
         onTransition = ::onShortTransition
     )
 
+    /** 冲突提示(§1.7 ②):拒绝时写入,下次命令开始清除——等价 toast 的一次性提示。 */
+    private val hint = MutableStateFlow<String?>(null)
+
     override val uiState: StateFlow<CgmUiState> =
-        combine(readOrchestrator.state, shortOrchestrator.state) { read, short ->
-            read.toUi(short)
+        combine(readOrchestrator.state, shortOrchestrator.state, hint) { read, short, hint ->
+            read.toUi(short, hint)
         }.stateIn(
             viewModelScope, SharingStarted.Eagerly,
-            CgmReadState.Idle.toUi(CgmShortState.Idle)
+            CgmReadState.Idle.toUi(CgmShortState.Idle, null)
         )
 
     // ── 互转策略(§1.7 ②):submit 是通往 orchestrator 的唯一入口 ──
@@ -102,6 +108,7 @@ class CgmTranslation private constructor(
     private fun startRead() {
         val short = shortOrchestrator.state.value
         if (short.isActive()) return blocked(short.hint())      // 短命令进行中:拒绝 + toast
+        hint.value = null                                       // 新命令开始,清除旧提示
         resetErrorIfNeeded()
         readOrchestrator.dispatch(CgmReadEvent.ReadRequested(newSessionId(), deviceId))
     }
@@ -111,12 +118,16 @@ class CgmTranslation private constructor(
         val short = shortOrchestrator.state.value
         if (short.isActive()) return blocked(short.hint())      // 自身活跃(防连点):拒绝 + toast
         if (read.isActive()) return blocked(read.hint())        // 读活跃(昂贵操作):拒绝 + toast
+        hint.value = null                                       // 新命令开始,清除旧提示
         resetErrorIfNeeded()
         shortOrchestrator.dispatch(
             CgmShortEvent.ShortRequested(newSessionId(), deviceId, purpose))
     }
 
-    private fun blocked(hint: String) = report(CgmOutput.Blocked(hint))
+    private fun blocked(hintText: String) {
+        hint.value = hintText
+        report(CgmOutput.Blocked(hintText))
+    }
 
     /** Error 态自动复位(无 toast)。dispatch 同步入队单循环处理,先复位后开始。 */
     private fun resetErrorIfNeeded() {
@@ -175,7 +186,7 @@ class CgmTranslation private constructor(
     }
 }
 
-private fun CgmReadState.toUi(short: CgmShortState): CgmUiState {
+private fun CgmReadState.toUi(short: CgmShortState, hint: String?): CgmUiState {
     val (phase, message) = toPhase()
     val eis = accumulated?.filterIsInstance<CgmRecord.Eis>() ?: emptyList()
     return CgmUiState(
@@ -184,7 +195,8 @@ private fun CgmReadState.toUi(short: CgmShortState): CgmUiState {
         progressPoints = eis.size,
         roundCount = eis.maxOfOrNull { it.seq }?.let { (it - 1) / 95 + 1 } ?: 0,
         recentLines = accumulated.orEmpty().takeLast(10).map { it.text },
-        shortResult = short.toResult()
+        shortResult = short.toResult(),
+        hint = hint
     )
 }
 

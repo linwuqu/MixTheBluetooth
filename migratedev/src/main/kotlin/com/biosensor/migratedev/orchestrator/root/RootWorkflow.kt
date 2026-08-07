@@ -8,10 +8,13 @@ import com.biosensor.migratedev.decisioncore.root.RootEvent
 import com.biosensor.migratedev.decisioncore.root.RootState
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.port.auth.AuthPort
+import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.translation.auth.AuthIntent
 import com.biosensor.migratedev.translation.auth.AuthOutput
 import com.biosensor.migratedev.translation.auth.AuthTranslation
+import com.biosensor.migratedev.translation.cgm.CgmOutput
+import com.biosensor.migratedev.translation.cgm.CgmTranslation
 import com.biosensor.migratedev.translation.connection.ConnectionOutput
 import com.biosensor.migratedev.translation.connection.ConnectionTranslation
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +39,7 @@ import kotlinx.coroutines.flow.flow
 class RootWorkflow(
     private val authPort: AuthPort,
     private val connectionPort: ConnectionPort,
+    private val cgmPort: CgmPort,
     scope: CoroutineScope
 ) : AutoCloseable {
 
@@ -44,6 +48,9 @@ class RootWorkflow(
 
     private var connectionStore: ViewModelStore? = null
     private var connection: ConnectionTranslation? = null
+
+    private var cgmStore: ViewModelStore? = null
+    private var cgm: CgmTranslation? = null
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = RootState.Starting,
@@ -63,6 +70,8 @@ class RootWorkflow(
 
     fun connectionOrNull(): ConnectionTranslation? = connection
 
+    fun cgmOrNull(): CgmTranslation? = cgm
+
     private fun execute(effect: RootEffect): Flow<RootEvent> = flow {
         when (effect) {
             RootEffect.StartAuthEffect -> {
@@ -73,6 +82,11 @@ class RootWorkflow(
             is RootEffect.StartConnectionEffect -> {
                 startConnection(effect.userId)
                 emit(RootEvent.ConnectionStartedEvent)
+            }
+
+            is RootEffect.StartCgmEffect -> {
+                startCgm(effect.deviceId)
+                emit(RootEvent.CgmStartedEvent)
             }
 
             RootEffect.ClearAuthSessionEffect -> requireNotNull(auth)
@@ -113,6 +127,19 @@ class RootWorkflow(
         connection = null
     }
 
+    private fun startCgm(deviceId: String) {
+        check(cgm == null) {
+            "CgmTranslation 已存在"
+        }
+        val store = ViewModelStore()
+        cgmStore = store
+        cgm = ViewModelProvider(
+            store, CgmTranslation.factory(
+                deviceId = deviceId, port = cgmPort, report = ::report
+            )
+        )[CgmTranslation::class.java]
+    }
+
     private fun report(output: AuthOutput) {
         orchestrator.dispatch(
             when (output) {
@@ -126,6 +153,9 @@ class RootWorkflow(
     private fun report(output: ConnectionOutput) {
         orchestrator.dispatch(
             when (output) {
+                is ConnectionOutput.Connected ->
+                    RootEvent.CgmConnectedEvent(output.deviceId)
+
                 ConnectionOutput.LogoutRequested -> RootEvent.LogoutRequestedEvent
 
                 ConnectionOutput.Stopped -> RootEvent.ConnectionStoppedEvent
@@ -133,11 +163,28 @@ class RootWorkflow(
         )
     }
 
+    private fun report(output: CgmOutput) {
+        when (output) {
+            is CgmOutput.ReadCompleted ->
+                orchestrator.dispatch(RootEvent.CgmCompletedEvent(output.path))
+
+            is CgmOutput.ShortDone -> Unit   // 短命令结果由 UI 展示,不扰 Root
+
+            is CgmOutput.Failed ->
+                orchestrator.dispatch(RootEvent.CgmFailedEvent(output.message))
+
+            is CgmOutput.Blocked -> Unit     // 冲突提示走 CgmUiState.hint 页面内展示
+        }
+    }
+
     override fun close() {
         orchestrator.close()
+        cgmStore?.clear()
         connectionStore?.clear()
         authStore.clear()
+        cgmStore = null
         connectionStore = null
+        cgm = null
         connection = null
         auth = null
     }

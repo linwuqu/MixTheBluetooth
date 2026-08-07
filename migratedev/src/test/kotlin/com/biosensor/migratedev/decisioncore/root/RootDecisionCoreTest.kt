@@ -143,4 +143,75 @@ class RootDecisionCoreTest {
         assertEquals(RootScreen.Auth, finished.newState.screen())
         assertEquals(emptyList<RootEffect>(), finished.effects)
     }
+
+    @Test
+    fun `connection success enters cgm page and starts translation`() {
+        val result = RootDecisionCore.reduce(
+            RootState.RunningConnection("user-1"),
+            RootEvent.CgmConnectedEvent("AA:01")
+        )
+
+        assertEquals(
+            RootState.RunningCgm("user-1", "AA:01"),
+            result.newState
+        )
+        assertEquals(
+            RootScreen.Cgm("AA:01"),
+            result.newState.screen()
+        )
+        assertEquals(
+            listOf(RootEffect.StartCgmEffect("AA:01")),
+            result.effects
+        )
+    }
+
+    @Test
+    fun `cgm connected outside running connection is ignored`() {
+        val result = RootDecisionCore.reduce(
+            RootState.Authenticating,
+            RootEvent.CgmConnectedEvent("AA:01")
+        )
+
+        assertEquals(RootState.Authenticating, result.newState)
+        assertEquals(emptyList<RootEffect>(), result.effects)
+    }
+
+    @Test
+    fun `cgm started confirms without duplicate effect`() {
+        val running = RootDecisionCore.reduce(
+            RootState.RunningConnection("user-1"),
+            RootEvent.CgmConnectedEvent("AA:01")
+        ).newState
+
+        val confirmed = RootDecisionCore.reduce(
+            running,
+            RootEvent.CgmStartedEvent
+        )
+
+        assertEquals(running, confirmed.newState)
+        assertEquals(emptyList<RootEffect>(), confirmed.effects)
+    }
+
+    @Test
+    fun `cgm completed and failed only recorded not switching page`() {
+        val completed = RootDecisionCore.reduce(
+            RootState.RunningCgm("user-1", "AA:01"),
+            RootEvent.CgmCompletedEvent("cgm/s1.txt")
+        )
+        assertEquals(
+            RootState.RunningCgm("user-1", "AA:01"),
+            completed.newState
+        )
+        assertEquals(emptyList<RootEffect>(), completed.effects)
+
+        val failed = RootDecisionCore.reduce(
+            RootState.RunningCgm("user-1", "AA:01"),
+            RootEvent.CgmFailedEvent("磁盘满")
+        )
+        assertEquals(
+            RootState.RunningCgm("user-1", "AA:01"),
+            failed.newState
+        )
+        assertEquals(emptyList<RootEffect>(), failed.effects)
+    }
 }

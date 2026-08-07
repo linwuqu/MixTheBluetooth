@@ -57,6 +57,8 @@ data class ConnectionUiState(
 )
 
 sealed interface ConnectionOutput {
+    /** 连接成功(架构 07 §10.4):Root 据此进入 Cgm 页面。 */
+    data class Connected(val deviceId: String) : ConnectionOutput
     data object LogoutRequested : ConnectionOutput
     data object Stopped : ConnectionOutput
 }
@@ -222,6 +224,10 @@ class ConnectionTranslation private constructor(
         }
         if (previous != ConnectionState.LogoutReady && current == ConnectionState.LogoutReady) {
             report(ConnectionOutput.Stopped)
+        }
+        // 进入 Connected(含断线重连成功)→ 上报,Root 进入 Cgm 页面
+        if (previous !is ConnectionState.Connected && current is ConnectionState.Connected) {
+            report(ConnectionOutput.Connected(current.device.id))
         }
     }
 
