@@ -126,6 +126,29 @@ class ConnectionDecisionCoreTest {
     }
 
     @Test
+    fun `disconnect while connecting fails immediately instead of hanging`() {
+        val result = reduce(
+            ConnectionState.Connecting("user-1", device.id),
+            ConnectionEvent.DeviceDisconnected
+        )
+        // 连接/重连过程中再断线:立即失败(否则要等 DeviceConnectTimeout 才收尾)
+        assertEquals(
+            ConnectionState.ConnectionFailed(
+                userId = "user-1", deviceId = device.id, message = "连接过程中设备断开"
+            ),
+            result.newState
+        )
+        assertEquals(emptyList<ConnectionEffect>(), result.effects)
+    }
+
+    @Test
+    fun `disconnect while scanning stays scanning`() {
+        val result = reduce(scanning(), ConnectionEvent.DeviceDisconnected)
+        assertEquals(scanning(), result.newState)
+        assertEquals(emptyList<ConnectionEffect>(), result.effects)
+    }
+
+    @Test
     fun `logout only waits when connection must disconnect`() {
         val scanningLogout = reduce(
             scanning(),

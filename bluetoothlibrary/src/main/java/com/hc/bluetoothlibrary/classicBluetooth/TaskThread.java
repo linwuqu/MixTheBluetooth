@@ -1,7 +1,8 @@
 package com.hc.bluetoothlibrary.classicBluetooth;
 
-import android.app.Activity;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 
 public class TaskThread {
 
@@ -12,10 +13,10 @@ public class TaskThread {
     }
 
     private WorkCallBack call;
-    private final Context context;
+    // 主线程调度:context 可能是 Application(新宿主传入),不能强转 Activity 用 runOnUiThread
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
 
     public TaskThread(Context context){
-        this.context = context;
     }
 
     public void setWorkCall(WorkCallBack call){
@@ -28,12 +29,11 @@ public class TaskThread {
             @Override
             public void run() {
                 if(call != null){
-                    Activity activity = (Activity) context;
                     final boolean b;
                     try {
                         b = call.work();
                     } catch (final Exception e) {
-                        activity.runOnUiThread(new Runnable() {
+                        mUiHandler.post(new Runnable() {
                             @Override
                             public void run() {
                                 call.error(e);
@@ -42,7 +42,7 @@ public class TaskThread {
                         e.printStackTrace();
                         return;
                     }
-                    activity.runOnUiThread(new Runnable() {
+                    mUiHandler.post(new Runnable() {
                         @Override
                         public void run() {
                             if (b){

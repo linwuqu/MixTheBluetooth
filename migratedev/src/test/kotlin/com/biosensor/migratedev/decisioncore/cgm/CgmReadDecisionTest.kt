@@ -27,9 +27,9 @@ class CgmReadDecisionTest {
     @Test
     fun `read request from terminal states restarts`() {
         for (terminal in listOf(
-            CgmReadState.Completed(session, "f.txt", deleteAcked = true),
+            CgmReadState.Completed(session, "f.txt", deleteAcked = true, records = emptyList()),
             CgmReadState.Failed(session, emptyList(), "校验未通过", 1),
-            CgmReadState.Stopped(session),
+            CgmReadState.Stopped(session, emptyList()),
             CgmReadState.Error("写入失败")
         )) {
             val result = reduce(terminal, CgmReadEvent.ReadRequested(session.id, session.deviceId))
@@ -42,7 +42,8 @@ class CgmReadDecisionTest {
     fun `read request while active is ignored`() {
         for (active in listOf(
             CgmReadState.Sending(session),
-            CgmReadState.Receiving(session, emptyList(), 0)
+            CgmReadState.Receiving(session, emptyList(), 0),
+            CgmReadState.Reconnecting(session, emptyList(), 0)   // 等待重连中:拒绝新命令
         )) {
             val result = reduce(active, CgmReadEvent.ReadRequested(session.id, session.deviceId))
             assertEquals(active, result.newState)   // 幂等忽略,无 effect
@@ -63,7 +64,7 @@ class CgmReadDecisionTest {
     }
 
     @Test
-    fun `command accepted from failed retry keeps accumulated records`() {
+    fun `command accepted from failed retry restarts accumulation`() {
         val accumulated = listOf(
             CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
         )
@@ -71,8 +72,9 @@ class CgmReadDecisionTest {
             CgmReadState.Failed(session, accumulated, "校验未通过", 1),
             CgmReadEvent.CommandAccepted(session.id)
         )
-        // 重读路径:确认回到 Receiving,累积保留,retryCount 不变
-        assertEquals(CgmReadState.Receiving(session, accumulated, 1), result.newState)
+        // 重读 = 设备全量重放缓存(删除在完成后才发):从头累积而非追加——
+        // 追加会与全量重放拼接成"段截断"必败;旧数据由新回放重新提供
+        assertEquals(CgmReadState.Receiving(session, emptyList(), 1), result.newState)
     }
 
     // ── 数据累积与校验触发 ──
@@ -137,12 +139,15 @@ class CgmReadDecisionTest {
     @Test
     fun `stale records from finished session are ignored`() {
         val result = reduce(
-            CgmReadState.Completed(session, "f.txt", deleteAcked = true),
+            CgmReadState.Completed(session, "f.txt", deleteAcked = true, records = emptyList()),
             CgmReadEvent.RecordsProduced(session.id, listOf(
                 CgmRecord.Marker(MarkerKind.START, "Start Playback")
             ))
         )
-        assertEquals(CgmReadState.Completed(session, "f.txt", deleteAcked = true), result.newState)
+        assertEquals(
+            CgmReadState.Completed(session, "f.txt", deleteAcked = true, records = emptyList()),
+            result.newState
+        )
         assertEquals(emptyList<CgmReadEffect>(), result.effects)
     }
 
@@ -150,19 +155,25 @@ class CgmReadDecisionTest {
 
     @Test
     fun `completed read needs both write and delete ack before stopping`() {
-        var state: CgmReadState = CgmReadState.Completed(session, null, deleteAcked = false)
+        val snapshot = listOf(CgmRecord.Log("LOG:1,1,95,2026-07-21 12:10:45"))
+        var state: CgmReadState =
+            CgmReadState.Completed(session, null, deleteAcked = false, records = snapshot)
 
         val written = CgmReadDecision.reduce(
             state, CgmReadEvent.FileWritten(session.id, "cgm/s1.txt")
         )
         state = written.newState
-        assertEquals(CgmReadState.Completed(session, "cgm/s1.txt", false), state)
+        assertEquals(
+            CgmReadState.Completed(session, "cgm/s1.txt", deleteAcked = false, records = snapshot),
+            state
+        )
         assertTrue("仅写盘不停止", written.effects.isEmpty())
 
         val acked = CgmReadDecision.reduce(
             state, CgmReadEvent.AckReceived(session.id, CgmCommandPurpose.DELETE)
         )
-        assertEquals(CgmReadState.Stopped(session), acked.newState)
+        // Stopped 携带只读快照:会话关闭后 UI 数据看板保留
+        assertEquals(CgmReadState.Stopped(session, snapshot), acked.newState)
         assertEquals(
             listOf(CgmReadEffect.StopRuntime(session, StopReason.COMPLETED)), acked.effects
         )
@@ -170,18 +181,19 @@ class CgmReadDecisionTest {
 
     @Test
     fun `delete ack first then file written also stops`() {
-        var state: CgmReadState = CgmReadState.Completed(session, null, deleteAcked = false)
+        var state: CgmReadState =
+            CgmReadState.Completed(session, null, deleteAcked = false, records = emptyList())
 
         val acked = CgmReadDecision.reduce(
             state, CgmReadEvent.AckReceived(session.id, CgmCommandPurpose.DELETE)
         )
         state = acked.newState
-        assertEquals(CgmReadState.Completed(session, null, true), state)
+        assertEquals(CgmReadState.Completed(session, null, true, emptyList()), state)
 
         val written = CgmReadDecision.reduce(
             state, CgmReadEvent.FileWritten(session.id, "cgm/s1.txt")
         )
-        assertEquals(CgmReadState.Stopped(session), written.newState)
+        assertEquals(CgmReadState.Stopped(session, emptyList()), written.newState)
         assertEquals(
             listOf(CgmReadEffect.StopRuntime(session, StopReason.COMPLETED)), written.effects
         )
@@ -189,7 +201,7 @@ class CgmReadDecisionTest {
 
     @Test
     fun `delete ack with wrong purpose is ignored`() {
-        val state = CgmReadState.Completed(session, "f.txt", deleteAcked = false)
+        val state = CgmReadState.Completed(session, "f.txt", deleteAcked = false, records = emptyList())
         val result = CgmReadDecision.reduce(
             state, CgmReadEvent.AckReceived(session.id, CgmCommandPurpose.SYNC_TIME)
         )
@@ -199,7 +211,7 @@ class CgmReadDecisionTest {
     @Test
     fun `file write failure moves to error`() {
         val result = CgmReadDecision.reduce(
-            CgmReadState.Completed(session, null, false),
+            CgmReadState.Completed(session, null, false, emptyList()),
             CgmReadEvent.FileWriteFailed(session.id, "磁盘满")
         )
         assertEquals(CgmReadState.Error("磁盘满"), result.newState)
@@ -243,27 +255,92 @@ class CgmReadDecisionTest {
         )
     }
 
-    // ── 断开 / 停止 / 复位 ──
+    // ── 断开 → 重连(默认重连,不静默失败)──
 
     @Test
-    fun `disconnect fails active session with stop runtime`() {
+    fun `disconnect moves to reconnecting keeping accumulated records`() {
+        val accumulated = listOf(
+            CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
+        )
         val result = reduce(
-            CgmReadState.Receiving(session, emptyList(), 0),
+            CgmReadState.Receiving(session, accumulated, 0),
             CgmReadEvent.DeviceDisconnected(session.id)
         )
-        assertEquals(CgmReadState.Failed(session, emptyList(), "设备断开", 0), result.newState)
+        // 断线不判失败:保留已收数据等待重连,无命令 effect(重连是连接域职责)
+        assertEquals(CgmReadState.Reconnecting(session, accumulated, 0), result.newState)
+        assertEquals(emptyList<CgmReadEffect>(), result.effects)
+    }
+
+    @Test
+    fun `reconnected resumes reading with retry read from scratch`() {
+        val accumulated = listOf(
+            CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
+        )
+        val result = reduce(
+            CgmReadState.Reconnecting(session, accumulated, 0),
+            CgmReadEvent.DeviceReconnected(session.id)
+        )
+        // 自动重读继续:回 Receiving 发 RetryRead;累积从头(全量重放覆盖旧数据,去重器兜底)
+        assertEquals(CgmReadState.Receiving(session, emptyList(), 0), result.newState)
         assertEquals(
-            listOf(CgmReadEffect.StopRuntime(session, StopReason.DISCONNECTED)), result.effects
+            listOf(CgmReadEffect.RetryRead(session, "重连后重读")), result.effects
         )
     }
 
     @Test
-    fun `stop current moves to stopped`() {
+    fun `reconnect failed closes loop with stop runtime`() {
+        val accumulated = listOf(
+            CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
+        )
         val result = reduce(
+            CgmReadState.Reconnecting(session, accumulated, 0),
+            CgmReadEvent.DeviceReconnectFailed(session.id, "重连失败")
+        )
+        assertEquals(CgmReadState.Failed(session, accumulated, "重连失败", 1), result.newState)
+        assertEquals(
+            listOf(CgmReadEffect.StopRuntime(session, StopReason.RECONNECT_FAILED)), result.effects
+        )
+    }
+
+    @Test
+    fun `reconnect events on non-reconnecting states are ignored`() {
+        for (state in listOf(
+            CgmReadState.Idle,
             CgmReadState.Receiving(session, emptyList(), 0),
+            CgmReadState.Completed(session, null, false, emptyList())
+        )) {
+            val reconnected = reduce(state, CgmReadEvent.DeviceReconnected(session.id))
+            assertEquals(state, reconnected.newState)
+            assertEquals(emptyList<CgmReadEffect>(), reconnected.effects)
+
+            val failed = reduce(state, CgmReadEvent.DeviceReconnectFailed(session.id, "x"))
+            assertEquals(state, failed.newState)
+            assertEquals(emptyList<CgmReadEffect>(), failed.effects)
+        }
+    }
+
+    @Test
+    fun `reconnect events for other session are ignored`() {
+        val other = CgmSession("s2", "BB:02")
+        val state = CgmReadState.Reconnecting(session, emptyList(), 0)
+        val result = reduce(state, CgmReadEvent.DeviceReconnected(other.id))
+        assertEquals(state, result.newState)
+        assertEquals(emptyList<CgmReadEffect>(), result.effects)
+    }
+
+    // ── 停止 / 复位 ──
+
+    @Test
+    fun `stop current moves to stopped keeping snapshot`() {
+        val accumulated = listOf(
+            CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
+        )
+        val result = reduce(
+            CgmReadState.Receiving(session, accumulated, 0),
             CgmReadEvent.StopCurrent(session.deviceId)
         )
-        assertEquals(CgmReadState.Stopped(session), result.newState)
+        // Stopped 携带已收数据快照:会话关闭,UI 仍展示
+        assertEquals(CgmReadState.Stopped(session, accumulated), result.newState)
         assertEquals(
             listOf(CgmReadEffect.StopRuntime(session, StopReason.USER_CANCEL)), result.effects
         )
@@ -289,11 +366,12 @@ class CgmReadDecisionTest {
             CgmReadState.Idle,
             CgmReadState.Sending(session),
             CgmReadState.Receiving(session, emptyList(), 0),
-            CgmReadState.Completed(session, "f.txt", deleteAcked = false),
-            CgmReadState.Completed(session, "f.txt", deleteAcked = true),
+            CgmReadState.Completed(session, "f.txt", deleteAcked = false, records = emptyList()),
+            CgmReadState.Completed(session, "f.txt", deleteAcked = true, records = emptyList()),
             CgmReadState.Failed(session, emptyList(), "x", 1),
+            CgmReadState.Reconnecting(session, emptyList(), 0),
             CgmReadState.Error("x"),
-            CgmReadState.Stopped(session)
+            CgmReadState.Stopped(session, emptyList())
         )
         val events = listOf<CgmReadEvent>(
             CgmReadEvent.ReadRequested(session.id, session.deviceId),
@@ -302,6 +380,8 @@ class CgmReadDecisionTest {
             CgmReadEvent.RecordsProduced(session.id, emptyList()),
             CgmReadEvent.CommandTimeout(session.id),
             CgmReadEvent.DeviceDisconnected(session.id),
+            CgmReadEvent.DeviceReconnected(session.id),
+            CgmReadEvent.DeviceReconnectFailed(session.id, "x"),
             CgmReadEvent.FileWritten(session.id, "f.txt"),
             CgmReadEvent.FileWriteFailed(session.id, "x"),
             CgmReadEvent.StopCurrent(session.deviceId),

@@ -38,6 +38,12 @@ sealed interface ConnectionIntent {
     data object BecameVisible : ConnectionIntent
     data object BecameHidden : ConnectionIntent
     data object Logout : ConnectionIntent
+    /**
+     * 内部信号(非 UI):断线自动重连,Root 转发(Cgm 域上报)。
+     * 消费权转移后连接域听不到断线事件——断线由命令期消费者(Cgm 命令 flow)发现,
+     * 经 Root 转回驱动重连(实测 2026-08-07:svc bluetooth disable 仅 Cgm.Read 收到断线)。
+     */
+    data object Reconnect : ConnectionIntent
 }
 
 enum class ConnectionPhase {
@@ -59,6 +65,8 @@ data class ConnectionUiState(
 sealed interface ConnectionOutput {
     /** 连接成功(架构 07 §10.4):Root 据此进入 Cgm 页面。 */
     data class Connected(val deviceId: String) : ConnectionOutput
+    /** 重连失败:Root 转发 Cgm 域,闭环终止(不再悬挂)。 */
+    data class ReconnectFailed(val message: String) : ConnectionOutput
     data object LogoutRequested : ConnectionOutput
     data object Stopped : ConnectionOutput
 }
@@ -84,6 +92,8 @@ class ConnectionTranslation private constructor(
     private var scanActive = false
     private var autoConnectConsumed = false
     private var logoutStarted = false
+    /** 断线重连进行中(Reconnect intent 置位,Connected/Failed 复位):用于区分初次连接失败与重连失败。 */
+    private var reconnecting = false
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = ConnectionState.Idle,
@@ -164,6 +174,25 @@ class ConnectionTranslation private constructor(
             ConnectionIntent.BecameVisible -> visible.value = true
             ConnectionIntent.BecameHidden -> visible.value = false
             ConnectionIntent.Logout -> beginLogout()
+
+            // 内部信号:断线自动重连。连接域状态可能仍是 Connected(消费权转移,没收到断线)——
+            // 先补断线信号让状态机进入 ConnectionFailed(onTransition 自动重连),或直接重连(已是失败态)
+            ConnectionIntent.Reconnect -> {
+                if (logoutStarted) return
+                when (val current = orchestrator.state.value) {
+                    is ConnectionState.Connected -> {
+                        reconnecting = true
+                        orchestrator.dispatch(ConnectionEvent.DeviceDisconnected)
+                        // 顺序入队:DeviceDisconnected(Connected → ConnectionFailed)先处理,
+                        // onTransition 检到"Connected → ConnectionFailed"自动重连
+                    }
+                    is ConnectionState.ConnectionFailed -> {
+                        reconnecting = true
+                        orchestrator.dispatch(ConnectionEvent.ConnectRequested(current.deviceId))
+                    }
+                    else -> Unit
+                }
+            }
         }
     }
 
@@ -227,7 +256,25 @@ class ConnectionTranslation private constructor(
         }
         // 进入 Connected(含断线重连成功)→ 上报,Root 进入 Cgm 页面
         if (previous !is ConnectionState.Connected && current is ConnectionState.Connected) {
+            reconnecting = false
             report(ConnectionOutput.Connected(current.device.id))
+        }
+        // 断线(Connected → ConnectionFailed)→ 默认自动重连,不静默失败:
+        // 覆盖两条路径——连接域自己收到断线(主动断开/连接期消费者存活),或 Reconnect intent
+        // 补发的断线信号(消费权转移后 Cgm 域上报,见 submit)。绕过 requestConnection 守卫:
+        // 设备可能不在 discovered,自动重连是重复动作不受 autoConnectConsumed 一次性限制
+        if (previous is ConnectionState.Connected && current is ConnectionState.ConnectionFailed) {
+            if (!logoutStarted) {
+                reconnecting = true
+                orchestrator.dispatch(ConnectionEvent.ConnectRequested(current.deviceId))
+            }
+        }
+        // 重连失败(Connecting → ConnectionFailed 且确在重连中)→ 上报闭环终止
+        if (previous is ConnectionState.Connecting &&
+            current is ConnectionState.ConnectionFailed && reconnecting
+        ) {
+            reconnecting = false
+            report(ConnectionOutput.ReconnectFailed(current.message))
         }
     }
 

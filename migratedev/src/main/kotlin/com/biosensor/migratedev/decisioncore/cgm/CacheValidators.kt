@@ -140,9 +140,10 @@ object CacheStructureValidator {
                 return StructureResult(false, "段 ${it.type} 声明 ${it.count} 点,实际 ${it.seen} 点")
             }
         }
-        // 只有段声明没有数据点(全为 LOG/summarize)→ 不完整
+        // 空回放(缓存已消费,无段声明无数据点)→ 合法完成,零记录,不判失败不做重传
+        // (有段声明但数据不足已在尾部结算失败;有数据无声明已在循环内失败——此分支只达空回放)
         if (records.none { it is CgmRecord.Eis || it is CgmRecord.Ca }) {
-            return StructureResult(false, "没有数据点")
+            return StructureResult(ok = true)
         }
         return StructureResult(ok = true)
     }

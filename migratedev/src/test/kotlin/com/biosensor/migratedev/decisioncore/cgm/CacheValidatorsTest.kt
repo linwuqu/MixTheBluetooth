@@ -173,17 +173,18 @@ class CacheValidatorsTest {
     }
 
     @Test
-    fun `validate rejects stray-first payload with marker boundary check`() {
-        // 模拟实测样本:首个 START 前的杂散行会先被规整剔除,规整后 marker 成对才通过
+    fun `validate accepts empty playback after stray-first payload`() {
+        // 模拟实测样本:首个 START 前的杂散行会先被规整剔除,规整后只剩 marker。
+        // 空回放 = 缓存已消费后的合法状态(实测 2026-08-07 第二轮:Start Playback + Playback all done,零数据),
+        // 判完成不判失败——否则空缓存读会触发 3 次无意义重传
         val stray = CgmRecord.Eis(2, 70, "-809339.11", "-329705.55", "873919.65", "-157.84",
             "EIS:2,70,-809339.11,-329705.55,873919.65,-157.84")
         val start = CgmRecord.Marker(MarkerKind.START, "Start Playback")
         val end = CgmRecord.Marker(MarkerKind.END, "Playback all done")
 
-        // 规整后只有 marker,没有数据点 → 结构校验失败
         val conclusion = CacheValidators.validate(listOf(stray, start, end))
-        assertFalse(conclusion.complete)
-        assertTrue(conclusion.reason!!.contains("没有数据点"))
+        assertTrue(conclusion.complete)
+        assertTrue(conclusion.records.isEmpty())
     }
 
     // ── ⑥ 真实样本集成(与解析管道对接) ──

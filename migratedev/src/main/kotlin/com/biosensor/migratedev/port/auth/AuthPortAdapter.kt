@@ -9,6 +9,7 @@ import com.biosensor.migratedev.port.adapter.localport.EntropyReadResult
 import com.biosensor.migratedev.port.adapter.localport.EntropyRemoveResult
 import com.biosensor.migratedev.port.adapter.localport.EntropyWriteResult
 import com.biosensor.migratedev.port.adapter.localport.StringEntropy
+import com.biosensor.migratedev.port.adapter.remoteport.ApiError
 import com.biosensor.migratedev.port.adapter.remoteport.HttpOutcome
 import com.biosensor.migratedev.port.adapter.remoteport.HttpRemote
 import com.google.gson.Gson
@@ -176,7 +177,7 @@ class AuthPortAdapter(
     private suspend fun login(phone: String, password: String): AuthEvent {
         // outcome 只确定是否拿到了 Http 响应
         val login = when (val outcome = http.invoke { api.login(LoginRequest(phone, password)) }) {
-            is HttpOutcome.Success -> outcome.data
+            is HttpOutcome.Completed -> outcome.data
             else -> return outcome.toRejected()
         }
         // isOk 判断是否业务成功
@@ -184,7 +185,7 @@ class AuthPortAdapter(
         val token = login.data?.takeIf { it.isNotBlank() }
             ?: return AuthEvent.RemoteRejected("登录响应没有 token")
         val detail = when (val outcome = http.invoke { api.detail(token) }) {
-            is HttpOutcome.Success -> outcome.data
+            is HttpOutcome.Completed -> outcome.data
             else -> return outcome.toRejected()
         }
         val account = detail.data
@@ -208,7 +209,7 @@ class AuthPortAdapter(
                 )
             )
         }) {
-            is HttpOutcome.Success -> outcome.data
+            is HttpOutcome.Completed -> outcome.data
             else -> return outcome.toRejected()
         }
         return if (result.isOk()) {
@@ -220,7 +221,7 @@ class AuthPortAdapter(
 
     private suspend fun validate(session: AuthSession): AuthEvent {
         val detail = when (val outcome = http.invoke { api.detail(session.token) }) {
-            is HttpOutcome.Success -> outcome.data
+            is HttpOutcome.Completed -> outcome.data
             // 调试专用:远端不可达时信任本地会话,删除时连带移除
             else -> return DebugOfflineSession.maybeTrust(
                 outcome.toSessionFailure(), local = session, enabled = debugOfflineMode
@@ -237,23 +238,31 @@ class AuthPortAdapter(
 
     // 传输失败 → 领域事件(登录/注册语义)
     private fun HttpOutcome<*>.toRejected(): AuthEvent = when (this) {
-        HttpOutcome.Timeout -> AuthEvent.RemoteTimeout
-        is HttpOutcome.Network -> AuthEvent.RemoteRejected(message)
-        is HttpOutcome.Http -> AuthEvent.RemoteRejected(message)
-        is HttpOutcome.Success -> error("不可达")
+        is HttpOutcome.Failure -> when (val error = this.error) {
+            ApiError.TimeoutError -> AuthEvent.RemoteTimeout
+            is ApiError.UnreachableError -> AuthEvent.RemoteRejected(error.msg)
+            is ApiError.HttpError -> AuthEvent.RemoteRejected(error.msg)
+            is ApiError.UnKnowError -> AuthEvent.RemoteRejected(error.msg)
+        }
+
+        is HttpOutcome.Completed -> error("不可达")
     }
 
     // 传输失败 → 领域事件(会话验证语义:超时/网络/非 401 都视为验证失败)
     private fun HttpOutcome<*>.toSessionFailure(): AuthEvent = when (this) {
-        HttpOutcome.Timeout -> AuthEvent.SessionValidationTimeout
-        is HttpOutcome.Network -> AuthEvent.SessionValidationTimeout
-        is HttpOutcome.Http -> if (code == 401 || code == 403) {
-            AuthEvent.SessionRejected(message)
-        } else {
-            AuthEvent.SessionValidationTimeout
+        is HttpOutcome.Failure -> when (val error = this.error) {
+            ApiError.TimeoutError -> AuthEvent.SessionValidationTimeout
+            is ApiError.UnreachableError -> AuthEvent.SessionValidationTimeout
+            is ApiError.HttpError -> if (error.code == 401 || error.code == 403) {
+                AuthEvent.SessionRejected(error.msg)
+            } else {
+                AuthEvent.SessionValidationTimeout
+            }
+
+            is ApiError.UnKnowError -> AuthEvent.SessionValidationTimeout
         }
 
-        is HttpOutcome.Success -> error("不可达")
+        is HttpOutcome.Completed -> error("不可达")
     }
 
     internal companion object {

@@ -3,6 +3,7 @@ package com.hc.bluetoothlibrary;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.hc.bluetoothlibrary.bleBluetooth.BleBluetoothManage;
@@ -31,6 +32,8 @@ public class AllBluetoothManage {
 
     private boolean mUpdateTheLimit = false;//限制频繁更新列表
     private final Handler mTimeHandler = new Handler();//时间控制
+    // 主线程调度:context 可能是 Application(新宿主传入),不能强转 Activity 用 runOnUiThread
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
 
     public enum SendFileVelocity {LOW, HEIGHT, SUPER, MAX, CUSTOM}//发送速度的档次，对应波特率9600,115200,230400,460800,与自定义发送值
 
@@ -306,7 +309,7 @@ public class AllBluetoothManage {
 
             @Override
             public void reading(final boolean isStart) {
-                ((Activity) mContext).runOnUiThread(new Runnable() {
+                mUiHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         if (mIBluetooth != null) mIBluetooth.reading(isStart);
@@ -327,7 +330,7 @@ public class AllBluetoothManage {
 
             @Override
             public void readNumber(final int number) {
-                ((Activity) mContext).runOnUiThread(new Runnable() {
+                mUiHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         if (mIBluetooth != null) mIBluetooth.readNumber(number);

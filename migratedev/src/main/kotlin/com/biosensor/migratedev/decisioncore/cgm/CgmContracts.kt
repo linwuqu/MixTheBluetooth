@@ -4,7 +4,7 @@ package com.biosensor.migratedev.decisioncore.cgm
 
 enum class CgmCommandPurpose { SYNC_TIME, READ_ALL, DELETE }
 
-enum class StopReason { COMPLETED, TIMEOUT, USER_CANCEL, DISCONNECTED, RETRY_EXHAUSTED }
+enum class StopReason { COMPLETED, TIMEOUT, USER_CANCEL, DISCONNECTED, RETRY_EXHAUSTED, RECONNECT_FAILED }
 
 data class CgmSession(val id: String, val deviceId: String)
 
@@ -35,14 +35,20 @@ sealed interface CgmReadState {
         val session: CgmSession, val accumulated: List<CgmRecord>, val retryCount: Int
     ) : CgmReadState
     data class Completed(
-        val session: CgmSession, val filePath: String?, val deleteAcked: Boolean
+        val session: CgmSession, val filePath: String?, val deleteAcked: Boolean,
+        val records: List<CgmRecord>   // 校验通过的去重记录:UI 只读快照,会话结束后仍展示
     ) : CgmReadState
     data class Failed(
         val session: CgmSession, val accumulated: List<CgmRecord>,
         val reason: String, val retryCount: Int
     ) : CgmReadState
+    /** 断线等待重连:保留已收数据,重连成功自动重读继续(用户无感),失败闭环终止。 */
+    data class Reconnecting(
+        val session: CgmSession, val accumulated: List<CgmRecord>, val attempt: Int
+    ) : CgmReadState
     data class Error(val message: String) : CgmReadState
-    data class Stopped(val session: CgmSession?) : CgmReadState
+    /** lastRecords:最后一次读取结果快照——用户可见只读数据,会话本身已结束(信道安全关闭)。 */
+    data class Stopped(val session: CgmSession?, val lastRecords: List<CgmRecord>) : CgmReadState
 }
 
 sealed interface CgmReadEvent {
@@ -53,6 +59,10 @@ sealed interface CgmReadEvent {
     data class RecordsProduced(val sessionId: String, val records: List<CgmRecord>) : CgmReadEvent
     data class CommandTimeout(val sessionId: String) : CgmReadEvent
     data class DeviceDisconnected(val sessionId: String) : CgmReadEvent
+    /** 断线重连成功(Connection 域经 Root 转发):自动重读继续,不丢已收数据。 */
+    data class DeviceReconnected(val sessionId: String) : CgmReadEvent
+    /** 断线重连失败(Connection 域经 Root 转发):闭环终止,不再悬挂。 */
+    data class DeviceReconnectFailed(val sessionId: String, val reason: String) : CgmReadEvent
     data class FileWritten(val sessionId: String, val path: String) : CgmReadEvent
     data class FileWriteFailed(val sessionId: String, val message: String) : CgmReadEvent
     /** 内部使用(隐式切换/用户换命令时由 Translation 发出),UI 不暴露(1.7)。 */

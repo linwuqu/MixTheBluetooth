@@ -24,6 +24,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -56,7 +57,7 @@ class CgmPortAdapterTest {
             bluetooth = bluetooth,
             fileClient = files,
             clock = clock,
-            commandTimeoutMillis = 100L
+            commandIdleTimeoutMillis = 100L
         )
     }
 
@@ -125,9 +126,62 @@ class CgmPortAdapterTest {
     }
 
     @Test
+    fun `read flow ends immediately after disconnect while bluetooth flow stays open`() = runTest {
+        // 真机行为(实测 2026-08-07 17:27):蓝牙事件流在断线后仍保持(命令期消费者挂住)→
+        // readFlow 必须自行终止,否则占用消费权(新命令 flow 饿死)+ 60s 后打兜底超时日志
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size))
+            emit(BluetoothEvent.Disconnected)
+            awaitCancellation()   // 蓝牙流保持不结束
+        }
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(
+            listOf(
+                CgmReadEvent.CommandAccepted(session.id),
+                CgmReadEvent.DeviceDisconnected(session.id)
+            ),
+            events
+        )
+    }
+
+    @Test
+    fun `read flow maps connect failed to device disconnected`() = runTest {
+        // 未连接/发送失败:会话不可用 → 映射断开事件,状态机结束而非死挂(故障分析 12 §3.2)
+        bluetooth.results = flowOf(BluetoothEvent.ConnectFailed("未连接,无法发送"))
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(listOf(CgmReadEvent.DeviceDisconnected(session.id)), events)
+    }
+
+    @Test
+    fun `read flow falls back to timeout when flow ends with zero events`() = runTest {
+        // 空事件流立即结束:命令未送达且无终止事件 → 兜底超时,杜绝静默死挂
+        bluetooth.results = flowOf()
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(listOf(CgmReadEvent.CommandTimeout(session.id)), events)
+    }
+
+    @Test
+    fun `short command maps connect failed to device disconnected`() = runTest {
+        bluetooth.results = flowOf(BluetoothEvent.ConnectFailed("未连接,无法发送"))
+
+        val events = port.execute(
+            CgmShortEffect.SendCommand(session, CgmCommandPurpose.SYNC_TIME)
+        ).toList()
+
+        assertEquals(listOf(CgmShortEvent.DeviceDisconnected(session.id)), events)
+    }
+
+    @Test
     fun `read flow feeds pipeline per chunk and accumulates across chunks`() = runTest {
-        // 缓存被切成两个字节块:第一块只到 EIS 行,END 行在下块
+        // 命令确认后,缓存被切成两个字节块:第一块只到 EIS 行,END 行在下块
         bluetooth.results = flowOf(
+            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
             BluetoothEvent.DataReceived(
                 "Start Playback\n$eisText\n".encodeToByteArray()
             ),
@@ -136,8 +190,9 @@ class CgmPortAdapterTest {
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
 
-        assertEquals(2, events.size)
-        val first = events[0] as CgmReadEvent.RecordsProduced
+        assertEquals(3, events.size)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events[0])
+        val first = events[1] as CgmReadEvent.RecordsProduced
         assertEquals(
             listOf(
                 CgmRecord.Marker(MarkerKind.START, "Start Playback"),
@@ -145,8 +200,43 @@ class CgmPortAdapterTest {
             ),
             first.records
         )
-        val second = events[1] as CgmReadEvent.RecordsProduced
+        val second = events[2] as CgmReadEvent.RecordsProduced
         assertEquals(listOf(CgmRecord.Marker(MarkerKind.END, "Playback all done")), second.records)
+    }
+
+    @Test
+    fun `read flow buffers records arriving before command accepted`() = runTest {
+        // 实测竞态:设备回放可能快于 GATT 写确认(RecordsProduced 先于 CommandAccepted 到达)。
+        // 确认前缓冲,确认后先补发缓冲再继续——不丢缓存开头,顺序保持。
+        bluetooth.results = flowOf(
+            BluetoothEvent.DataReceived(
+                "Start Playback\n$eisText\n".encodeToByteArray()
+            ),
+            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataReceived("Playback all done\n".encodeToByteArray())
+        )
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(
+            listOf(
+                CgmReadEvent.CommandAccepted(session.id),
+                // 确认时补发缓冲(确认前已到的数据)
+                CgmReadEvent.RecordsProduced(
+                    session.id,
+                    listOf(
+                        CgmRecord.Marker(MarkerKind.START, "Start Playback"),
+                        CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText)
+                    )
+                ),
+                // 确认后继续按块上报
+                CgmReadEvent.RecordsProduced(
+                    session.id,
+                    listOf(CgmRecord.Marker(MarkerKind.END, "Playback all done"))
+                )
+            ),
+            events
+        )
     }
 
     @Test
@@ -167,6 +257,26 @@ class CgmPortAdapterTest {
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
 
         assertEquals(listOf(CgmReadEvent.CommandTimeout(session.id)), events)
+    }
+
+    @Test
+    fun `read flow does not time out while data keeps flowing`() = runTest {
+        // 空闲超时语义:数据流进行中不超时——大缓存回放可远超总时长窗(故障分析 12 §4.9)。
+        // 5 块 × 30ms 间隔 = 150ms 虚拟时长 > 100ms 空闲阈值;若按总时长算早已超时。
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size))
+            repeat(5) {
+                delay(30)
+                emit(BluetoothEvent.DataReceived("$eisText\n".encodeToByteArray()))
+            }
+        }
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(6, events.size)   // CommandAccepted + 5 块 RecordsProduced
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events.first())
+        assertTrue(events.none { it == CgmReadEvent.CommandTimeout(session.id) })
+        assertTrue(events.last() is CgmReadEvent.RecordsProduced)
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.biosensor.migratedev.database.LocalDatabase
 import com.biosensor.migratedev.orchestrator.root.RootWorkflow
 import com.biosensor.migratedev.port.adapter.bluetoothport.AndroidBluetoothPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
+import com.biosensor.migratedev.port.adapter.bluetoothport.LegacyBluetoothParameters
 import com.biosensor.migratedev.port.adapter.localport.AndroidLocalPort
 import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
 import com.biosensor.migratedev.port.adapter.localport.StringEntropy
@@ -36,13 +37,15 @@ class AppGraph(application: Application) {
     private val kv: StringEntropy = androidLocal.entropy      // 键值存储(Tink 加密)
     private val sqlite: LocalDatabase = androidLocal.sqlite   // 结构化存储(SQLDelight)
     internal val files: LocalFileClient = androidLocal.files  // 文件(日志初始化使用)
-    private val http: HttpRemote = OkHttpRemote(BuildConfig.API_BASE_URL)
-    private val ble: BluetoothPort = AndroidBluetoothPort(application)
+    private val http: HttpRemote = OkHttpRemote(BuildConfig.API_BASE_URL) // https
+    // 蓝牙参数配置点(与 baseurl 同层):默认值与 SDK 静态默认一致,要调参只改这里
+    private val bluetoothParameters = LegacyBluetoothParameters()
+    private val ble: BluetoothPort = AndroidBluetoothPort(application, bluetoothParameters)
 
     // ── 业务组装区:薄适配器,只表达业务协议 ──────────────────────
     private val authPort: AuthPort = AuthPortAdapter(kv, http, clock)
     private val connectionPort: ConnectionPort = ConnectionPortAdapter(sqlite, ble)
-    private val cgmPort: CgmPort = CgmPortAdapter(bluetooth = ble, fileClient = files)
+    private val cgmPort: CgmPort = CgmPortAdapter(ble, files)
 
-    val rootWorkflow = RootWorkflow(authPort, connectionPort, cgmPort, scope = rootScope)
+    val rootWorkflow = RootWorkflow(authPort, connectionPort, cgmPort, rootScope)
 }

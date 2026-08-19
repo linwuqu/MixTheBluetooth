@@ -13,8 +13,10 @@ import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.translation.auth.AuthIntent
 import com.biosensor.migratedev.translation.auth.AuthOutput
 import com.biosensor.migratedev.translation.auth.AuthTranslation
+import com.biosensor.migratedev.translation.cgm.CgmIntent
 import com.biosensor.migratedev.translation.cgm.CgmOutput
 import com.biosensor.migratedev.translation.cgm.CgmTranslation
+import com.biosensor.migratedev.translation.connection.ConnectionIntent
 import com.biosensor.migratedev.translation.connection.ConnectionOutput
 import com.biosensor.migratedev.translation.connection.ConnectionTranslation
 import kotlinx.coroutines.CoroutineScope
@@ -151,10 +153,19 @@ class RootWorkflow(
     }
 
     private fun report(output: ConnectionOutput) {
+        // 重连成功:cgm 在 RunningCgm 时 CgmConnectedEvent 不改状态(幂等),此分支转发重连信号
+        if (output is ConnectionOutput.Connected) cgm?.submit(CgmIntent.DeviceReconnected)
+        // 重连失败:转发 Cgm 域闭环终止(Root 状态不变,仅记录结论)
+        if (output is ConnectionOutput.ReconnectFailed) {
+            cgm?.submit(CgmIntent.DeviceReconnectFailed)
+        }
         orchestrator.dispatch(
             when (output) {
                 is ConnectionOutput.Connected ->
                     RootEvent.CgmConnectedEvent(output.deviceId)
+
+                is ConnectionOutput.ReconnectFailed ->
+                    RootEvent.CgmFailedEvent(output.message)
 
                 ConnectionOutput.LogoutRequested -> RootEvent.LogoutRequestedEvent
 
@@ -174,6 +185,10 @@ class RootWorkflow(
                 orchestrator.dispatch(RootEvent.CgmFailedEvent(output.message))
 
             is CgmOutput.Blocked -> Unit     // 冲突提示走 CgmUiState.hint 页面内展示
+
+            // 断线:命令期消费者(Cgm flow)发现断线,连接域听不到(消费权转移)→ 转回驱动重连
+            is CgmOutput.ConnectionLost ->
+                connection?.submit(ConnectionIntent.Reconnect)
         }
     }
 

@@ -6,10 +6,6 @@ data class BluetoothDeviceInfo(
     val id: String, val name: String?, val isBle: Boolean, val rssi: Int? = null
 )
 
-data class BluetoothAdvertisement(
-    val isBle: Boolean, val serviceUuids: Set<String>?, val manufacturerIds: Set<Int>?
-)
-
 sealed interface BluetoothEffect {
     data class Connect(val deviceId: String, val timeoutMillis: Long = 15_000) : BluetoothEffect
     data object Disconnect : BluetoothEffect
@@ -36,6 +32,12 @@ class BluetoothScanException(
     message: String, cause: Throwable? = null
 ) : Exception(message, cause)
 
+/**
+ * 蓝牙端口契约,两个入口语义分工(之所以保留两个入口而不合并):
+ * - scanDevices():持续性过程,生命周期由用户决定——开始收集 = 开始扫描,取消收集 = 停止扫描(冷流资源);
+ * - execute(effect):有状态的命令式回调,由业务层状态机统一管理——每次命令一条订阅流,
+ *   连接/发送/断开的状态由 decisioncore 决策,这里只是 effectExecutor 的执行入口。
+ */
 interface BluetoothPort {
     fun execute(effect: BluetoothEffect): Flow<BluetoothEvent>
 

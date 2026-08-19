@@ -5,6 +5,7 @@ import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
 import com.biosensor.migratedev.port.InMemoryStringEntropy
+import com.biosensor.migratedev.port.adapter.remoteport.ApiError
 import com.biosensor.migratedev.port.adapter.remoteport.HttpOutcome
 import com.biosensor.migratedev.port.adapter.remoteport.HttpRemote
 import java.time.Clock
@@ -73,7 +74,7 @@ class AuthPortAdapterRemoteTest {
 
     @Test
     fun loginTransportTimeoutIsReported() = runTest {
-        val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Timeout) }
+        val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Failure(ApiError.TimeoutError)) }
 
         val result = adapter(http)
             .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
@@ -84,7 +85,7 @@ class AuthPortAdapterRemoteTest {
     @Test
     fun loginHttpFailureIsRejected() = runTest {
         val http = FakeHttpRemote(FakeAccountApi())
-            .apply { enqueue(HttpOutcome.Http(500, "服务端错误：500")) }
+            .apply { enqueue(HttpOutcome.Failure(ApiError.HttpError(500, "服务端错误：500"))) }
 
         val result = adapter(http)
             .execute(AuthEffect.LoginRemote("13800000000", "password")).first()
@@ -116,7 +117,7 @@ class AuthPortAdapterRemoteTest {
     @Test
     fun serverFailureDuringValidationKeepsTheLocalSession() = runTest {
         val http = FakeHttpRemote(FakeAccountApi())
-            .apply { enqueue(HttpOutcome.Http(503, "服务端错误：503")) }
+            .apply { enqueue(HttpOutcome.Failure(ApiError.HttpError(503, "服务端错误：503"))) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
         val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
@@ -127,7 +128,7 @@ class AuthPortAdapterRemoteTest {
     @Test
     fun unauthorizedValidationRejectsTheLocalSession() = runTest {
         val http = FakeHttpRemote(FakeAccountApi())
-            .apply { enqueue(HttpOutcome.Http(401, "服务端错误：401")) }
+            .apply { enqueue(HttpOutcome.Failure(ApiError.HttpError(401, "服务端错误：401"))) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
         val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
@@ -137,7 +138,7 @@ class AuthPortAdapterRemoteTest {
 
     @Test
     fun validationTimeoutIsMappedToValidationFailure() = runTest {
-        val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Timeout) }
+        val http = FakeHttpRemote(FakeAccountApi()).apply { enqueue(HttpOutcome.Failure(ApiError.TimeoutError)) }
         val session = AuthSession(User("1", "alice", "13800000000"), "saved-token", 88_000L)
 
         val result = adapter(http).execute(AuthEffect.ValidateSession(session)).first()
@@ -218,7 +219,7 @@ class AuthPortAdapterRemoteTest {
             return if (next != null) {
                 next as HttpOutcome<T>
             } else {
-                HttpOutcome.Success(block())
+                HttpOutcome.Completed(block())
             }
         }
     }

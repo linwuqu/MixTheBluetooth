@@ -27,9 +27,13 @@ sealed interface CgmIntent {
     data object DeleteCache : CgmIntent
     // 无 Stop / ResetError:停止与复位是隐式机制(架构 07 §1.7 ③),不向 UI 暴露——
     // 错误态自动复位,至多 toast;按钮常亮可点,冲突由 submit 拒绝
+    /** 内部信号(非 UI):断线重连成功,Root 转发。 */
+    data object DeviceReconnected : CgmIntent
+    /** 内部信号(非 UI):断线重连失败,Root 转发。 */
+    data object DeviceReconnectFailed : CgmIntent
 }
 
-enum class CgmReadPhase { Idle, Sending, Receiving, Completed, Failed, Stopped, Error }
+enum class CgmReadPhase { Idle, Sending, Receiving, Completed, Failed, Reconnecting, Stopped, Error }
 
 data class CgmShortResult(
     val purpose: CgmCommandPurpose, val ok: Boolean, val message: String
@@ -53,6 +57,8 @@ sealed interface CgmOutput {
     data class Failed(val message: String) : CgmOutput
     /** 互转冲突:命令被拒,toast 提示等待(架构 07 §1.7 ②)。 */
     data class Blocked(val hint: String) : CgmOutput
+    /** 断线(读/短命令会话中):Root 据此驱动 Connection 域重连。 */
+    data object ConnectionLost : CgmOutput
 }
 
 /**
@@ -102,6 +108,21 @@ class CgmTranslation private constructor(
             CgmIntent.ReadCache -> startRead()
             CgmIntent.SyncTime -> startShort(CgmCommandPurpose.SYNC_TIME)
             CgmIntent.DeleteCache -> startShort(CgmCommandPurpose.DELETE)
+            // 内部信号:断线重连结果(Root 转发,UI 不触发)
+            CgmIntent.DeviceReconnected -> {
+                val reconnecting = readOrchestrator.state.value
+                if (reconnecting is CgmReadState.Reconnecting) {
+                    readOrchestrator.dispatch(
+                        CgmReadEvent.DeviceReconnected(reconnecting.session.id))
+                }
+            }
+            CgmIntent.DeviceReconnectFailed -> {
+                val reconnecting = readOrchestrator.state.value
+                if (reconnecting is CgmReadState.Reconnecting) {
+                    readOrchestrator.dispatch(
+                        CgmReadEvent.DeviceReconnectFailed(reconnecting.session.id, "重连失败"))
+                }
+            }
         }
     }
 
@@ -156,6 +177,8 @@ class CgmTranslation private constructor(
                 report(CgmOutput.ReadCompleted(previous.filePath))
             current is CgmReadState.Failed -> report(CgmOutput.Failed(current.reason))
             current is CgmReadState.Error -> report(CgmOutput.Failed(current.message))
+            // 断线 → 上报 Root 驱动重连(无命令 effect,重连是连接域职责)
+            current is CgmReadState.Reconnecting -> report(CgmOutput.ConnectionLost)
             else -> Unit
         }
     }
@@ -193,7 +216,9 @@ private fun CgmReadState.toUi(short: CgmShortState, hint: String?): CgmUiState {
         readPhase = phase,
         readMessage = message,
         progressPoints = eis.size,
-        roundCount = eis.maxOfOrNull { it.seq }?.let { (it - 1) / 95 + 1 } ?: 0,
+        // 轮数 = LOG 段数:设备按段组织回放(LOG:段号,类型,点数,时间,段号连续递增),
+        // 每段 EIS seq 从 1 重新开始——按 seq 推导恒为 1,与段号语义不符(实测 2026-08-07)
+        roundCount = accumulated?.count { it is CgmRecord.Log } ?: 0,
         recentLines = accumulated.orEmpty().takeLast(10).map { it.text },
         shortResult = short.toResult(),
         hint = hint
@@ -202,7 +227,9 @@ private fun CgmReadState.toUi(short: CgmShortState, hint: String?): CgmUiState {
 
 /** 活跃判定与 toast 文案(§1.7 ②:冲突拒绝时的提示)。 */
 private fun CgmReadState.isActive(): Boolean = when (this) {
-    is CgmReadState.Sending, is CgmReadState.Receiving, is CgmReadState.Completed -> true
+    // Reconnecting 也活跃:重连后自动重读继续,期间拒绝新命令避免会话冲突
+    is CgmReadState.Sending, is CgmReadState.Receiving, is CgmReadState.Completed,
+    is CgmReadState.Reconnecting -> true
     else -> false
 }
 
@@ -213,6 +240,7 @@ private fun CgmShortState.isActive(): Boolean = when (this) {
 
 private fun CgmReadState.hint(): String = when (this) {
     is CgmReadState.Receiving -> "正在读取缓存中,请等待执行完毕"
+    is CgmReadState.Reconnecting -> "连接中断,正在重连中,请稍候"
     else -> "正在执行读取中,请等待执行完毕"
 }
 
@@ -223,6 +251,9 @@ private val CgmReadState.accumulated: List<CgmRecord>?
     get() = when (this) {
         is CgmReadState.Receiving -> accumulated
         is CgmReadState.Failed -> accumulated
+        is CgmReadState.Completed -> records        // 快照:落盘同款记录,UI 只读展示
+        is CgmReadState.Reconnecting -> accumulated  // 断线等待重连:数据仍在
+        is CgmReadState.Stopped -> lastRecords      // 终态快照:会话已关闭,数据保留
         else -> null
     }
 
@@ -233,7 +264,8 @@ private fun CgmReadState.toPhase(): Pair<CgmReadPhase, String?> = when (this) {
     is CgmReadState.Completed -> CgmReadPhase.Completed to "校验通过,落盘中"
     is CgmReadState.Failed -> CgmReadPhase.Failed to reason
     is CgmReadState.Error -> CgmReadPhase.Error to message
-    is CgmReadState.Stopped -> CgmReadPhase.Stopped to null
+    is CgmReadState.Reconnecting -> CgmReadPhase.Reconnecting to "连接中断,正在重连…"
+    is CgmReadState.Stopped -> CgmReadPhase.Stopped to "读取完成(会话已关闭,数据保留)"
 }
 
 private fun CgmShortState.toResult(): CgmShortResult? = when (this) {

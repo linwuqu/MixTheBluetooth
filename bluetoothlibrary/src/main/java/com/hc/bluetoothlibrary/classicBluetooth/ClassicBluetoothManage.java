@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
@@ -58,6 +59,8 @@ public class ClassicBluetoothManage {
     private boolean mIsScanSign = true;//扫描标志，true:空闲，false: 正在扫描中
 
     private final Handler mTimeHandler = new Handler();//延时handler
+    // 主线程调度:context 可能是 Application(新宿主传入),不能强转 Activity 用 runOnUiThread
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
 
 
     private final List<byte[]> mSendData = new ArrayList<>();//需要发送的数据集合
@@ -550,7 +553,7 @@ public class ClassicBluetoothManage {
             mTimerTask = new TimerTask() {
                 @Override
                 public void run() {
-                    ((Activity)mContext).runOnUiThread(new Runnable() {
+                    mUiHandler.post(new Runnable() {
                         @Override
                         public void run() {
                             mIDataCallback.readVelocity(mSectionNumber*5);
@@ -595,7 +598,7 @@ public class ClassicBluetoothManage {
     //更新activity的UI
     private void updateUi(final byte[] data){
         if (mIDataCallback != null){
-            ((Activity)mContext).runOnUiThread(new Runnable() {
+            mUiHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     mIDataCallback.readData(data,mConnectedMac);

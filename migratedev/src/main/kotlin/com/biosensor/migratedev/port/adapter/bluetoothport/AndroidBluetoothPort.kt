@@ -1,369 +1,184 @@
 package com.biosensor.migratedev.port.adapter.bluetoothport
 
 import android.app.Application
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * AndroidBluetoothPort 是蓝牙端口的基础实现
- * 目前有两个功能 汇集了 AndroidNativeBleScanner 的扫描能力 & HcBluetoothLibraryClient 的蓝牙库能力
- * 之所以扫描独立出来是想使用安卓原生的 callbackFlow 进行控制
- *
- * 1. 对于扫描
- * 重写了 scanDevices 通过在 callbackFlow 上实现 listener: NativeBleScanListener 的所有回调
- * 并使用 channel 进行信息流订阅获取全部扫描信息
- *
- * 2. 对于蓝牙库
- * 在 execute 中进行业务路由 实现了 BluetoothEffect 两个路由的业务实现 connect & disconnect
- *
- * 值得注意的是所有的业务函数都是建立在冷流中的 所以都有很好的性质: 即用即关、用到时才主动释放(emit、trySend)和收集
+ * 回调分发器:引擎回调 → 活跃订阅者(callbackFlow 生产者)。
+ * 注册/注销发生在 flow 启动/取消阶段,分发发生在引擎回调线程(SDK 主线程 handler)。
+ * 事件类型即身份:每个 hub 只分一类事件,各 flow 各取所需,互不抢道——
+ * 这就是"消费权转移"的替代:多命令 flow 可并发订阅,事件广播给所有订阅者。
+ */
+internal class CallbackHub<T> {
+    private val subscribers = LinkedHashMap<ProducerScope<*>, (T) -> Unit>()
+
+    fun register(scope: ProducerScope<*>, handler: (T) -> Unit) {
+        synchronized(this) { subscribers[scope] = handler }
+    }
+
+    fun unregister(scope: ProducerScope<*>) {
+        synchronized(this) { subscribers.remove(scope) }
+    }
+
+    fun dispatch(event: T) {
+        synchronized(this) { subscribers.values.toList() }.forEach { it(event) }
+    }
+}
+
+/**
+ * AndroidBluetoothPort 是蓝牙端口的桥接实现:单一引擎(BluetoothClient/SDK AllBluetoothManage)+ 回调→流。
+ * 引擎管一切事务(扫描/连接/数据/线程/互斥),本类只做"回调 ↔ 流"翻译,两个入口语义不同:
+ * - scanDevices:持续性过程,生命周期由用户决定——收集即启动扫描(awaitClose 停止),取消即停止;
+ * - execute:有状态的命令式回调,由业务层状态机统一管理——每次命令一条订阅流。
+ * 三个 hub 按"订阅域"分工(谁在听,决定事件进哪个 hub):
+ * - scanHub:扫描期(设备列表);
+ * - connectHub:连接期(connect flow 收 Connected/ConnectFailed/ConnectTimeout,终态即 close);
+ * - sessionHub:会话期(命令流收数据/发送结果/MTU + 会话终止 Disconnected)。
+ * 引擎回调已区分连接期/会话期,断线精确路由,无双发。
+ * 同步异常 = 指令没发出(权限/设备不在表/未连接),转对应失败事件;业务结果一律走回调流。
+ * 没有锁、没有会话对象、没有状态机——决策状态机在业务层 decisioncore,这里只是 effectExecutor。
  */
 class AndroidBluetoothPort internal constructor(
-    private val client: BluetoothLibraryClient,
-    private val scanner: NativeBleScanner,
-    private val filter: BluetoothAdvertisementFilter = Bt24AdvertisementFilter
+    private val engine: BluetoothEngine,
+    private val scanHub: CallbackHub<BluetoothDeviceInfo> = CallbackHub(),
+    private val connectHub: CallbackHub<BluetoothEvent> = CallbackHub(),
+    private val sessionHub: CallbackHub<BluetoothEvent> = CallbackHub(),
 ) : BluetoothPort {
 
     constructor(
         application: Application,
-        parameters: LegacyBluetoothParameters = LegacyBluetoothParameters(),
-        filter: BluetoothAdvertisementFilter = Bt24AdvertisementFilter
-    ) : this(
-        client = HcBluetoothLibraryClient(application, parameters),
-        scanner = AndroidNativeBleScanner(application),
-        filter = filter
-    )
+        parameters: LegacyBluetoothParameters = LegacyBluetoothParameters()
+    ) : this(BluetoothClient(application, parameters))
 
-    private val lock = Any()
-    private val discovered = linkedMapOf<String, ScannedBleDevice>()
-    private var activeScan: ScanCollection? = null
-    private var connectionSession: ConnectionSession? = null
+    // 引擎 → hub:引擎回调统一吸收,按订阅域分发
+    private val engineListener = object : BluetoothEngineListener {
+        override fun onDeviceFound(device: BluetoothDeviceInfo) = scanHub.dispatch(device)
 
-    private val libraryListener = object : BluetoothLibraryListener {
-        override fun onConnected(device: BluetoothDeviceInfo) {
-            handleConnected(device)
-        }
+        override fun onConnected(device: BluetoothDeviceInfo) =
+            connectHub.dispatch(BluetoothEvent.Connected(device))
 
-        override fun onConnectionLost(deviceId: String?) {
-            handleConnectionLost(deviceId)
-        }
+        // 连接期失败 → 连接 flow 收终态 ConnectFailed;会话期断线 → 命令流收 Disconnected(引擎已区分阶段)
+        override fun onConnectionFailed(deviceId: String?) =
+            connectHub.dispatch(BluetoothEvent.ConnectFailed("蓝牙连接失败"))
 
-        override fun onDataReceived(data: ByteArray) {
-            // 设备推送字节块:路由到当前连接会话的事件通道(架构 07 §1.4 单一通道)
-            val session = synchronized(lock) { connectionSession }
-            session?.output?.trySend(BluetoothEvent.DataReceived(data))
-        }
+        override fun onDisconnected(deviceId: String?) =
+            sessionHub.dispatch(BluetoothEvent.Disconnected)
 
-        override fun onDataSent(bytesSent: Int) {
-            // readNumber 无设备参数(SDK 限制)→ 只能路由给当前连接会话,串行会话天然满足
-            val session = synchronized(lock) { connectionSession }
-            session?.output?.trySend(BluetoothEvent.DataSent(bytesSent))
-        }
+        override fun onDataReceived(data: ByteArray) =
+            sessionHub.dispatch(BluetoothEvent.DataReceived(data))
 
-        override fun onMtuChanged(mtu: Int) {
-            val session = synchronized(lock) { connectionSession }
-            session?.output?.trySend(BluetoothEvent.MtuChanged(mtu))
-        }
+        override fun onDataSent(bytesSent: Int) =
+            sessionHub.dispatch(BluetoothEvent.DataSent(bytesSent))
+
+        override fun onMtuChanged(mtu: Int) =
+            sessionHub.dispatch(BluetoothEvent.MtuChanged(mtu))
     }
 
     init {
-        client.setListener(libraryListener)
+        engine.setListener(engineListener)
     }
 
     override fun scanDevices(): Flow<BluetoothDeviceInfo> = callbackFlow {
-        lateinit var listener: NativeBleScanListener
-        listener = object : NativeBleScanListener {
-            override fun onDeviceFound(device: ScannedBleDevice) {
-                if (!filter.matches(device.advertisement)) return
-                val isCurrent = synchronized(lock) {
-                    if (activeScan?.listener !== listener) false
-                    else {
-                        discovered[device.info.id] = device
-                        true
-                    }
-                }
-                if (isCurrent) {
-                    trySend(device.info)
-                }
-            }
-
-            override fun onScanFailed(failure: BluetoothScanException) {
-                finishActiveScan(expected = listener, failure = failure)
-            }
-        }
-
-        val accepted = synchronized(lock) {
-            if (activeScan != null) false
-            else {
-                discovered.clear()
-                activeScan = ScanCollection(listener = listener, output = channel)
-                true
-            }
-        }
-        if (!accepted) {
-            close(BluetoothScanException("蓝牙扫描已经在进行中"))
+        scanHub.register(this) { device -> trySend(device) }
+        // 同步异常 = 指令没发出(权限/蓝牙不可用),转 BluetoothScanException 关闭流
+        try {
+            engine.startScan()
+        } catch (e: Exception) {
+            scanHub.unregister(this)
+            close(e.bluetoothScanException())
             return@callbackFlow
         }
-
-        val started = runCatching { scanner.start(listener) }
-        if (started.isFailure) {
-            finishActiveScan(
-                expected = listener,
-                failure = started.exceptionOrNull()?.toBluetoothScanException()
-                    ?: BluetoothScanException("启动蓝牙扫描失败")
-            )
-        } else Timber.tag(BLUETOOTH_TAG).i("native BLE scan started")
-
-
+        Timber.tag(BLUETOOTH_TAG).i("蓝牙扫描已启动")
         awaitClose {
-            finishActiveScan(expected = listener)
+            scanHub.unregister(this)
+            engine.stopScan()
         }
     }
 
-    override fun execute(
-        effect: BluetoothEffect
-    ): Flow<BluetoothEvent> = when (effect) {
+    override fun execute(effect: BluetoothEffect): Flow<BluetoothEvent> = when (effect) {
         is BluetoothEffect.Connect -> connect(effect.deviceId, effect.timeoutMillis)
         BluetoothEffect.Disconnect -> disconnect()
         is BluetoothEffect.SendData -> sendData(effect.data)
         is BluetoothEffect.RequestMtu -> requestMtu(effect.mtu)
     }
 
-    /**
-     * 发送指令数据:转发当前会话事件通道给调用方,直到命令结束。
-     * 消费权转移(架构 07 §1.7/§3.3):新命令启动时 cancel 旧收集器——旧 flow 收不到事件
-     * 自然失效,不会出现双命令并发收集,通道时分复用得以维持。
-     */
-    private fun sendData(data: ByteArray): Flow<BluetoothEvent> = callbackFlow {
-        val session = synchronized(lock) {
-            connectionSession?.takeIf { it.connected }
-        } ?: run {
-            trySend(BluetoothEvent.ConnectFailed("未连接,无法发送"))
-            close()
-            return@callbackFlow
-        }
-        val sent = runCatching { client.sendData(session.deviceId, data) }
-        if (sent.isFailure || !sent.getOrDefault(false)) {
-            trySend(BluetoothEvent.ConnectFailed("发送失败"))
-            close()
-            return@callbackFlow
-        }
-
-        synchronized(lock) {
-            session.dataCollector?.cancel()   // 消费权转移:夺走通道收集权
-        }
-        val collector = launch {
-            synchronized(lock) {
-                session.dataCollector = coroutineContext[Job]
-            }
-            session.output.receiveAsFlow().collect { event ->
-                when (event) {
-                    // 命令期事件:全部转发(类型即身份,不靠顺序猜)
-                    is BluetoothEvent.DataReceived,
-                    is BluetoothEvent.DataSent,
-                    is BluetoothEvent.MtuChanged,
-                    is BluetoothEvent.Disconnected -> trySend(event)
-                    // 连接期事件在命令期不会出现,丢弃是安全兜底
-                    is BluetoothEvent.Connected,
-                    is BluetoothEvent.ConnectFailed,
-                    BluetoothEvent.ConnectTimeout -> Unit
-                }
-            }
-        }
-        awaitClose {
-            collector.cancel()
-            synchronized(lock) {
-                if (session.dataCollector === coroutineContext[Job]) {
-                    session.dataCollector = null
-                }
-            }
-        }
-    }
-
-    private fun requestMtu(mtu: Int): Flow<BluetoothEvent> = flow {
-        val deviceId = synchronized(lock) {
-            connectionSession?.deviceId
-        } ?: return@flow
-        runCatching { client.requestMtu(deviceId, mtu) }
-    }
-
-    private fun finishActiveScan(
-        expected: NativeBleScanListener? = null, failure: Throwable? = null
-    ) {
-        val scan = synchronized(lock) {
-            activeScan?.takeIf { expected == null || it.listener === expected }
-                ?.also { activeScan = null }
-        } ?: return
-
-        runCatching { scanner.stop(scan.listener) }
-        scan.output.close(failure)
-        Timber.tag(BLUETOOTH_TAG).i("native BLE scan stopped")
-    }
-
-    private fun connect(
-        deviceId: String, timeoutMillis: Long
-    ): Flow<BluetoothEvent> = callbackFlow {
+    private fun connect(deviceId: String, timeoutMillis: Long): Flow<BluetoothEvent> = callbackFlow {
         require(timeoutMillis > 0) { "连接超时时间必须大于 0" }
-        finishActiveScan()
-
-        val target = synchronized(lock) { discovered[deviceId] }
-        if (target == null) {
-            trySend(BluetoothEvent.ConnectFailed("找不到待连接的蓝牙设备"))
-            close()
-            return@callbackFlow
-        }
-
-        // ProducerScope.channel 声明为 SendChannel,运行时即 Channel(唯一通道,命令 flow 也用它)
-        // 统一事件通道(架构 07 §1.4):独立于本 flow 的 channel,由 BUFFERED(容量 64)创建。
-        // 连接期由下方 collector 消费;命令期由 sendData flow 消费;互不竞争。
-        val session = ConnectionSession(deviceId = deviceId, output = Channel())
-        val accepted = synchronized(lock) {
-            if (connectionSession != null) false
-            else {
-                connectionSession = session
-                true
+        // 连接期订阅:只收终态,终态发出即 close——连接 flow 结束,会话交由引擎持有
+        connectHub.register(this) { event ->
+            when (event) {
+                is BluetoothEvent.Connected,
+                is BluetoothEvent.ConnectFailed,
+                BluetoothEvent.ConnectTimeout -> {
+                    if (trySend(event).isSuccess) close()
+                }
+                else -> Unit   // 数据/MTU 在连接期不出现,丢弃是安全兜底
             }
         }
-        if (!accepted) {
-            trySend(BluetoothEvent.ConnectFailed("已有蓝牙连接会话正在进行"))
+        // 同步异常 = 指令没发出(设备不在扫描表),转 ConnectFailed 终态
+        try {
+            engine.connect(deviceId)
+        } catch (e: Exception) {
+            connectHub.unregister(this)
+            trySend(BluetoothEvent.ConnectFailed(e.message ?: "找不到待连接的蓝牙设备"))
             close()
             return@callbackFlow
         }
-
-        val started = runCatching { client.connect(target) }
-        if (started.isFailure || !started.getOrDefault(false)) {
-            synchronized(lock) {
-                if (connectionSession === session) connectionSession = null
-            }
-            trySend(
-                BluetoothEvent.ConnectFailed(
-                    started.exceptionOrNull()?.bluetoothFailureMessage("找不到待连接的蓝牙设备")
-                        ?: "找不到待连接的蓝牙设备"
-                )
-            )
-            close()
-            return@callbackFlow
-        }
-
-        val timeout = launch {
+        // 超时兜底:桥接层唯一业务补充(SDK 无连接超时回调)
+        val timer = launch {
             delay(timeoutMillis.milliseconds)
-            val timedOut = synchronized(lock) {
-                if (connectionSession === session && !session.connected) {
-                    connectionSession = null
-                    true
-                } else false
-            }
-            if (timedOut) {
-                trySend(BluetoothEvent.ConnectTimeout)
-                runCatching { client.disconnect(deviceId) }
-                close()
-            }
+            trySend(BluetoothEvent.ConnectTimeout)
+            engine.disconnect()   // 与现状一致:超时兜底断开
+            close()
         }
-
-        // 连接期收集者(架构 07 §1.4):本 flow 的 channel 独立于 session.output,
-        // 不会与命令 flow 竞争。只转发连接期事件;终态事件发出即 close——连接 flow
-        // 让出消费者地位,命令 flow 启动后独占 session.output。
-        val collector = launch {
-            session.output.receiveAsFlow().collect { event ->
-                when (event) {
-                    is BluetoothEvent.Connected,
-                    is BluetoothEvent.ConnectFailed,
-                    BluetoothEvent.ConnectTimeout,
-                    is BluetoothEvent.Disconnected -> {
-                        if (trySend(event).isSuccess) close()
-                    }
-                    // 命令期事件在连接期不会出现,丢弃是安全兜底
-                    is BluetoothEvent.DataReceived,
-                    is BluetoothEvent.DataSent,
-                    is BluetoothEvent.MtuChanged -> Unit
-                }
-            }
-        }
-
         awaitClose {
-            timeout.cancel()
-            collector.cancel()
-            val ownsConnection = synchronized(lock) {
-                if (connectionSession === session) {
-                    connectionSession = null
-                    true
-                } else false
-            }
-            if (ownsConnection) {
-                runCatching {
-                    client.disconnect(deviceId)
-                }
-            }
+            timer.cancel()
+            connectHub.unregister(this)
         }
+    }
+
+    private fun sendData(data: ByteArray): Flow<BluetoothEvent> = callbackFlow {
+        // 会话期订阅:类型即身份,命令 flow 自行过滤;并发命令各自订阅,互不抢道
+        sessionHub.register(this) { event -> trySend(event) }
+        // 同步异常 = 指令没发出(未连接),转 ConnectFailed 终态
+        try {
+            engine.sendData(data)
+        } catch (e: Exception) {
+            sessionHub.unregister(this)
+            trySend(BluetoothEvent.ConnectFailed(e.message ?: "未连接,无法发送"))
+            close()
+            return@callbackFlow
+        }
+        awaitClose { sessionHub.unregister(this) }
     }
 
     private fun disconnect(): Flow<BluetoothEvent> = flow {
-        finishActiveScan()
-        val session = synchronized(lock) {
-            connectionSession.also {
-                connectionSession = null
-            }
-        }
-        runCatching { client.disconnect(session?.deviceId) }
-        session?.output?.close()
+        engine.disconnect()
         emit(BluetoothEvent.Disconnected)
     }
 
-    private fun handleConnected(device: BluetoothDeviceInfo) {
-        val session = synchronized(lock) {
-            connectionSession?.takeIf { it.deviceId == device.id }?.also { it.connected = true }
-        }
-        session?.output?.trySend(BluetoothEvent.Connected(device))
+    private fun requestMtu(mtu: Int): Flow<BluetoothEvent> = flowOf<BluetoothEvent>().onStart {
+        engine.requestMtu(mtu)   // 异常传播给收集者(诊断功能,失败让上层可见)
     }
-
-    private fun handleConnectionLost(deviceId: String?) {
-        val session = synchronized(lock) {
-            connectionSession?.takeIf { deviceId == null || it.deviceId == deviceId }
-                ?.also { connectionSession = null }
-        } ?: return
-
-        session.output.trySend(
-            if (session.connected) {
-                BluetoothEvent.Disconnected
-            } else BluetoothEvent.ConnectFailed("蓝牙连接失败")
-        )
-        session.output.close()
-    }
-
-    private class ScanCollection(
-        val listener: NativeBleScanListener, val output: SendChannel<BluetoothDeviceInfo>
-    )
-
-    private class ConnectionSession(
-        val deviceId: String,
-        // Channel 兼具 Send/Receive 两侧:监听方 trySend 投递,命令方 receiveAsFlow 消费
-        val output: Channel<BluetoothEvent>,
-        var connected: Boolean = false,
-        var dataCollector: Job? = null
-    )
 
     private companion object {
         const val BLUETOOTH_TAG = "Connection.Bluetooth"
     }
 }
 
-private fun Throwable.toBluetoothScanException(): BluetoothScanException = BluetoothScanException(
-    bluetoothFailureMessage("启动蓝牙扫描失败"), this
-)
-
-private fun Throwable.bluetoothFailureMessage(fallback: String): String =
-    if (this is SecurityException) {
-        "缺少蓝牙扫描或连接权限"
-    } else {
-        message?.takeIf { it.isNotBlank() } ?: fallback
-    }
+private fun Throwable.bluetoothScanException(): BluetoothScanException =
+    if (this is BluetoothScanException) this
+    else BluetoothScanException(
+        if (this is SecurityException) "缺少蓝牙扫描或连接权限" else (message ?: "启动蓝牙扫描失败"),
+        this
+    )

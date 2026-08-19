@@ -207,6 +207,13 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
             )
         )
 
+        // 连接/重连过程中再断线:立即失败而非悬挂(否则要等 DeviceConnectTimeout 才收尾)
+        is ConnectionState.Connecting -> Transition(
+            ConnectionState.ConnectionFailed(
+                userId = state.userId, deviceId = state.deviceId, message = "连接过程中设备断开"
+            )
+        )
+
         else -> Transition(state)
     }
 

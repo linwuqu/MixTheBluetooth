@@ -54,7 +54,7 @@ fun CgmStatusArea(state: CgmUiState) {
 
 private fun CgmReadPhase.isBusy(): Boolean =
     this == CgmReadPhase.Sending || this == CgmReadPhase.Receiving ||
-        this == CgmReadPhase.Completed
+        this == CgmReadPhase.Completed || this == CgmReadPhase.Reconnecting
 
 private fun CgmReadPhase.text(): String = when (this) {
     CgmReadPhase.Idle -> "空闲,可发起读取"
@@ -62,7 +62,8 @@ private fun CgmReadPhase.text(): String = when (this) {
     CgmReadPhase.Receiving -> "接收缓存数据"
     CgmReadPhase.Completed -> "校验通过,正在落盘"
     CgmReadPhase.Failed -> "读取失败"
-    CgmReadPhase.Stopped -> "会话已结束"
+    CgmReadPhase.Reconnecting -> "连接中断,正在重连"
+    CgmReadPhase.Stopped -> "读取完成(会话已关闭,数据保留)"
     CgmReadPhase.Error -> "发生错误"
 }
 

@@ -122,8 +122,10 @@ private fun RootNavigationEffect(
             is RootScreen.Cgm -> {
                 val route = "cgm/${Uri.encode(screen.deviceId)}"
                 navController.navigate(route) {
+                    // 连接页移出栈:Cgm 页不可返回连接页(连接页停留 Connected 假态,见故障分析 12 §3.5)
+                    // 返回键行为由 CgmRoute 的 BackHandler 接管(直接退出 app)
                     popUpTo(CONNECTION_ROUTE) {
-                        inclusive = false
+                        inclusive = true
                     }
                     launchSingleTop = true
                 }
