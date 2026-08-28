@@ -1,55 +1,52 @@
 package com.biosensor.migratedev.port.adapter.localport
 
-import com.biosensor.migratedev.database.LocalDatabase
+import com.biosensor.migratedev.database.DeviceBindingQueries
 import okio.Sink
 import okio.Source
 
-sealed interface EntropyReadResult {
-    data class Found(val value: String) : EntropyReadResult
-    data object Missing : EntropyReadResult
-    data class Failed(val message: String) : EntropyReadResult
-}
+data class LocalPort(
+    val kv: KvStore,
+    val sql: SqlStore,
+    val files: FileStore,
+)
 
-sealed interface EntropyWriteResult {
-    data object Written : EntropyWriteResult
-    data class Failed(val message: String) : EntropyWriteResult
-}
-
-sealed interface EntropyRemoveResult {
-    data object Removed : EntropyRemoveResult
-    data object Missing : EntropyRemoveResult
-    data class Failed(val message: String) : EntropyRemoveResult
-}
-
-interface StringEntropy {
-    suspend fun read(key: String): EntropyReadResult
-
-    suspend fun write(key: String, value: String): EntropyWriteResult
-
-    suspend fun remove(key: String): EntropyRemoveResult
-
+interface KvStore {
+    suspend fun read(key: String): KvReadResult
+    suspend fun write(key: String, value: String): KvWriteResult
+    suspend fun remove(key: String): KvRemoveResult
     suspend fun contains(key: String): Boolean
 }
 
-interface LocalFileClient {
-    // 流式输入抽象
-    fun source(space: FileSpace, relativePath: String): Source
+sealed interface KvReadResult {
+    data class Value(val value: String) : KvReadResult
+    data object None : KvReadResult
+    data class Failed(val message: String) : KvReadResult
+}
 
-    // 流式输出抽象
-    fun sink(space: FileSpace, relativePath: String, append: Boolean = false): Sink
+sealed interface KvWriteResult {
+    data object Done : KvWriteResult
+    data class Failed(val msg: String) : KvWriteResult
+}
 
-    // 枚举目录内容
+sealed interface KvRemoveResult {
+    data object Done : KvRemoveResult
+    data object None : KvRemoveResult
+    data class Failed(val msg: String) : KvRemoveResult
+}
+
+interface SqlStore {
+    val deviceBinding: DeviceBindingQueries
+}
+
+interface FileStore {
+    fun read(space: FileSpace, relativePath: String): Source
+    fun write(space: FileSpace, relativePath: String, append: Boolean = false): Sink
     fun list(space: FileSpace, relativePath: String = ""): List<FileEntry>
-
-    // 删除单个文件
     fun delete(space: FileSpace, relativePath: String): FileDeleteResult
-
-    // 按策略批量清理文件
-    fun prune(space: FileSpace, policy: RetentionPolicy): FilePruneResult
 }
 
 enum class FileSpace {
-    LOGS, RECEIVED, OUTGOING, CACHE
+    LOGS, RECEIVED, OUTGOING, CACHE,
 }
 
 data class FileEntry(
@@ -57,16 +54,8 @@ data class FileEntry(
 )
 
 sealed interface FileDeleteResult {
-    data object Deleted : FileDeleteResult
-    data object Missing : FileDeleteResult
-    data class Failed(val message: String) : FileDeleteResult
+    data object Done : FileDeleteResult
+    data object None : FileDeleteResult
+    data class Failed(val msg: String) : FileDeleteResult
 }
 
-data class RetentionPolicy(
-    val maxFiles: Int, val maxAgeMillis: Long, val nowMillis: Long
-)
-
-sealed interface FilePruneResult {
-    data class Pruned(val deletedCount: Int) : FilePruneResult
-    data class Failed(val message: String) : FilePruneResult
-}

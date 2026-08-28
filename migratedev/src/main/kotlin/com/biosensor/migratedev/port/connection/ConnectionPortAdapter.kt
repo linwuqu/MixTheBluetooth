@@ -1,6 +1,6 @@
 package com.biosensor.migratedev.port.connection
 
-import com.biosensor.migratedev.database.LocalDatabase
+import com.biosensor.migratedev.port.adapter.localport.SqlStore
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
@@ -14,23 +14,18 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import timber.log.Timber
 
-/**
- * 业务适配器:连接业务协议(设备绑定表读写 + 扫描/连接)。
- * 下行直接执行 [ConnectionEffect](ConnectDevice/DisconnectDevice 的蓝牙命令包装在内部完成);
- * 上行把蓝牙结果翻译成 [ConnectionEvent] 上报。
- */
 class ConnectionPortAdapter(
-    private val sqlite: LocalDatabase,
+    private val sql: SqlStore,
     private val bluetooth: BluetoothPort,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) : ConnectionPort {
 
     override fun scanDevices(): Flow<BluetoothDeviceInfo> = bluetooth.scanDevices()
 
-    // 调用 sqlite 能力从 deviceBinding 表搜索绑定信息
+    // 调用 sql 能力从 deviceBinding 表搜索绑定信息
     override fun readBinding(userId: String): Flow<BindingSnapshot> = flow {
         val result = runCatching {
-            sqlite.deviceBindingQueries.findByUserId(userId).executeAsOneOrNull()
+            sql.deviceBinding.findByUserId(userId).executeAsOneOrNull()
         }.fold(onSuccess = { binding ->
             binding?.let { BindingSnapshot.Found(it.deviceId) } ?: BindingSnapshot.Missing
         }, onFailure = {
@@ -54,7 +49,7 @@ class ConnectionPortAdapter(
 
     private fun saveBinding(userId: String, deviceId: String): Flow<ConnectionEvent> = flow {
         val result = runCatching {
-            sqlite.deviceBindingQueries.upsert(
+            sql.deviceBinding.upsert(
                 userId = userId, deviceId = deviceId, updatedAtMillis = nowMillis()
             )
         }.fold(onSuccess = {
@@ -68,12 +63,12 @@ class ConnectionPortAdapter(
 
     private fun BluetoothEvent.toEvent(): ConnectionEvent = when (this) {
         is BluetoothEvent.Connected -> ConnectionEvent.DeviceConnected(device)
-        is BluetoothEvent.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(message)
+        is BluetoothEvent.ConnectFailed -> ConnectionEvent.DeviceConnectFailed(msg)
         BluetoothEvent.ConnectTimeout -> ConnectionEvent.DeviceConnectTimeout
         BluetoothEvent.Disconnected -> ConnectionEvent.DeviceDisconnected
         // 命令期事件(数据收发/MTU):连接期收集者已过滤(架构 07 §1.4),实际不可达,穷举占位
         is BluetoothEvent.DataReceived,
-        is BluetoothEvent.DataSent,
+        is BluetoothEvent.DataSentAck,
         is BluetoothEvent.MtuChanged -> ConnectionEvent.DeviceDisconnected
     }
 

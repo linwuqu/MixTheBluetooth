@@ -8,6 +8,7 @@ import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEffect
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
+import com.biosensor.migratedev.port.adapter.localport.sql.SqliteStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -19,7 +20,7 @@ import org.junit.Test
 
 class ConnectionPortAdapterTest {
     private lateinit var driver: JdbcSqliteDriver
-    private lateinit var database: LocalDatabase
+    private lateinit var sql: SqliteStore
     private lateinit var bluetooth: FakeBluetoothPort
     private lateinit var port: ConnectionPortAdapter
 
@@ -27,10 +28,10 @@ class ConnectionPortAdapterTest {
     fun setUp() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         LocalDatabase.Schema.create(driver)
-        database = LocalDatabase(driver)
+        sql = SqliteStore(LocalDatabase(driver))
         bluetooth = FakeBluetoothPort()
         port = ConnectionPortAdapter(
-            sqlite = database,
+            sql = sql,
             bluetooth = bluetooth,
             nowMillis = { 1234L }
         )
@@ -63,7 +64,7 @@ class ConnectionPortAdapterTest {
         )
         assertEquals(
             1234L,
-            database.deviceBindingQueries
+            sql.deviceBinding
                 .findByUserId("user-1")
                 .executeAsOne()
                 .updatedAtMillis

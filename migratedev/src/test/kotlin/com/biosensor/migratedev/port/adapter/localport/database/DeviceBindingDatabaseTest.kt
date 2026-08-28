@@ -2,6 +2,7 @@ package com.biosensor.migratedev.port.adapter.localport.database
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.biosensor.migratedev.database.LocalDatabase
+import com.biosensor.migratedev.port.adapter.localport.sql.SqliteStore
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -10,13 +11,13 @@ import org.junit.Test
 
 class DeviceBindingDatabaseTest {
     private lateinit var driver: JdbcSqliteDriver
-    private lateinit var database: LocalDatabase
+    private lateinit var store: SqliteStore
 
     @Before
     fun setUp() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         LocalDatabase.Schema.create(driver)
-        database = LocalDatabase(driver)
+        store = SqliteStore(LocalDatabase(driver))
     }
 
     @After
@@ -26,18 +27,18 @@ class DeviceBindingDatabaseTest {
 
     @Test
     fun `upsert keeps one current device for each user`() {
-        database.deviceBindingQueries.upsert(
+        store.deviceBinding.upsert(
             userId = "user-1",
             deviceId = "AA:BB",
             updatedAtMillis = 10L
         )
-        database.deviceBindingQueries.upsert(
+        store.deviceBinding.upsert(
             userId = "user-1",
             deviceId = "CC:DD",
             updatedAtMillis = 20L
         )
 
-        val binding = database.deviceBindingQueries
+        val binding = store.deviceBinding
             .findByUserId("user-1")
             .executeAsOne()
 
@@ -47,19 +48,19 @@ class DeviceBindingDatabaseTest {
 
     @Test
     fun `bindings are isolated by user and can be forgotten`() {
-        database.deviceBindingQueries.upsert("user-1", "AA:BB", 10L)
-        database.deviceBindingQueries.upsert("user-2", "CC:DD", 20L)
+        store.deviceBinding.upsert("user-1", "AA:BB", 10L)
+        store.deviceBinding.upsert("user-2", "CC:DD", 20L)
 
-        database.deviceBindingQueries.deleteByUserId("user-1")
+        store.deviceBinding.deleteByUserId("user-1")
 
         assertNull(
-            database.deviceBindingQueries
+            store.deviceBinding
                 .findByUserId("user-1")
                 .executeAsOneOrNull()
         )
         assertEquals(
             "CC:DD",
-            database.deviceBindingQueries
+            store.deviceBinding
                 .findByUserId("user-2")
                 .executeAsOne()
                 .deviceId

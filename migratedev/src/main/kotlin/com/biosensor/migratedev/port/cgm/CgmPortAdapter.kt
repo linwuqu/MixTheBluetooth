@@ -1,5 +1,7 @@
 package com.biosensor.migratedev.port.cgm
 
+import com.biosensor.migratedev.port.adapter.localport.FileSpace
+import com.biosensor.migratedev.port.adapter.localport.FileStore
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEvent
@@ -12,13 +14,6 @@ import com.biosensor.migratedev.orchestrator.cgm.SequentialCgmParsePipeline
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEffect
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
-import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
-import java.time.Clock
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import okio.buffer
-import okio.use
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -28,7 +23,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.timeout
+import okio.buffer
+import okio.use
 import timber.log.Timber
+import java.time.Clock
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -39,7 +39,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class CgmPortAdapter(
     private val bluetooth: BluetoothPort,
-    private val fileClient: LocalFileClient,
+    private val files: FileStore,
     private val pipeline: CgmParsePipeline = SequentialCgmParsePipeline(),
     private val clock: Clock = Clock.systemDefaultZone(),
     private val commandIdleTimeoutMillis: Long = COMMAND_IDLE_TIMEOUT_MILLIS,
@@ -76,8 +76,8 @@ class CgmPortAdapter(
                 .timeout(commandIdleTimeoutMillis.milliseconds)   // 空闲超时:超时抛 TimeoutCancellationException
                 .collect { event ->
                     when (event) {
-                        is BluetoothEvent.DataSent -> {
-                            sentBytes += event.bytesSent
+                        is BluetoothEvent.DataSentAck -> {
+                            sentBytes += event.bytesSentAck
                             if (!accepted && sentBytes >= payload.size) {
                                 accepted = true
                                 produced = true
@@ -89,6 +89,7 @@ class CgmPortAdapter(
                                 }
                             }
                         }
+
                         is BluetoothEvent.DataReceived -> {
                             val records = pipeline.parse(event.data)
                             if (records.isEmpty()) return@collect
@@ -99,6 +100,7 @@ class CgmPortAdapter(
                                 pending += records   // 命令未确认:先缓冲
                             }
                         }
+
                         is BluetoothEvent.Disconnected -> {
                             produced = true
                             Timber.tag(CGM_TAG).w("读指令 session=%s 连接断开", session.id)
@@ -109,21 +111,24 @@ class CgmPortAdapter(
                         // 未连接/发送失败:会话不可用,映射为断开事件——状态机得以结束而非死挂
                         is BluetoothEvent.ConnectFailed -> {
                             produced = true
-                            Timber.tag(CGM_TAG).w("读指令 session=%s 连接不可用:%s", session.id, event.message)
+                            Timber.tag(CGM_TAG)
+                                .w("读指令 session=%s 连接不可用:%s", session.id, event.msg)
                             emit(CgmReadEvent.DeviceDisconnected(session.id))
                             throw SessionEnded   // 同上:会话不可用,命令流立即收尾
                         }
+
                         else -> Unit   // Connected/MtuChanged 等非会话事件
                     }
                 }
-        } catch (e: SessionEnded) {
+        } catch (_: SessionEnded) {
             // 会话终止(断开/不可用):已 emit 终止事件,正常收尾
-        } catch (e: TimeoutCancellationException) {
+        } catch (_: TimeoutCancellationException) {
             idleTimeout = true
         }
         // 空闲超时或 flow 提前结束却零事件(静默失败)→ 兜底超时,状态机不会死挂
         if (idleTimeout || !produced) {
-            Timber.tag(CGM_TAG).w("读指令 session=%s 空闲超时或零事件,兜底超时(已发%s字节)", session.id, sentBytes)
+            Timber.tag(CGM_TAG)
+                .w("读指令 session=%s 空闲超时或零事件,兜底超时(已发%s字节)", session.id, sentBytes)
             emit(CgmReadEvent.CommandTimeout(session.id))
         }
     }
@@ -138,21 +143,22 @@ class CgmPortAdapter(
         var idleTimeout = false
         try {
             bluetooth.execute(BluetoothEffect.SendData(payload))
-                .timeout(commandIdleTimeoutMillis.milliseconds)
-                .collect { event ->
+                .timeout(commandIdleTimeoutMillis.milliseconds).collect { event ->
                     when (event) {
-                        is BluetoothEvent.DataSent -> {
-                            sentBytes += event.bytesSent
+                        is BluetoothEvent.DataSentAck -> {
+                            sentBytes += event.bytesSentAck
                             if (!produced && sentBytes >= payload.size) {
                                 produced = true
                                 emit(CgmShortEvent.CommandAccepted(session.id))
                             }
                         }
+
                         is BluetoothEvent.DataReceived -> {
                             // 设备确认文本(形态待实测,TODO);当前以收到数据为确认
                             produced = true
                             emit(CgmShortEvent.AckReceived(session.id, purpose))
                         }
+
                         is BluetoothEvent.Disconnected -> {
                             produced = true
                             emit(CgmShortEvent.DeviceDisconnected(session.id))
@@ -164,12 +170,13 @@ class CgmPortAdapter(
                             emit(CgmShortEvent.DeviceDisconnected(session.id))
                             throw SessionEnded   // 同上:会话不可用,命令流立即收尾
                         }
+
                         else -> Unit   // Connected/MtuChanged 等非会话事件
                     }
                 }
-        } catch (e: SessionEnded) {
+        } catch (_: SessionEnded) {
             // 会话终止(断开/不可用):已 emit 终止事件,正常收尾
-        } catch (e: TimeoutCancellationException) {
+        } catch (_: TimeoutCancellationException) {
             idleTimeout = true
         }
         // 空闲超时或 flow 提前结束却零事件(静默失败)→ 兜底超时,状态机不会死挂
@@ -186,16 +193,16 @@ class CgmPortAdapter(
         var idleTimeout = false
         try {
             bluetooth.execute(BluetoothEffect.SendData(payload))
-                .timeout(commandIdleTimeoutMillis.milliseconds)
-                .collect { event ->
+                .timeout(commandIdleTimeoutMillis.milliseconds).collect { event ->
                     when (event) {
-                        is BluetoothEvent.DataSent -> {
-                            sentBytes += event.bytesSent
+                        is BluetoothEvent.DataSentAck -> {
+                            sentBytes += event.bytesSentAck
                             if (!produced && sentBytes >= payload.size) {
                                 produced = true
                                 emit(CgmReadEvent.AckReceived(session.id, CgmCommandPurpose.DELETE))
                             }
                         }
+
                         is BluetoothEvent.Disconnected -> {
                             produced = true
                             emit(CgmReadEvent.DeviceDisconnected(session.id))
@@ -207,12 +214,13 @@ class CgmPortAdapter(
                             emit(CgmReadEvent.DeviceDisconnected(session.id))
                             throw SessionEnded   // 同上:会话不可用,命令流立即收尾
                         }
+
                         else -> Unit   // Connected/MtuChanged 等非会话事件
                     }
                 }
-        } catch (e: SessionEnded) {
+        } catch (_: SessionEnded) {
             // 会话终止(断开/不可用):已 emit 终止事件,正常收尾
-        } catch (e: TimeoutCancellationException) {
+        } catch (_: TimeoutCancellationException) {
             idleTimeout = true
         }
         // 空闲超时或 flow 提前结束却零事件(静默失败)→ 兜底超时,状态机不会死挂
@@ -227,7 +235,7 @@ class CgmPortAdapter(
     ): Flow<CgmReadEvent> = flow {
         val path = "cgm/${session.id}.txt"
         val ok = runCatching {
-            fileClient.sink(FileSpace.RECEIVED, path, append = false).buffer().use { sink ->
+            files.write(FileSpace.RECEIVED, path, append = false).buffer().use { sink ->
                 sink.writeUtf8(render(records))
             }
             true

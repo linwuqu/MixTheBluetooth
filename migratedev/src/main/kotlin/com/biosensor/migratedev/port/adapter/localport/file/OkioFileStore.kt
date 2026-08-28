@@ -1,37 +1,51 @@
 package com.biosensor.migratedev.port.adapter.localport.file
 
+import android.content.Context
 import com.biosensor.migratedev.port.adapter.localport.FileDeleteResult
 import com.biosensor.migratedev.port.adapter.localport.FileEntry
-import com.biosensor.migratedev.port.adapter.localport.FilePruneResult
 import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
-import com.biosensor.migratedev.port.adapter.localport.RetentionPolicy
+import com.biosensor.migratedev.port.adapter.localport.FileStore
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import okio.Sink
 import okio.Source
 
-class OkioLocalFileClient(
-    private val fileSystem: FileSystem, roots: Map<FileSpace, Path>
-) : LocalFileClient {
+class OkioFileStore internal constructor(
+    private val fileSystem: FileSystem,
+    roots: Map<FileSpace, Path>,
+) : FileStore {
+
     private val roots = roots.mapValues { (_, path) ->
         path.toString().toPath(normalize = true)
     }
 
     init {
         require(FileSpace.entries.all(roots::containsKey)) {
-            "Every FileSpace must have a root"
+            "每个文件分区都需要根目录"
         }
     }
 
-    override fun source(
-        space: FileSpace, relativePath: String
-    ): Source = fileSystem.source(resolve(space, relativePath))
+    companion object {
+        /** 分区根目录:业务数据放 filesDir(持久),临时产物放 cacheDir(系统可清)。 */
+        fun create(context: Context): FileStore {
+            val application = context.applicationContext
+            return OkioFileStore(
+                fileSystem = FileSystem.SYSTEM,
+                roots = mapOf(
+                    FileSpace.LOGS to application.filesDir.resolve("logs").absolutePath.toPath(),
+                    FileSpace.RECEIVED to application.filesDir.resolve("received").absolutePath.toPath(),
+                    FileSpace.OUTGOING to application.filesDir.resolve("outgoing").absolutePath.toPath(),
+                    FileSpace.CACHE to application.cacheDir.resolve("cache").absolutePath.toPath(),
+                ),
+            )
+        }
+    }
 
-    override fun sink(
-        space: FileSpace, relativePath: String, append: Boolean
-    ): Sink {
+    override fun read(space: FileSpace, relativePath: String): Source =
+        fileSystem.source(resolve(space, relativePath))
+
+    override fun write(space: FileSpace, relativePath: String, append: Boolean): Sink {
         val path = resolve(space, relativePath)
         path.parent?.let(fileSystem::createDirectories)
         return if (append) {
@@ -41,9 +55,7 @@ class OkioLocalFileClient(
         }
     }
 
-    override fun list(
-        space: FileSpace, relativePath: String
-    ): List<FileEntry> {
+    override fun list(space: FileSpace, relativePath: String): List<FileEntry> {
         val root = roots.getValue(space)
         val directory = resolve(space, relativePath)
         return collectFiles(directory).mapNotNull { path ->
@@ -54,57 +66,26 @@ class OkioLocalFileClient(
                 FileEntry(
                     relativePath = path.relativeTo(root).toString(),
                     size = metadata.size,
-                    lastModifiedAtMillis = metadata.lastModifiedAtMillis
+                    lastModifiedAtMillis = metadata.lastModifiedAtMillis,
                 )
             }
         }.sortedBy(FileEntry::relativePath)
     }
 
-    override fun delete(
-        space: FileSpace, relativePath: String
-    ): FileDeleteResult {
+    override fun delete(space: FileSpace, relativePath: String): FileDeleteResult {
         val path = resolve(space, relativePath)
         if (!fileSystem.exists(path)) {
-            return FileDeleteResult.Missing
+            return FileDeleteResult.None
         }
         return try {
             fileSystem.delete(path)
-            FileDeleteResult.Deleted
+            FileDeleteResult.Done
         } catch (failure: Exception) {
-            FileDeleteResult.Failed(
-                failure.message ?: "文件删除失败"
-            )
+            FileDeleteResult.Failed(failure.message ?: "文件删除失败")
         }
     }
 
-    override fun prune(
-        space: FileSpace, policy: RetentionPolicy
-    ): FilePruneResult {
-        return try {
-            require(policy.maxFiles >= 0)
-            require(policy.maxAgeMillis >= 0)
-            val entries = list(space).sortedByDescending {
-                it.lastModifiedAtMillis ?: Long.MIN_VALUE
-            }
-            val expiredBefore = policy.nowMillis - policy.maxAgeMillis
-            val toDelete = entries.filterIndexed { index, entry ->
-                index >= policy.maxFiles || (entry.lastModifiedAtMillis
-                    ?: Long.MAX_VALUE) < expiredBefore
-            }
-            val deleted = toDelete.count { entry ->
-                delete(space, entry.relativePath) == FileDeleteResult.Deleted
-            }
-            FilePruneResult.Pruned(deleted)
-        } catch (failure: Exception) {
-            FilePruneResult.Failed(
-                failure.message ?: "文件清理失败"
-            )
-        }
-    }
-
-    private fun resolve(
-        space: FileSpace, relativePath: String
-    ): Path {
+    private fun resolve(space: FileSpace, relativePath: String): Path {
         val root = roots.getValue(space)
         val candidate = root.resolve(
             relativePath.toPath(), normalize = true
@@ -112,7 +93,7 @@ class OkioLocalFileClient(
         require(
             candidate.segments.size >= root.segments.size && candidate.segments.take(root.segments.size) == root.segments
         ) {
-            "Path escapes ${space.name} root"
+            "路径逃逸出 ${space.name} 根目录"
         }
         return candidate
     }

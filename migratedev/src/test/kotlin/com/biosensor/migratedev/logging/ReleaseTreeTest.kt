@@ -1,7 +1,7 @@
 package com.biosensor.migratedev.logging
 
 import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.file.OkioLocalFileClient
+import com.biosensor.migratedev.port.adapter.localport.file.OkioFileStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -19,13 +19,13 @@ import timber.log.Timber
 
 class ReleaseTreeTest {
     private lateinit var fileSystem: FakeFileSystem
-    private lateinit var files: OkioLocalFileClient
+    private lateinit var files: OkioFileStore
 
     @Before
     fun setUp() {
         Timber.uprootAll()
         fileSystem = FakeFileSystem()
-        files = OkioLocalFileClient(
+        files = OkioFileStore(
             fileSystem = fileSystem,
             roots = FileSpace.entries.associateWith {
                 "/app/${it.name.lowercase()}".toPath()
@@ -59,7 +59,7 @@ class ReleaseTreeTest {
 
         val entries = files.list(FileSpace.LOGS)
         assertEquals(1, entries.size)
-        val text = files.source(
+        val text = files.read(
             FileSpace.LOGS,
             entries.single().relativePath
         ).buffer().use { it.readUtf8() }

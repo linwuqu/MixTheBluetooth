@@ -4,7 +4,7 @@ import com.biosensor.migratedev.decisioncore.auth.AuthEffect
 import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
-import com.biosensor.migratedev.port.InMemoryStringEntropy
+import com.biosensor.migratedev.port.InMemoryKvStore
 import com.biosensor.migratedev.port.adapter.remoteport.ApiError
 import com.biosensor.migratedev.port.adapter.remoteport.HttpOutcome
 import com.biosensor.migratedev.port.adapter.remoteport.HttpRemote
@@ -24,7 +24,7 @@ class AuthPortAdapterRemoteTest {
 
     private fun adapter(http: FakeHttpRemote) =
         AuthPortAdapter(
-            kv = InMemoryStringEntropy(),
+            kv = InMemoryKvStore(),
             http = http,
             clock = clock,
             debugOfflineMode = false   // 测试不启用调试离线会话

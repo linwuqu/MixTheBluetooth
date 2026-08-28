@@ -1,20 +1,19 @@
 package com.biosensor.migratedev.logging
 
+import com.biosensor.migratedev.port.adapter.localport.FileSpace
+import com.biosensor.migratedev.port.adapter.localport.FileStore
 import android.annotation.SuppressLint
 import android.util.Log
-import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
-import com.biosensor.migratedev.port.adapter.localport.RetentionPolicy
-import java.io.Closeable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import okio.buffer
 import okio.use
 import timber.log.Timber
+import java.io.Closeable
 
 class ReleaseTree(
-    private val files: LocalFileClient,
+    private val files: FileStore,
     scope: CoroutineScope,
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val maxFileBytes: Long = DEFAULT_MAX_FILE_BYTES,
@@ -65,7 +64,7 @@ class ReleaseTree(
             val fileName = currentFile ?: newFileName(
                 message.timestampMillis
             ).also { currentFile = it }
-            files.sink(
+            files.write(
                 FileSpace.LOGS, fileName, append = true
             ).buffer().use { sink ->
                 sink.writeUtf8(message.format())
@@ -87,14 +86,25 @@ class ReleaseTree(
             return
         }
         currentFile = null
-        files.prune(
-            FileSpace.LOGS, RetentionPolicy(
-                // A new file is created immediately after pruning.
-                maxFiles = (maxFiles - 1).coerceAtLeast(0),
-                maxAgeMillis = maxAgeMillis,
-                nowMillis = now
-            )
-        )
+        pruneIfNecessary(now)
+    }
+
+    // 轮转策略(原契约里 prune 的语义):保留 maxFiles - 1 个,超龄优先删;失败不影响日志写入
+    private fun pruneIfNecessary(now: Long) {
+        try {
+            val expiredBefore = now - maxAgeMillis
+            files.list(FileSpace.LOGS)
+                .sortedByDescending { it.lastModifiedAtMillis ?: Long.MIN_VALUE }
+                .filterIndexed { index, entry ->
+                    index >= maxFiles - 1 || (entry.lastModifiedAtMillis
+                        ?: Long.MAX_VALUE) < expiredBefore
+                }
+                .forEach { entry ->
+                    files.delete(FileSpace.LOGS, entry.relativePath)
+                }
+        } catch (_: Exception) {
+            // 轮转失败不丢弃当前日志
+        }
     }
 
     private fun newFileName(now: Long): String = "migratedev-$now-${fileSequence++}.log"

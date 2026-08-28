@@ -15,10 +15,8 @@ import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothPort
 import com.biosensor.migratedev.port.adapter.localport.FileDeleteResult
 import com.biosensor.migratedev.port.adapter.localport.FileEntry
-import com.biosensor.migratedev.port.adapter.localport.FilePruneResult
 import com.biosensor.migratedev.port.adapter.localport.FileSpace
-import com.biosensor.migratedev.port.adapter.localport.LocalFileClient
-import com.biosensor.migratedev.port.adapter.localport.RetentionPolicy
+import com.biosensor.migratedev.port.adapter.localport.FileStore
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
@@ -46,16 +44,16 @@ class CgmPortAdapterTest {
     )
 
     private lateinit var bluetooth: FakeBluetoothPort
-    private lateinit var files: FakeFileClient
+    private lateinit var files: FakeFileStore
     private lateinit var port: CgmPortAdapter
 
     @Before
     fun setUp() {
         bluetooth = FakeBluetoothPort()
-        files = FakeFileClient()
+        files = FakeFileStore()
         port = CgmPortAdapter(
             bluetooth = bluetooth,
-            fileClient = files,
+            files = files,
             clock = clock,
             commandIdleTimeoutMillis = 100L
         )
@@ -396,13 +394,13 @@ class CgmPortAdapterTest {
         override fun scanDevices(): Flow<BluetoothDeviceInfo> = flowOf()
     }
 
-    private class FakeFileClient : LocalFileClient {
+    private class FakeFileStore : FileStore {
         val written = Buffer()
         var space: FileSpace? = null
         var path: String? = null
         var failNext: Boolean = false
 
-        override fun sink(
+        override fun write(
             space: FileSpace, relativePath: String, append: Boolean
         ): Sink {
             this.space = space
@@ -411,16 +409,13 @@ class CgmPortAdapterTest {
             return written
         }
 
-        override fun source(space: FileSpace, relativePath: String): Source =
+        override fun read(space: FileSpace, relativePath: String): Source =
             error("未实现")
 
         override fun list(space: FileSpace, relativePath: String): List<FileEntry> =
             error("未实现")
 
         override fun delete(space: FileSpace, relativePath: String): FileDeleteResult =
-            error("未实现")
-
-        override fun prune(space: FileSpace, policy: RetentionPolicy): FilePruneResult =
             error("未实现")
     }
 }

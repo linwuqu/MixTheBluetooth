@@ -35,19 +35,6 @@ internal class CallbackHub<T> {
     }
 }
 
-/**
- * AndroidBluetoothPort 是蓝牙端口的桥接实现:单一引擎(BluetoothClient/SDK AllBluetoothManage)+ 回调→流。
- * 引擎管一切事务(扫描/连接/数据/线程/互斥),本类只做"回调 ↔ 流"翻译,两个入口语义不同:
- * - scanDevices:持续性过程,生命周期由用户决定——收集即启动扫描(awaitClose 停止),取消即停止;
- * - execute:有状态的命令式回调,由业务层状态机统一管理——每次命令一条订阅流。
- * 三个 hub 按"订阅域"分工(谁在听,决定事件进哪个 hub):
- * - scanHub:扫描期(设备列表);
- * - connectHub:连接期(connect flow 收 Connected/ConnectFailed/ConnectTimeout,终态即 close);
- * - sessionHub:会话期(命令流收数据/发送结果/MTU + 会话终止 Disconnected)。
- * 引擎回调已区分连接期/会话期,断线精确路由,无双发。
- * 同步异常 = 指令没发出(权限/设备不在表/未连接),转对应失败事件;业务结果一律走回调流。
- * 没有锁、没有会话对象、没有状态机——决策状态机在业务层 decisioncore,这里只是 effectExecutor。
- */
 class AndroidBluetoothPort internal constructor(
     private val engine: BluetoothEngine,
     private val scanHub: CallbackHub<BluetoothDeviceInfo> = CallbackHub(),
@@ -57,7 +44,7 @@ class AndroidBluetoothPort internal constructor(
 
     constructor(
         application: Application,
-        parameters: LegacyBluetoothParameters = LegacyBluetoothParameters()
+        parameters: LibraryParam = LibraryParam()
     ) : this(BluetoothClient(application, parameters))
 
     // 引擎 → hub:引擎回调统一吸收,按订阅域分发
@@ -78,7 +65,7 @@ class AndroidBluetoothPort internal constructor(
             sessionHub.dispatch(BluetoothEvent.DataReceived(data))
 
         override fun onDataSent(bytesSent: Int) =
-            sessionHub.dispatch(BluetoothEvent.DataSent(bytesSent))
+            sessionHub.dispatch(BluetoothEvent.DataSentAck(bytesSent))
 
         override fun onMtuChanged(mtu: Int) =
             sessionHub.dispatch(BluetoothEvent.MtuChanged(mtu))

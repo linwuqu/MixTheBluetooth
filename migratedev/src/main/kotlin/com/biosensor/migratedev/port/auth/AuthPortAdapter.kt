@@ -1,20 +1,19 @@
 package com.biosensor.migratedev.port.auth
 
+import com.biosensor.migratedev.port.adapter.localport.KvReadResult
+import com.biosensor.migratedev.port.adapter.localport.KvRemoveResult
+import com.biosensor.migratedev.port.adapter.localport.KvStore
+import com.biosensor.migratedev.port.adapter.localport.KvWriteResult
 import com.biosensor.migratedev.BuildConfig
 import com.biosensor.migratedev.decisioncore.auth.AuthEffect
 import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
-import com.biosensor.migratedev.port.adapter.localport.EntropyReadResult
-import com.biosensor.migratedev.port.adapter.localport.EntropyRemoveResult
-import com.biosensor.migratedev.port.adapter.localport.EntropyWriteResult
-import com.biosensor.migratedev.port.adapter.localport.StringEntropy
 import com.biosensor.migratedev.port.adapter.remoteport.ApiError
 import com.biosensor.migratedev.port.adapter.remoteport.HttpOutcome
 import com.biosensor.migratedev.port.adapter.remoteport.HttpRemote
 import com.google.gson.Gson
 import com.google.gson.JsonParseException
-import java.time.Clock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -24,8 +23,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import timber.log.Timber
-
-// ===== 业务协议:auth 的端点与 DTO(业务自持) =====
+import java.time.Clock
 
 interface AccountApi {
     @POST("/api/account/v1/login")
@@ -38,37 +36,10 @@ interface AccountApi {
     suspend fun detail(@Header("token") token: String): ServerResponse<AccountDto>
 }
 
-data class LoginRequest(val phone: String, val password: String)
 
-data class RegisterRequest(
-    val username: String, val password: String, val phone: String, val avatarUrl: String?
-)
 
-data class AccountDto(
-    val id: Long = 0,
-    val username: String? = null,
-    val phone: String? = null,
-    val avatarUrl: String? = null,
-    val role: String? = null
-)
-
-data class ServerResponse<T>(
-    val code: Int = -1, val success: Boolean = false, val msg: String? = null, val data: T? = null
-) {
-    fun isOk(): Boolean = success || code == 0 || code == 200
-}
-
-// ===== 业务适配器:指令直达 + 分层上报 =====
-
-/**
- * auth 业务协议的全部内容:端点、会话 codec(键名 + gson + TTL + 过期判断)、
- * 传输失败到领域事件的映射、Timber 日志收口(本地/远端命令各一行)。
- *
- * 下行:直接执行 [AuthEffect](指令直达,无 Command 传话);
- * 上行:底层结果(EntropyReadResult / HttpOutcome)在此翻译成 [AuthEvent](分层上报)。
- */
 class AuthPortAdapter(
-    private val kv: StringEntropy,
+    private val kv: KvStore,
     private val http: HttpRemote,
     private val clock: Clock = Clock.systemUTC(),
     private val gson: Gson = Gson(),
@@ -78,32 +49,27 @@ class AuthPortAdapter(
     private val api: AccountApi by lazy { http.api(AccountApi::class.java) }
 
     override fun execute(effect: AuthEffect): Flow<AuthEvent> = when (effect) {
-        // 本地:KV + 会话 codec
         is AuthEffect.ReadSession, is AuthEffect.SaveSession, is AuthEffect.ClearSession -> executeLocal(
             effect
         )
-
-        // 远端:端点语义
         is AuthEffect.LoginRemote, is AuthEffect.RegisterRemote, is AuthEffect.ValidateSession -> executeRemote(
             effect
         )
     }
 
-    // ── 本地:KV + 会话 codec ──────────────────────────────
-
     private fun executeLocal(effect: AuthEffect): Flow<AuthEvent> = flow {
         emit(runLocal(effect))
-    }.flowOn(Dispatchers.IO)   // Tink 加解密为 CPU 密集
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun runLocal(effect: AuthEffect): AuthEvent {
         val result = when (effect) {
             is AuthEffect.ReadSession -> when (val read = kv.read(SESSION_KEY)) {
-                EntropyReadResult.Missing -> DebugOfflineSession.maybeInject(   // 调试专用,删除时连带移除
+                KvReadResult.None -> DebugOfflineSession.maybeInject(   // 调试专用,删除时连带移除
                     AuthEvent.SessionMissing, enabled = debugOfflineMode
                 )
 
-                is EntropyReadResult.Failed -> corrupted()
-                is EntropyReadResult.Found -> parse(read.value)
+                is KvReadResult.Failed -> corrupted()
+                is KvReadResult.Value -> parse(read.value)
             }
 
             is AuthEffect.SaveSession -> if (save(effect.session)) {
@@ -113,9 +79,8 @@ class AuthPortAdapter(
             }
 
             is AuthEffect.ClearSession -> when (kv.remove(SESSION_KEY)) {
-                EntropyRemoveResult.Removed, EntropyRemoveResult.Missing -> AuthEvent.SessionCleared
-
-                is EntropyRemoveResult.Failed -> AuthEvent.SessionClearFailed("本地会话清理失败")
+                KvRemoveResult.Done, KvRemoveResult.None -> AuthEvent.SessionCleared
+                is KvRemoveResult.Failed -> AuthEvent.SessionClearFailed("本地会话清理失败")
             }
 
             else -> error("不可达")
@@ -150,13 +115,11 @@ class AuthPortAdapter(
     private suspend fun save(session: AuthSession): Boolean {
         if (session.token.isBlank()) return false
         return try {
-            kv.write(SESSION_KEY, gson.toJson(session)) == EntropyWriteResult.Written
+            kv.write(SESSION_KEY, gson.toJson(session)) == KvWriteResult.Done
         } catch (_: JsonParseException) {
             false
         }
     }
-
-    // ── 远端:端点语义 + 传输失败映射 ──────────────────────
 
     private fun executeRemote(effect: AuthEffect): Flow<AuthEvent> = flow {
         emit(runRemote(effect))
@@ -175,12 +138,10 @@ class AuthPortAdapter(
     }
 
     private suspend fun login(phone: String, password: String): AuthEvent {
-        // outcome 只确定是否拿到了 Http 响应
         val login = when (val outcome = http.invoke { api.login(LoginRequest(phone, password)) }) {
             is HttpOutcome.Completed -> outcome.data
             else -> return outcome.toRejected()
         }
-        // isOk 判断是否业务成功
         if (!login.isOk()) return AuthEvent.RemoteRejected(login.msg ?: "登录失败")
         val token = login.data?.takeIf { it.isNotBlank() }
             ?: return AuthEvent.RemoteRejected("登录响应没有 token")
@@ -222,7 +183,6 @@ class AuthPortAdapter(
     private suspend fun validate(session: AuthSession): AuthEvent {
         val detail = when (val outcome = http.invoke { api.detail(session.token) }) {
             is HttpOutcome.Completed -> outcome.data
-            // 调试专用:远端不可达时信任本地会话,删除时连带移除
             else -> return DebugOfflineSession.maybeTrust(
                 outcome.toSessionFailure(), local = session, enabled = debugOfflineMode
             )
@@ -236,7 +196,6 @@ class AuthPortAdapter(
         )
     }
 
-    // 传输失败 → 领域事件(登录/注册语义)
     private fun HttpOutcome<*>.toRejected(): AuthEvent = when (this) {
         is HttpOutcome.Failure -> when (val error = this.error) {
             ApiError.TimeoutError -> AuthEvent.RemoteTimeout
