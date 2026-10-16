@@ -10,6 +10,7 @@ import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.ConnectionPort
+import com.biosensor.migratedev.port.upload.UploadPort
 import com.biosensor.migratedev.translation.auth.AuthIntent
 import com.biosensor.migratedev.translation.auth.AuthOutput
 import com.biosensor.migratedev.translation.auth.AuthTranslation
@@ -42,6 +43,7 @@ class RootWorkflow(
     private val authPort: AuthPort,
     private val connectionPort: ConnectionPort,
     private val cgmPort: CgmPort,
+    private val uploadPort: UploadPort,
     scope: CoroutineScope
 ) : AutoCloseable {
 
@@ -137,7 +139,7 @@ class RootWorkflow(
         cgmStore = store
         cgm = ViewModelProvider(
             store, CgmTranslation.factory(
-                deviceId = deviceId, port = cgmPort, report = ::report
+                deviceId = deviceId, port = cgmPort, uploadPort = uploadPort, report = ::report
             )
         )[CgmTranslation::class.java]
     }

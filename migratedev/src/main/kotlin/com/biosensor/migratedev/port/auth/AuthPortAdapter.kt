@@ -61,7 +61,7 @@ class AuthPortAdapter(
 
     private suspend fun runLocal(effect: AuthEffect): AuthEvent {
         val result = when (effect) {
-            is AuthEffect.ReadSession -> when (val read = kv.read(SESSION_KEY)) {
+            is AuthEffect.ReadSession -> when (val read = kv.read(AuthSessionStore.KEY)) {
                 KvReadResult.None -> AuthEvent.SessionMissing
 
                 is KvReadResult.Failed -> corrupted()
@@ -74,7 +74,7 @@ class AuthPortAdapter(
                 AuthEvent.SessionSaveFailed("本地会话写入失败")
             }
 
-            is AuthEffect.ClearSession -> when (kv.remove(SESSION_KEY)) {
+            is AuthEffect.ClearSession -> when (kv.remove(AuthSessionStore.KEY)) {
                 KvRemoveResult.Done, KvRemoveResult.None -> AuthEvent.SessionCleared
                 is KvRemoveResult.Failed -> AuthEvent.SessionClearFailed("本地会话清理失败")
             }
@@ -87,14 +87,7 @@ class AuthPortAdapter(
     }
 
     private suspend fun parse(raw: String): AuthEvent {
-        val session = try {
-            gson.fromJson(raw, AuthSession::class.java)
-        } catch (_: JsonParseException) {
-            return corrupted()
-        } catch (_: IllegalArgumentException) {
-            return corrupted()
-        }
-        if (session == null || session.token.isBlank()) return corrupted()
+        val session = AuthSessionStore.decode(raw, gson) ?: return corrupted()
         val expiresAt = session.expiresAtMillis
         return if (expiresAt != null && clock.millis() >= expiresAt) {
             AuthEvent.SessionExpired
@@ -104,14 +97,14 @@ class AuthPortAdapter(
     }
 
     private suspend fun corrupted(): AuthEvent {
-        kv.remove(SESSION_KEY)
+        kv.remove(AuthSessionStore.KEY)
         return AuthEvent.SessionReadFailed("本地会话无法解密")
     }
 
     private suspend fun save(session: AuthSession): Boolean {
         if (session.token.isBlank()) return false
         return try {
-            kv.write(SESSION_KEY, gson.toJson(session)) == KvWriteResult.Done
+            kv.write(AuthSessionStore.KEY, gson.toJson(session)) == KvWriteResult.Done
         } catch (_: JsonParseException) {
             false
         }
@@ -219,7 +212,6 @@ class AuthPortAdapter(
     }
 
     internal companion object {
-        internal const val SESSION_KEY = "auth.active_session"
         private const val LOCAL_TOKEN_TTL_MS = 7L * 24 * 60 * 60 * 1000
         private const val AUTH_TAG = "Auth.Port"
     }

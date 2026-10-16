@@ -18,6 +18,8 @@ import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.cgm.CgmPortAdapter
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.port.connection.ConnectionPortAdapter
+import com.biosensor.migratedev.port.upload.UploadPort
+import com.biosensor.migratedev.port.upload.UploadPortAdapter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +49,7 @@ class AppGraph(application: Application) {
     private val authPort: AuthPort = AuthPortAdapter(kv, http, clock)
     private val connectionPort: ConnectionPort = ConnectionPortAdapter(sql, ble)
     private val cgmPort: CgmPort = CgmPortAdapter(ble, files)
+    private val uploadPort: UploadPort = UploadPortAdapter(kv, files, http, clock)
 
-    val rootWorkflow = RootWorkflow(authPort, connectionPort, cgmPort, rootScope)
+    val rootWorkflow = RootWorkflow(authPort, connectionPort, cgmPort, uploadPort, rootScope)
 }

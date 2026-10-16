@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.decisioncore.cgm.StopReason
+import com.biosensor.migratedev.decisioncore.upload.UploadPhase
 import com.biosensor.migratedev.translation.cgm.CgmShortResult
 import com.biosensor.migratedev.translation.cgm.CgmUiState
 
@@ -56,7 +57,41 @@ fun CgmStatusArea(state: CgmUiState) {
                 else MaterialTheme.colorScheme.error
             )
         }
+        // 没上传过就不占地方:两件事共用一个状态区,谁没话说谁不出现
+        if (state.uploadPhase != UploadPhase.IDLE) {
+            Spacer(Modifier.height(8.dp))
+            UploadStatus(state.uploadPhase, state.uploadMessage)
+        }
     }
+}
+
+/** 上传与分析共用一个阶段标签:推进到哪一步说清楚,失败时下面再补一行原因。 */
+@Composable
+private fun UploadStatus(phase: UploadPhase, message: String?) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (phase.running) CircularProgressIndicator(Modifier.size(20.dp))
+        Text(
+            phase.text(),
+            color = if (phase == UploadPhase.FAILED) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    message?.let {
+        Spacer(Modifier.height(4.dp))
+        Text(it, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+private fun UploadPhase.text(): String = when (this) {
+    UploadPhase.IDLE -> "空闲"
+    UploadPhase.UPLOADING -> "正在上传数据"
+    UploadPhase.POLLING -> "后端分析中"
+    UploadPhase.FETCHING -> "正在取回结果"
+    UploadPhase.DONE -> "分析完成"
+    UploadPhase.FAILED -> "分析失败"
 }
 
 private fun CgmReadPhase.text(stopReason: StopReason?): String = when (this) {

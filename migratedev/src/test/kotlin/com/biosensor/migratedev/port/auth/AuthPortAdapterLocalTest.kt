@@ -35,7 +35,7 @@ class AuthPortAdapterLocalTest {
         )
 
     private fun seededKv(raw: String): InMemoryKvStore =
-        InMemoryKvStore().apply { values[AuthPortAdapter.SESSION_KEY] = raw }
+        InMemoryKvStore().apply { values[AuthSessionStore.KEY] = raw }
 
     @Test
     fun existingSessionIsReturned() = runTest {
@@ -56,7 +56,7 @@ class AuthPortAdapterLocalTest {
         assertEquals(AuthEvent.SessionExpired, result)
         assertEquals(
             KvReadResult.Value(gson.toJson(AuthSession(user, "token", now))),
-            kv.read(AuthPortAdapter.SESSION_KEY)
+            kv.read(AuthSessionStore.KEY)
         )
     }
 
@@ -67,7 +67,7 @@ class AuthPortAdapterLocalTest {
         val result = adapter(kv).execute(AuthEffect.ReadSession).first()
 
         assertEquals(AuthEvent.SessionReadFailed("本地会话无法解密"), result)
-        assertEquals(KvReadResult.None, kv.read(AuthPortAdapter.SESSION_KEY))
+        assertEquals(KvReadResult.None, kv.read(AuthSessionStore.KEY))
     }
 
     @Test

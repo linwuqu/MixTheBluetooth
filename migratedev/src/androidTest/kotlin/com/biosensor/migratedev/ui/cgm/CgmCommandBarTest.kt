@@ -14,8 +14,9 @@ class CgmCommandBarTest {
     val compose = createComposeRule()
 
     @Test
-    fun threeButtonsDispatchTheirOwnActions() {
+    fun fourButtonsDispatchTheirOwnActions() {
         var reads = 0
+        var uploads = 0
         var syncs = 0
         var deletes = 0
         compose.setContent {
@@ -23,6 +24,7 @@ class CgmCommandBarTest {
                 CgmCommandBar(
                     onRead = { reads += 1 },
                     onForceStopRead = {},
+                    onUpload = { uploads += 1 },
                     onSyncTime = { syncs += 1 },
                     onDelete = { deletes += 1 }
                 )
@@ -30,11 +32,13 @@ class CgmCommandBarTest {
         }
 
         compose.onNodeWithText("读缓存").performClick()
+        compose.onNodeWithText("上传分析").performClick()
         compose.onNodeWithText("对时").performClick()
         compose.onNodeWithText("删除").performClick()
 
         compose.runOnIdle {
             assertEquals(1, reads)
+            assertEquals(1, uploads)
             assertEquals(1, syncs)
             assertEquals(1, deletes)
         }
@@ -49,6 +53,7 @@ class CgmCommandBarTest {
                 CgmCommandBar(
                     onRead = { reads += 1 },
                     onForceStopRead = { forceStops += 1 },
+                    onUpload = {},
                     onSyncTime = {},
                     onDelete = {}
                 )

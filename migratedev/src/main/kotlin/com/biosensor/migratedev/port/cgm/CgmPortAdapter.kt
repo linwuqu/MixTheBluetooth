@@ -228,7 +228,7 @@ class CgmPortAdapter(
     private fun writeFileFlow(
         session: CgmSession, records: List<CgmRecord>
     ): Flow<CgmReadEvent> = flow {
-        val path = "cgm/${session.deviceId.replace(':', '_')}.txt"
+        val path = cgmCachePath(session.deviceId)
         try {
             val result = fileWriteMutex.withLock {
                 val existing = try {

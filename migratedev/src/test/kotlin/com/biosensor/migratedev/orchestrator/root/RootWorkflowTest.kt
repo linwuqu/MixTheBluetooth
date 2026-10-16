@@ -15,11 +15,14 @@ import com.biosensor.migratedev.decisioncore.cgm.MarkerKind
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
 import com.biosensor.migratedev.decisioncore.root.RootState
+import com.biosensor.migratedev.decisioncore.upload.UploadEffect
+import com.biosensor.migratedev.decisioncore.upload.UploadEvent
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
+import com.biosensor.migratedev.port.upload.UploadPort
 import com.biosensor.migratedev.translation.cgm.CgmIntent
 import com.biosensor.migratedev.translation.connection.ConnectionIntent
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +55,7 @@ class RootWorkflowTest {
                 authPort = RestoringAuthPort(),
                 connectionPort = EmptyConnectionPort,
                 cgmPort = FakeCgmPort(),
+                uploadPort = EmptyUploadPort,
                 scope = this
             )
             try {
@@ -174,6 +178,7 @@ class RootWorkflowTest {
                 authPort = RestoringAuthPort(),
                 connectionPort = connectPort,
                 cgmPort = cgmPort,
+                uploadPort = EmptyUploadPort,
                 scope = this
             )
             try {
@@ -208,6 +213,11 @@ class RootWorkflowTest {
                 Dispatchers.resetMain()
             }
         }
+
+    /** 本文件不测上传:挂一个空端口,让 Cgm 域能装起来即可。 */
+    private object EmptyUploadPort : UploadPort {
+        override fun execute(effect: UploadEffect): Flow<UploadEvent> = emptyFlow()
+    }
 
     /** 每次 ConnectDevice 都成功连接(自动重连由 Root 转发 Reconnect 驱动,断线事件不经过连接端口)。 */
     private class AutoConnectPort(
@@ -271,6 +281,7 @@ class RootWorkflowTest {
                 authPort = RestoringAuthPort(),
                 connectionPort = connectingPort,
                 cgmPort = cgmPort,
+                uploadPort = EmptyUploadPort,
                 scope = this
             )
             try {

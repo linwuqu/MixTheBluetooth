@@ -24,6 +24,7 @@ fun CgmRoute(translation: CgmTranslation) {
         state = state,
         onRead = { translation.submit(CgmIntent.ReadCache) },
         onForceStopRead = { translation.submit(CgmIntent.ForceStopRead) },
+        onUpload = { translation.submit(CgmIntent.UploadDataset) },
         onSyncTime = { translation.submit(CgmIntent.SyncTime) },
         onDelete = { translation.submit(CgmIntent.DeleteCache) }
     )

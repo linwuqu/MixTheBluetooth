@@ -12,7 +12,15 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import com.biosensor.migratedev.decisioncore.cgm.MarkerKind
 import com.biosensor.migratedev.decisioncore.cgm.StopReason
+import com.biosensor.migratedev.decisioncore.upload.CgmResult
+import com.biosensor.migratedev.decisioncore.upload.PredictionStats
+import com.biosensor.migratedev.decisioncore.upload.ResultPoint
+import com.biosensor.migratedev.decisioncore.upload.ResultUnit
+import com.biosensor.migratedev.decisioncore.upload.UploadEffect
+import com.biosensor.migratedev.decisioncore.upload.UploadEvent
+import com.biosensor.migratedev.decisioncore.upload.UploadPhase
 import com.biosensor.migratedev.port.cgm.CgmPort
+import com.biosensor.migratedev.port.upload.UploadPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothConnectionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,13 +98,37 @@ class CgmTranslationTest {
         }
     }
 
+    private class FakeUploadPort : UploadPort {
+        var results: (UploadEffect) -> Flow<UploadEvent> = { flowOf() }
+        val effects = mutableListOf<UploadEffect>()
+
+        override fun execute(effect: UploadEffect): Flow<UploadEvent> {
+            effects += effect
+            return results(effect)
+        }
+    }
+
+    /** 全链路 fake:推文件 → 查任务成功 → 拉结果完成。 */
+    private fun FakeUploadPort.completeUploadFlow() {
+        results = { effect ->
+            when (effect) {
+                is UploadEffect.UploadDataset -> flowOf(
+                    UploadEvent.DatasetAccepted(jobId = 42L, datasetId = 7L)
+                )
+                is UploadEffect.PollJob -> flowOf(UploadEvent.JobSucceeded(resultId = 99L))
+                is UploadEffect.FetchResult -> flowOf(UploadEvent.ResultFetched(sampleResult))
+            }
+        }
+    }
+
     private fun newTranslation(
         store: ViewModelStore,
         port: FakeCgmPort,
-        report: (CgmOutput) -> Unit
+        report: (CgmOutput) -> Unit,
+        uploadPort: FakeUploadPort = FakeUploadPort()
     ): CgmTranslation = ViewModelProvider(
         store,
-        CgmTranslation.factory(deviceId, port, report)
+        CgmTranslation.factory(deviceId, port, uploadPort, report)
     )[CgmTranslation::class.java]
 
     @Test
@@ -169,7 +201,7 @@ class CgmTranslationTest {
             }
         }
         try {
-            val translation = newTranslation(store, port) {}
+            val translation = newTranslation(store, port, {})
             translation.submit(CgmIntent.ReadCache)
             advanceUntilIdle()
 
@@ -447,5 +479,150 @@ class CgmTranslationTest {
             store.clear()
             Dispatchers.resetMain()
         }
+    }
+
+    // ── 上传:第三条链路,与读/短命令互斥 ──
+
+    @Test
+    fun `upload runs the whole chain and projects the result`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val uploadPort = FakeUploadPort().apply { completeUploadFlow() }
+        try {
+            val translation = newTranslation(store, FakeCgmPort(), outputs::add, uploadPort)
+
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+
+            // 一条链路三步:推文件 → 查任务 → 拉结果。
+            // 路径由 cgmCachePath 统一:上传读的正是读流程写下的那一份。
+            assertEquals(
+                listOf(
+                    UploadEffect.UploadDataset("cgm/AA_01.txt"),
+                    UploadEffect.PollJob(42L),
+                    UploadEffect.FetchResult(42L, 7L, 99L)
+                ),
+                uploadPort.effects
+            )
+            assertEquals(UploadPhase.DONE, translation.uiState.value.uploadPhase)
+            assertEquals(sampleResult, translation.uiState.value.result)
+            assertEquals(null, translation.uiState.value.uploadMessage)
+            assertTrue("上传不上报 Root", outputs.isEmpty())
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `upload failure projects the reason`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val uploadPort = FakeUploadPort().apply {
+            results = { flowOf(UploadEvent.TransferFailed("请求超时")) }
+        }
+        try {
+            val translation = newTranslation(store, FakeCgmPort(), {}, uploadPort)
+
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+
+            assertEquals(UploadPhase.FAILED, translation.uiState.value.uploadPhase)
+            assertEquals("请求超时", translation.uiState.value.uploadMessage)
+            assertEquals(null, translation.uiState.value.result)
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `upload while uploading is blocked`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val uploadPort = FakeUploadPort().apply {
+            results = { flow { awaitCancellation() } }   // 上传挂起中
+        }
+        try {
+            val translation = newTranslation(store, FakeCgmPort(), outputs::add, uploadPort)
+
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+
+            assertEquals(1, uploadPort.effects.size)
+            assertEquals(listOf(CgmOutput.Blocked("正在上传数据中,请等待执行完毕")), outputs)
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `upload while read active is blocked`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val uploadPort = FakeUploadPort()
+        val port = FakeCgmPort().apply {
+            readResults = { flow { awaitCancellation() } }   // 读挂起中
+        }
+        try {
+            val translation = newTranslation(store, port, outputs::add, uploadPort)
+
+            translation.submit(CgmIntent.ReadCache)
+            advanceUntilIdle()
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+
+            assertEquals(emptyList<UploadEffect>(), uploadPort.effects)
+            assertEquals(listOf(CgmOutput.Blocked("正在执行读取中,请等待执行完毕")), outputs)
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `delete while upload active is blocked`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val uploadPort = FakeUploadPort().apply {
+            results = { flow { awaitCancellation() } }
+        }
+        try {
+            val translation = newTranslation(store, FakeCgmPort(), outputs::add, uploadPort)
+
+            translation.submit(CgmIntent.UploadDataset)
+            advanceUntilIdle()
+            translation.submit(CgmIntent.DeleteCache)
+            advanceUntilIdle()
+
+            assertEquals(listOf(CgmOutput.Blocked("正在上传数据中,请等待执行完毕")), outputs)
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    private companion object {
+        val sampleResult = CgmResult(
+            resultId = 99L, jobId = 42L, datasetId = 7L,
+            unitCount = 1, pointCount = 2,
+            stats = PredictionStats(3.0, 9.0, 6.0, 1.0),
+            units = listOf(
+                ResultUnit(
+                    unit = 0, title = "第一单元", pointCount = 2, mard = 0.1,
+                    points = listOf(
+                        ResultPoint(1, 60, "2026-07-21 12:10:45", 5.5, 5.0),
+                        ResultPoint(2, 70, "2026-07-21 12:10:55", 6.5, null)
+                    )
+                )
+            )
+        )
     }
 }

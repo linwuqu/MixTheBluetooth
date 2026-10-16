@@ -20,3 +20,9 @@ interface CgmPort {
     fun observeConnectionState(): Flow<BluetoothConnectionState> =
         flowOf(BluetoothConnectionState.CONNECTED)
 }
+
+/**
+ * 缓存文件在 RECEIVED 分区里的相对路径。
+ * 一个设备一个文件(设备号含冒号,不能直接做文件名),读流程写它、上传读它,两处必须一致。
+ */
+fun cgmCachePath(deviceId: String): String = "cgm/${deviceId.replace(':', '_')}.txt"

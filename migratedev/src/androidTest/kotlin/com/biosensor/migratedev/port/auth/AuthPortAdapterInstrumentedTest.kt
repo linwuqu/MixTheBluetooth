@@ -31,7 +31,7 @@ class AuthPortAdapterInstrumentedTest {
             try {
                 val local = AndroidLocalPort.create(context, scope)
                 val port = AuthPortAdapter(
-                    kv = local.entropy,
+                    kv = local.kv,
                     http = NoopHttpRemote,
                     clock = java.time.Clock.systemUTC()
                 )
