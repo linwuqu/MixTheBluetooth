@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import kotlin.time.Duration.Companion.milliseconds
@@ -42,6 +45,8 @@ class AndroidBluetoothPort internal constructor(
     private val sessionHub: CallbackHub<BluetoothEvent> = CallbackHub(),
 ) : BluetoothPort {
 
+    private val _connectionState = MutableStateFlow(BluetoothConnectionState.DISCONNECTED)
+
     constructor(
         application: Application,
         parameters: LibraryParam = LibraryParam()
@@ -51,15 +56,22 @@ class AndroidBluetoothPort internal constructor(
     private val engineListener = object : BluetoothEngineListener {
         override fun onDeviceFound(device: BluetoothDeviceInfo) = scanHub.dispatch(device)
 
-        override fun onConnected(device: BluetoothDeviceInfo) =
+        override fun onConnected(device: BluetoothDeviceInfo) {
+            // 先更新持久连接态，再分发一次性连接结果，避免页面先收到“重连成功”却短暂仍显示掉线。
+            _connectionState.value = BluetoothConnectionState.CONNECTED
             connectHub.dispatch(BluetoothEvent.Connected(device))
+        }
 
         // 连接期失败 → 连接 flow 收终态 ConnectFailed;会话期断线 → 命令流收 Disconnected(引擎已区分阶段)
-        override fun onConnectionFailed(deviceId: String?) =
+        override fun onConnectionFailed(deviceId: String?) {
+            _connectionState.value = BluetoothConnectionState.DISCONNECTED
             connectHub.dispatch(BluetoothEvent.ConnectFailed("蓝牙连接失败"))
+        }
 
-        override fun onDisconnected(deviceId: String?) =
+        override fun onDisconnected(deviceId: String?) {
+            _connectionState.value = BluetoothConnectionState.DISCONNECTED
             sessionHub.dispatch(BluetoothEvent.Disconnected)
+        }
 
         override fun onDataReceived(data: ByteArray) =
             sessionHub.dispatch(BluetoothEvent.DataReceived(data))
@@ -92,6 +104,9 @@ class AndroidBluetoothPort internal constructor(
         }
     }
 
+    override fun observeConnectionState(): StateFlow<BluetoothConnectionState> =
+        _connectionState.asStateFlow()
+
     override fun execute(effect: BluetoothEffect): Flow<BluetoothEvent> = when (effect) {
         is BluetoothEffect.Connect -> connect(effect.deviceId, effect.timeoutMillis)
         BluetoothEffect.Disconnect -> disconnect()
@@ -101,6 +116,7 @@ class AndroidBluetoothPort internal constructor(
 
     private fun connect(deviceId: String, timeoutMillis: Long): Flow<BluetoothEvent> = callbackFlow {
         require(timeoutMillis > 0) { "连接超时时间必须大于 0" }
+        _connectionState.value = BluetoothConnectionState.CONNECTING
         // 连接期订阅:只收终态,终态发出即 close——连接 flow 结束,会话交由引擎持有
         connectHub.register(this) { event ->
             when (event) {
@@ -116,6 +132,7 @@ class AndroidBluetoothPort internal constructor(
         try {
             engine.connect(deviceId)
         } catch (e: Exception) {
+            _connectionState.value = BluetoothConnectionState.DISCONNECTED
             connectHub.unregister(this)
             trySend(BluetoothEvent.ConnectFailed(e.message ?: "找不到待连接的蓝牙设备"))
             close()
@@ -124,6 +141,7 @@ class AndroidBluetoothPort internal constructor(
         // 超时兜底:桥接层唯一业务补充(SDK 无连接超时回调)
         val timer = launch {
             delay(timeoutMillis.milliseconds)
+            _connectionState.value = BluetoothConnectionState.DISCONNECTED
             trySend(BluetoothEvent.ConnectTimeout)
             engine.disconnect()   // 与现状一致:超时兜底断开
             close()
@@ -151,6 +169,7 @@ class AndroidBluetoothPort internal constructor(
 
     private fun disconnect(): Flow<BluetoothEvent> = flow {
         engine.disconnect()
+        _connectionState.value = BluetoothConnectionState.DISCONNECTED
         emit(BluetoothEvent.Disconnected)
     }
 

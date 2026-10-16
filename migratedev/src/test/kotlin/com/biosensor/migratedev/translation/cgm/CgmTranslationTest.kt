@@ -10,6 +10,7 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import com.biosensor.migratedev.decisioncore.cgm.MarkerKind
 import com.biosensor.migratedev.port.cgm.CgmPort
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothConnectionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -33,10 +34,19 @@ class CgmTranslationTest {
     private class FakeCgmPort : CgmPort {
         var readResults: (CgmReadEffect) -> Flow<CgmReadEvent> = { flowOf() }
         var shortResults: (CgmShortEffect) -> Flow<CgmShortEvent> = { flowOf() }
+        val readEffects = mutableListOf<CgmReadEffect>()
+        val connection = kotlinx.coroutines.flow.MutableStateFlow(
+            BluetoothConnectionState.CONNECTED
+        )
 
-        override fun execute(effect: CgmReadEffect): Flow<CgmReadEvent> = readResults(effect)
+        override fun execute(effect: CgmReadEffect): Flow<CgmReadEvent> {
+            readEffects += effect
+            return readResults(effect)
+        }
 
         override fun execute(effect: CgmShortEffect): Flow<CgmShortEvent> = shortResults(effect)
+
+        override fun observeConnectionState(): Flow<BluetoothConnectionState> = connection
     }
 
     /** 完整单段缓存:EIS 段 95 点,校验必过。 */
@@ -104,6 +114,102 @@ class CgmTranslationTest {
             // 双闸门完成 → Stopped → 上报 ReadCompleted(仅一次)
             assertEquals(listOf<CgmOutput>(CgmOutput.ReadCompleted("cgm/s1.txt")), outputs)
             assertEquals(CgmReadPhase.Stopped, translation.uiState.value.readPhase)
+            assertEquals(95, translation.uiState.value.progressPoints)
+            assertTrue(translation.uiState.value.dataLines.isNotEmpty())
+            assertEquals(fullCache().size, translation.uiState.value.dataLines.size)
+            assertEquals("Start Playback", translation.uiState.value.dataLines.first())
+            assertEquals("Playback all done", translation.uiState.value.dataLines.last())
+            assertTrue(translation.uiState.value.validationChecks.any { it.name.contains("seq") && it.passed })
+            assertTrue(port.readEffects.none { it is CgmReadEffect.SendDelete })
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `double read tap keeps one session and reports hint`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val port = FakeCgmPort().apply {
+            readResults = { flow { awaitCancellation() } }
+        }
+        try {
+            val translation = newTranslation(store, port, outputs::add)
+
+            translation.submit(CgmIntent.ReadCache)
+            advanceUntilIdle()
+            translation.submit(CgmIntent.ReadCache)
+            advanceUntilIdle()
+
+            assertEquals(1, port.readEffects.count { it is CgmReadEffect.StartRead })
+            assertEquals(
+                listOf(CgmOutput.Blocked("正在执行读取中,请等待执行完毕")),
+                outputs
+            )
+            assertEquals("正在执行读取中,请等待执行完毕", translation.uiState.value.hint)
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `force stop closes active read and preserves a usable terminal state`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val port = FakeCgmPort().apply {
+            readResults = { effect ->
+                if (effect is CgmReadEffect.StartRead) flowOf(
+                    CgmReadEvent.CommandAccepted(effect.session.id)
+                ) else flowOf()
+            }
+        }
+        try {
+            val translation = newTranslation(store, port) {}
+            translation.submit(CgmIntent.ReadCache)
+            advanceUntilIdle()
+
+            translation.submit(CgmIntent.ForceStopRead)
+            advanceUntilIdle()
+
+            assertEquals(CgmReadPhase.Stopped, translation.uiState.value.readPhase)
+            assertEquals("读取已强制停止", translation.uiState.value.readMessage)
+            assertEquals("已强制停止本次读取", translation.uiState.value.hint)
+            assertTrue(port.readEffects.any { it is CgmReadEffect.StopRuntime })
+        } finally {
+            store.clear()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `connection indicator covers reconnecting and disconnected states`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<CgmOutput>()
+        val port = FakeCgmPort()
+        try {
+            val translation = newTranslation(store, port, outputs::add)
+            advanceUntilIdle()
+            assertEquals(CgmConnectionStatus.Connected, translation.uiState.value.connectionStatus)
+
+            port.connection.value = BluetoothConnectionState.DISCONNECTED
+            advanceUntilIdle()
+            assertEquals(CgmConnectionStatus.Reconnecting, translation.uiState.value.connectionStatus)
+            assertEquals(listOf(CgmOutput.ConnectionLost), outputs)
+
+            translation.submit(CgmIntent.ReadCache)
+            translation.submit(CgmIntent.SyncTime)
+            translation.submit(CgmIntent.DeleteCache)
+            advanceUntilIdle()
+            assertEquals(0, port.readEffects.count { it is CgmReadEffect.StartRead })
+            assertEquals(3, outputs.count { it is CgmOutput.Blocked })
+
+            translation.submit(CgmIntent.DeviceReconnectFailed)
+            advanceUntilIdle()
+            assertEquals(CgmConnectionStatus.Disconnected, translation.uiState.value.connectionStatus)
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -345,7 +451,7 @@ class CgmTranslationTest {
             assertTrue(ui.readMessage!!.startsWith("接收中"))
             assertEquals(10, ui.progressPoints)
             assertEquals(1, ui.roundCount)
-            assertEquals(10, ui.recentLines.size)   // 最近 10 条(含 START/LOG)
+            assertEquals(12, ui.dataLines.size)   // 全部记录：START + LOG + 10 EIS
         } finally {
             store.clear()
             Dispatchers.resetMain()

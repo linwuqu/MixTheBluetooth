@@ -1,2 +1,3 @@
 include ':app', ':basiclibrary', ':bluetoothlibrary', ':guide'
 include ':migratedev'
+include ':scannerlibrary', ':scanner-demo'

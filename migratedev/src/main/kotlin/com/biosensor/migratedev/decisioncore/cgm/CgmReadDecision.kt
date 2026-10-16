@@ -6,11 +6,13 @@ import com.biosensor.migratedev.decisioncore.Transition
 // State / Event / Effect 词汇在 CgmContracts.kt(文件 04)
 
 /**
- * 读状态机:发 ALL → 收数据 → 校验(消费侧)→ 落盘 + 自动删缓存。
- * 只做转移计算,不执行 IO;删除确认与文件落盘构成 Completed 双闸门,都到才 Stopped。
+ * 读状态机:发 ALL → 收数据 → 校验(消费侧)→ 落盘；正式模式可启用自动删缓存。
+ * 只做转移计算,不执行 IO；测试期禁用自动删除时，落盘完成即可 Stopped。
  */
 object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect> {
     private const val RETRY_LIMIT = 3
+    /** 测试期开关：保留设备缓存，便于连续真机回归。 */
+    private const val AUTO_DELETE_AFTER_READ = false
 
     override fun reduce(
         currentState: CgmReadState, event: CgmReadEvent
@@ -20,16 +22,28 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
         is CgmReadEvent.AckReceived -> onDeleteAck(currentState, event)
         is CgmReadEvent.RecordsProduced -> onRecords(currentState, event)
         is CgmReadEvent.FileWritten -> onFileWritten(currentState, event)
-        is CgmReadEvent.FileWriteFailed -> Transition(CgmReadState.Error(event.message))
+        is CgmReadEvent.FileWriteFailed -> {
+            val session = currentStateSession(currentState)
+            if (session?.id == event.sessionId) Transition(CgmReadState.Error(event.message, currentState.report?.let {
+                it.copy(checks = it.checks + ValidationCheck("文件追加", false, event.message))
+            }))
+            else Transition(currentState)
+        }
         is CgmReadEvent.CommandTimeout -> onTimeout(currentState, event)
         is CgmReadEvent.DeviceDisconnected -> onDisconnected(currentState, event)
         is CgmReadEvent.DeviceReconnected -> onReconnected(currentState, event)
         is CgmReadEvent.DeviceReconnectFailed -> onReconnectFailed(currentState, event)
         is CgmReadEvent.StopCurrent -> {
-            val session = currentState.session ?: return Transition(currentState)
-            Transition(
-                CgmReadState.Stopped(session, currentState.accumulatedSoFar),
-                listOf(CgmReadEffect.StopRuntime(session, StopReason.USER_CANCEL)))
+            val session = currentState.session
+            if (session == null) {
+                Transition(currentState)
+            } else {
+                Transition(
+                    CgmReadState.Stopped(
+                        session, currentState.accumulatedSoFar, StopReason.USER_CANCEL,
+                        currentState.report?.copy(receivedRecords = currentState.accumulatedSoFar)),
+                    listOf(CgmReadEffect.StopRuntime(session, StopReason.USER_CANCEL)))
+            }
         }
         CgmReadEvent.ResetError -> when (currentState) {
             is CgmReadState.Error -> Transition(CgmReadState.Idle)
@@ -53,13 +67,15 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
     private fun onAccepted(
         current: CgmReadState, event: CgmReadEvent.CommandAccepted
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
-        is CgmReadState.Sending -> Transition(
-            CgmReadState.Receiving(current.session, emptyList(), retryCount = 0))
+        is CgmReadState.Sending -> if (current.session.id == event.sessionId) {
+            Transition(CgmReadState.Receiving(current.session, emptyList(), retryCount = 0))
+        } else Transition(current)
         // 重读路径:RetryRead 重发 ALL → 设备全量重放缓存(删除指令在完成后才发,缓存未删),
         // 从头累积而非追加——追加旧累积会与全量重放拼接成"段被截断"(如旧 EIS 40/95 + 新 LOG 开头),
         // 结构校验必然失败。旧数据由新回放重新提供,去重器兜底重复行。
-        is CgmReadState.Failed -> Transition(
-            CgmReadState.Receiving(current.session, emptyList(), current.retryCount))
+        is CgmReadState.Failed -> if (current.session.id == event.sessionId) {
+            Transition(CgmReadState.Receiving(current.session, emptyList(), current.retryCount, current.report))
+        } else Transition(current)
         else -> Transition(current)
     }
 
@@ -67,11 +83,13 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
     private fun onDeleteAck(
         current: CgmReadState, event: CgmReadEvent.AckReceived
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
-        is CgmReadState.Completed -> if (event.purpose == CgmCommandPurpose.DELETE) {
+        is CgmReadState.Completed -> if (
+            current.session.id == event.sessionId && event.purpose == CgmCommandPurpose.DELETE
+        ) {
             val done = current.filePath != null
             Transition(
                 // Stopped 携带结果快照:信道关闭后用户仍可见已读数据(只读)
-                if (done) CgmReadState.Stopped(current.session, current.records)
+                if (done) CgmReadState.Stopped(current.session, current.records, report = current.report)
                 else current.copy(deleteAcked = true),
                 if (done) listOf(CgmReadEffect.StopRuntime(current.session, StopReason.COMPLETED))
                 else emptyList())
@@ -93,21 +111,32 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
         if (!endReached) {
             return Transition(current.copy(accumulated = all))   // 继续累积,无 effect
         }
-        val conclusion = CacheValidators.validate(all)   // 纯函数
+        val conclusion = CacheValidators.validate(all)
+        val attempt = current.retryCount + 1
+        val report = CgmReadReport(
+            receivedRecords = CacheBoundaryTrimmer.trim(all).ifEmpty { all },
+            checks = current.report?.checks.orEmpty() + conclusion.checks.map {
+                it.copy(name = "第 $attempt 次 · ${it.name}")
+            },
+            session = current.session
+        )
         if (conclusion.complete) {
             return Transition(
                 CgmReadState.Completed(
-                    current.session, filePath = null, deleteAcked = false,
-                    records = conclusion.records   // 快照:落盘同款内容,供 UI 只读展示
+                    current.session, filePath = null,
+                    deleteAcked = !AUTO_DELETE_AFTER_READ,
+                    records = conclusion.records,
+                    report = report
                 ),
-                listOf(
-                    CgmReadEffect.WriteFile(current.session, conclusion.records),
-                    CgmReadEffect.SendDelete(current.session)))
+                buildList {
+                    add(CgmReadEffect.WriteFile(current.session, conclusion.records))
+                    if (AUTO_DELETE_AFTER_READ) add(CgmReadEffect.SendDelete(current.session))
+                })
         }
         val retry = current.retryCount
         val exhausted = retry + 1 > RETRY_LIMIT
         return Transition(
-            CgmReadState.Failed(current.session, all, conclusion.reason ?: "校验未通过", retry + 1),
+            CgmReadState.Failed(current.session, all, conclusion.reason ?: "校验未通过", retry + 1, report),
             listOf(
                 if (exhausted) CgmReadEffect.StopRuntime(current.session, StopReason.RETRY_EXHAUSTED)
                 else CgmReadEffect.RetryRead(current.session, conclusion.reason ?: "校验未通过")))
@@ -116,33 +145,41 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
     private fun onFileWritten(
         current: CgmReadState, event: CgmReadEvent.FileWritten
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
-        is CgmReadState.Completed -> {
+        is CgmReadState.Completed -> if (current.session.id == event.sessionId) {
             val done = current.deleteAcked
+            val report = current.report?.let { previousReport -> previousReport.copy(
+                storage = event.result,
+                checks = previousReport.checks + ValidationCheck("文件保存", true,
+                    event.result?.let { "新增 ${it.addedPoints} 点，文件重复 ${it.duplicatePoints} 点" }
+                        ?: "保存完成: ${event.path}")
+            ) }
             Transition(
-                if (done) CgmReadState.Stopped(current.session, current.records)
-                else current.copy(filePath = event.path),
+                if (done) CgmReadState.Stopped(current.session, current.records, report = report)
+                else current.copy(filePath = event.path, report = report),
                 if (done) listOf(CgmReadEffect.StopRuntime(current.session, StopReason.COMPLETED))
                 else emptyList())
-        }
+        } else Transition(current)
         else -> Transition(current)
     }
 
     private fun onTimeout(
         current: CgmReadState, event: CgmReadEvent.CommandTimeout
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
-        is CgmReadState.Sending -> Transition(
-            CgmReadState.Failed(current.session, emptyList(), "发送超时", 0),
-            listOf(CgmReadEffect.StopRuntime(current.session, StopReason.TIMEOUT)))
+        is CgmReadState.Sending -> if (current.session.id == event.sessionId) {
+            Transition(
+                CgmReadState.Failed(current.session, emptyList(), "发送超时", 0),
+                listOf(CgmReadEffect.StopRuntime(current.session, StopReason.TIMEOUT)))
+        } else Transition(current)
         // 读取超时:重读(累积保留);到上限则结束
-        is CgmReadState.Receiving -> {
+        is CgmReadState.Receiving -> if (current.session.id == event.sessionId) {
             val retry = current.retryCount
             val exhausted = retry + 1 > RETRY_LIMIT
             Transition(
-                CgmReadState.Failed(current.session, current.accumulated, "接收超时", retry + 1),
+                CgmReadState.Failed(current.session, current.accumulated, "接收超时", retry + 1, current.report),
                 listOf(
                     if (exhausted) CgmReadEffect.StopRuntime(current.session, StopReason.RETRY_EXHAUSTED)
                     else CgmReadEffect.RetryRead(current.session, "接收超时")))
-        }
+        } else Transition(current)
         else -> Transition(current)
     }
 
@@ -156,7 +193,7 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
         val session = currentStateSession(current) ?: return Transition(current)
         if (session.id != event.sessionId) return Transition(current)
         return Transition(
-            CgmReadState.Reconnecting(session, current.accumulatedSoFar, attempt = 0))
+            CgmReadState.Reconnecting(session, current.accumulatedSoFar, attempt = 0, report = current.report))
     }
 
     /** 重连成功(Root 转发 Connection 域 Connected):自动重读继续。
@@ -166,7 +203,7 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
         is CgmReadState.Reconnecting -> if (current.session.id == event.sessionId) {
             Transition(
-                CgmReadState.Receiving(current.session, emptyList(), current.attempt),
+                CgmReadState.Receiving(current.session, emptyList(), current.attempt, current.report),
                 listOf(CgmReadEffect.RetryRead(current.session, "重连后重读")))
         } else Transition(current)
         else -> Transition(current)
@@ -178,7 +215,7 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
     ): Transition<CgmReadState, CgmReadEffect> = when (current) {
         is CgmReadState.Reconnecting -> if (current.session.id == event.sessionId) {
             Transition(
-                CgmReadState.Failed(current.session, current.accumulated, event.reason, current.attempt + 1),
+                CgmReadState.Failed(current.session, current.accumulated, event.reason, current.attempt + 1, current.report),
                 listOf(CgmReadEffect.StopRuntime(current.session, StopReason.RECONNECT_FAILED)))
         } else Transition(current)
         else -> Transition(current)

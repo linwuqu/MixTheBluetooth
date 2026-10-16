@@ -31,11 +31,17 @@ fun CgmStatusArea(state: CgmUiState) {
             if (state.readPhase.isBusy()) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             }
-            Text(state.readPhase.text())
+            Text(state.readPhase.text(state.readMessage))
         }
         state.readMessage?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error)
+            Text(
+                it,
+                color = if (state.readPhase == CgmReadPhase.Failed ||
+                    state.readPhase == CgmReadPhase.Error
+                ) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         state.hint?.let {
             Spacer(Modifier.height(8.dp))
@@ -56,14 +62,15 @@ private fun CgmReadPhase.isBusy(): Boolean =
     this == CgmReadPhase.Sending || this == CgmReadPhase.Receiving ||
         this == CgmReadPhase.Completed || this == CgmReadPhase.Reconnecting
 
-private fun CgmReadPhase.text(): String = when (this) {
+private fun CgmReadPhase.text(message: String?): String = when (this) {
     CgmReadPhase.Idle -> "空闲,可发起读取"
     CgmReadPhase.Sending -> "命令发送中"
     CgmReadPhase.Receiving -> "接收缓存数据"
-    CgmReadPhase.Completed -> "校验通过,正在落盘"
+    CgmReadPhase.Completed -> "校验通过，正在追加保存"
     CgmReadPhase.Failed -> "读取失败"
     CgmReadPhase.Reconnecting -> "连接中断,正在重连"
-    CgmReadPhase.Stopped -> "读取完成(会话已关闭,数据保留)"
+    CgmReadPhase.Stopped -> if (message == "读取已强制停止") "读取已停止"
+        else "读取完成(会话已关闭,数据保留)"
     CgmReadPhase.Error -> "发生错误"
 }
 
@@ -75,7 +82,7 @@ private fun CgmStatusAreaPreview() {
             CgmUiState(
                 readPhase = CgmReadPhase.Receiving,
                 readMessage = "接收中(第 1 次尝试)",
-                progressPoints = 0, roundCount = 0, recentLines = emptyList(),
+                progressPoints = 0, roundCount = 0, dataLines = emptyList(),
                 shortResult = CgmShortResult(CgmCommandPurpose.SYNC_TIME, ok = true, message = "对时成功"))
         )
     }

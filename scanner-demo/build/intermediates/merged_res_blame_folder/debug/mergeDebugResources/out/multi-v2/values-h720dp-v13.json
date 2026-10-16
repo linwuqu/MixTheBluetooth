@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.biosensor.scannerdemo.scanner-demo-mergeDebugResources-2:/values-h720dp-v13/values-h720dp-v13.xml",
+            "map": [
+                {
+                    "source": "D:\\runtime\\gradle\\caches\\8.13\\transforms\\7bafae4b96e4f89bd3efcd02b2ec315c\\transformed\\appcompat-1.1.0\\res\\values-h720dp-v13\\values-h720dp-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "66",
+                        "endOffsets": "117"
+                    }
+                }
+            ]
+        }
+    ]
+}

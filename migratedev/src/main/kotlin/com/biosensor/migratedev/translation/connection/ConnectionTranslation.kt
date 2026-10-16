@@ -14,6 +14,7 @@ import com.biosensor.migratedev.translation.Translation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -94,6 +95,8 @@ class ConnectionTranslation private constructor(
     private var logoutStarted = false
     /** 断线重连进行中(Reconnect intent 置位,Connected/Failed 复位):用于区分初次连接失败与重连失败。 */
     private var reconnecting = false
+    private var reconnectAttempt = 0
+    private var reconnectRetryJob: Job? = null
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = ConnectionState.Idle,
@@ -182,13 +185,16 @@ class ConnectionTranslation private constructor(
                 when (val current = orchestrator.state.value) {
                     is ConnectionState.Connected -> {
                         reconnecting = true
+                        reconnectAttempt = 0
+                        reconnectRetryJob?.cancel()
                         orchestrator.dispatch(ConnectionEvent.DeviceDisconnected)
                         // 顺序入队:DeviceDisconnected(Connected → ConnectionFailed)先处理,
                         // onTransition 检到"Connected → ConnectionFailed"自动重连
                     }
                     is ConnectionState.ConnectionFailed -> {
                         reconnecting = true
-                        orchestrator.dispatch(ConnectionEvent.ConnectRequested(current.deviceId))
+                        reconnectAttempt = 0
+                        requestReconnect(current.deviceId)
                     }
                     else -> Unit
                 }
@@ -200,6 +206,7 @@ class ConnectionTranslation private constructor(
         bindingCollection.cancel()
         scanCollection.cancel()
         autoConnectCollection.cancel()
+        reconnectRetryJob?.cancel()
         orchestrator.close()
     }
 
@@ -256,7 +263,9 @@ class ConnectionTranslation private constructor(
         }
         // 进入 Connected(含断线重连成功)→ 上报,Root 进入 Cgm 页面
         if (previous !is ConnectionState.Connected && current is ConnectionState.Connected) {
+            reconnectRetryJob?.cancel()
             reconnecting = false
+            reconnectAttempt = 0
             report(ConnectionOutput.Connected(current.device.id))
         }
         // 断线(Connected → ConnectionFailed)→ 默认自动重连,不静默失败:
@@ -266,16 +275,38 @@ class ConnectionTranslation private constructor(
         if (previous is ConnectionState.Connected && current is ConnectionState.ConnectionFailed) {
             if (!logoutStarted) {
                 reconnecting = true
-                orchestrator.dispatch(ConnectionEvent.ConnectRequested(current.deviceId))
+                reconnectAttempt = 0
+                requestReconnect(current.deviceId)
             }
         }
-        // 重连失败(Connecting → ConnectionFailed 且确在重连中)→ 上报闭环终止
+        // 设备重新上电和开始广播存在时间窗；单次立即重连很容易正好落在不可用阶段。
+        // 失败后带间隔重试，全部耗尽才向 CGM 域报告失败并关闭当前读会话。
         if (previous is ConnectionState.Connecting &&
             current is ConnectionState.ConnectionFailed && reconnecting
         ) {
-            reconnecting = false
-            report(ConnectionOutput.ReconnectFailed(current.message))
+            if (reconnectAttempt < RECONNECT_ATTEMPT_LIMIT && !logoutStarted) {
+                reconnectRetryJob?.cancel()
+                reconnectRetryJob = viewModelScope.launch {
+                    delay(RECONNECT_RETRY_DELAY_MILLIS)
+                    val latest = orchestrator.state.value
+                    if (reconnecting && latest is ConnectionState.ConnectionFailed &&
+                        latest.deviceId == current.deviceId
+                    ) {
+                        requestReconnect(current.deviceId)
+                    }
+                }
+            } else {
+                reconnecting = false
+                reconnectRetryJob = null
+                report(ConnectionOutput.ReconnectFailed(current.message))
+            }
         }
+    }
+
+    private fun requestReconnect(deviceId: String) {
+        if (!reconnecting || logoutStarted) return
+        reconnectAttempt += 1
+        orchestrator.dispatch(ConnectionEvent.ConnectRequested(deviceId))
     }
 
     private data class ScanRequest(
@@ -283,6 +314,9 @@ class ConnectionTranslation private constructor(
     )
 
     companion object {
+        private const val RECONNECT_ATTEMPT_LIMIT = 5
+        private const val RECONNECT_RETRY_DELAY_MILLIS = 1_500L
+
         fun factory(
             userId: String, port: ConnectionPort, report: (ConnectionOutput) -> Unit = {}
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {

@@ -94,10 +94,9 @@ class LineAssembler {
 
 /** ③ 行 → 结构化记录:保留序号/时间索引元数据;未知行(如 RI)丢弃。 */
 class RecordParser {
-    fun parse(line: String): CgmRecord? = when {
-        line == "Start Playback" -> CgmRecord.Marker(MarkerKind.START, line)
-        line == "Playback all done" -> CgmRecord.Marker(MarkerKind.END, line)
-
+    fun parse(line: String): CgmRecord? = when (line) {
+        "Start Playback" -> CgmRecord.Marker(MarkerKind.START, line)
+        "Playback all done" -> CgmRecord.Marker(MarkerKind.END, line)
         else -> {
             val eis = EIS_PATTERN.matchEntire(line)
             if (eis != null) {

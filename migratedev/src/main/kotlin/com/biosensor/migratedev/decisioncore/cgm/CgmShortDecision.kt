@@ -24,14 +24,17 @@ object CgmShortDecision : DecisionCore<CgmShortState, CgmShortEvent, CgmShortEff
         }
 
         is CgmShortEvent.CommandAccepted -> when (currentState) {
-            is CgmShortState.Sending -> Transition(
-                CgmShortState.WaitingAck(currentState.session, currentState.purpose))
+            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) {
+                Transition(CgmShortState.WaitingAck(currentState.session, currentState.purpose))
+            } else Transition(currentState)
             else -> Transition(currentState)
         }
 
         is CgmShortEvent.AckReceived -> when (currentState) {
             is CgmShortState.WaitingAck ->
-                if (currentState.purpose == event.purpose) {
+                if (currentState.session.id == event.sessionId &&
+                    currentState.purpose == event.purpose
+                ) {
                     Transition(CgmShortState.Done(currentState.session, currentState.purpose))
                 } else Transition(currentState)   // purpose 不匹配:串行下不会发生,防御性忽略
             else -> Transition(currentState)
@@ -39,18 +42,22 @@ object CgmShortDecision : DecisionCore<CgmShortState, CgmShortEvent, CgmShortEff
 
         // 逐类型分支:多分支并列时 smart cast 不成立,每个类型单独取 session
         is CgmShortEvent.CommandTimeout -> when (currentState) {
-            is CgmShortState.Sending -> Transition(
-                CgmShortState.Failed(currentState.session, "命令超时"))
-            is CgmShortState.WaitingAck -> Transition(
-                CgmShortState.Failed(currentState.session, "命令超时"))
+            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) Transition(
+                CgmShortState.Failed(currentState.session, "命令超时", currentState.purpose))
+            else Transition(currentState)
+            is CgmShortState.WaitingAck -> if (currentState.session.id == event.sessionId) Transition(
+                CgmShortState.Failed(currentState.session, "命令超时", currentState.purpose))
+            else Transition(currentState)
             else -> Transition(currentState)
         }
 
         is CgmShortEvent.DeviceDisconnected -> when (currentState) {
-            is CgmShortState.Sending -> Transition(
-                CgmShortState.Failed(currentState.session, "设备断开"))
-            is CgmShortState.WaitingAck -> Transition(
-                CgmShortState.Failed(currentState.session, "设备断开"))
+            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) Transition(
+                CgmShortState.Failed(currentState.session, "设备断开", currentState.purpose))
+            else Transition(currentState)
+            is CgmShortState.WaitingAck -> if (currentState.session.id == event.sessionId) Transition(
+                CgmShortState.Failed(currentState.session, "设备断开", currentState.purpose))
+            else Transition(currentState)
             else -> Transition(currentState)
         }
     }

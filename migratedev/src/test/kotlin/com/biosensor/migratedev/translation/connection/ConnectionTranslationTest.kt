@@ -319,6 +319,62 @@ class ConnectionTranslationTest {
     }
 
     @Test
+    fun `reconnect retries while device is restarting and eventually succeeds`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val outputs = mutableListOf<ConnectionOutput>()
+        val port = RecordingConnectionPort()
+        val device = BluetoothDeviceInfo(
+            id = "AA:BB:CC:DD:EE:FF", name = "BT24-S", isBle = true, rssi = -40
+        )
+        var connectCount = 0
+        port.executeResults = { effect ->
+            when (effect) {
+                is ConnectionEffect.ConnectDevice -> {
+                    connectCount += 1
+                    // 初次连接成功；掉线后前两次设备尚未恢复广播，第三次重连成功。
+                    if (connectCount == 1 || connectCount == 4) {
+                        flowOf(ConnectionEvent.DeviceConnected(device))
+                    } else {
+                        flowOf(ConnectionEvent.DeviceConnectFailed("设备尚未就绪"))
+                    }
+                }
+                else -> emptyFlow()
+            }
+        }
+        try {
+            val translation = ViewModelProvider(
+                store,
+                ConnectionTranslation.factory("user-1", port, outputs::add)
+            )[ConnectionTranslation::class.java]
+            translation.submit(ConnectionIntent.BecameVisible)
+            translation.submit(ConnectionIntent.BluetoothAccessGranted)
+            advanceUntilIdle()
+            port.devices.emit(device)
+            advanceUntilIdle()
+            translation.submit(ConnectionIntent.SelectDevice(device.id))
+            advanceUntilIdle()
+
+            translation.submit(ConnectionIntent.Reconnect)
+            advanceUntilIdle()
+
+            assertEquals(4, connectCount)
+            assertEquals(ConnectionPhase.Connected, translation.uiState.value.phase)
+            assertEquals(
+                listOf(
+                    ConnectionOutput.Connected(device.id),
+                    ConnectionOutput.Connected(device.id)
+                ),
+                outputs
+            )
+        } finally {
+            store.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `refresh clears devices without restarting active scan`() =
         runTest {
             Dispatchers.setMain(

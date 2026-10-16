@@ -90,10 +90,12 @@ class AndroidBluetoothPortTest {
             ).toList(results)
         }
         runCurrent()
+        assertEquals(BluetoothConnectionState.CONNECTING, port.observeConnectionState().value)
         engine.connected(info("AA:02"))
         runCurrent()
 
         assertEquals(listOf(BluetoothEvent.Connected(info("AA:02"))), results)
+        assertEquals(BluetoothConnectionState.CONNECTED, port.observeConnectionState().value)
         // 终态发出即 close:连接 flow 结束
         connection.join()
         // 连接成功让位:会话保留、不主动断开(故障分析 12 §3.1 教训)
@@ -111,12 +113,13 @@ class AndroidBluetoothPortTest {
         runCurrent()
         engine.dataSent(5)
         runCurrent()
-        assertEquals(listOf(BluetoothEvent.DataSent(5)), sendResults)
+        assertEquals(listOf(BluetoothEvent.DataSentAck(5)), sendResults)
         send.cancelAndJoin()
 
         // 断开仍由 Disconnect effect 驱动:显式断开才触发会话清理
         val disconnectResults = port.execute(BluetoothEffect.Disconnect).toList()
         assertEquals(listOf(BluetoothEvent.Disconnected), disconnectResults)
+        assertEquals(BluetoothConnectionState.DISCONNECTED, port.observeConnectionState().value)
         assertEquals(1, engine.calls.count { it == "disconnect" })
     }
 
@@ -138,6 +141,7 @@ class AndroidBluetoothPortTest {
         runCurrent()
 
         assertEquals(listOf(BluetoothEvent.ConnectFailed("蓝牙连接失败")), results)
+        assertEquals(BluetoothConnectionState.DISCONNECTED, port.observeConnectionState().value)
         connection.join()
     }
 
@@ -199,7 +203,7 @@ class AndroidBluetoothPortTest {
         runCurrent()
 
         val expected = listOf(
-            BluetoothEvent.DataSent(3),
+            BluetoothEvent.DataSentAck(3),
             BluetoothEvent.DataReceived("X".encodeToByteArray())
         )
         // data class 对 ByteArray 字段用引用相等,需逐元素比较

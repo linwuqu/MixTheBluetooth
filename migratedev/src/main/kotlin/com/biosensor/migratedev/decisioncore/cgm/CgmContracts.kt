@@ -26,29 +26,52 @@ sealed interface CgmRecord {
 
 enum class MarkerKind { START, END }
 
+data class CgmFileAppendResult(
+    val path: String, val addedSegments: Int, val duplicateSegments: Int,
+    val addedPoints: Int, val duplicatePoints: Int, val totalPoints: Int
+)
+
+/** 保留本次完整接收数据、各次校验记录和文件追加结果，供界面查看。 */
+data class CgmReadReport(
+    val receivedRecords: List<CgmRecord>,
+    val checks: List<ValidationCheck>,
+    val storage: CgmFileAppendResult? = null,
+    val session: CgmSession? = null
+)
+
 // ── 读状态机词汇(发 ALL → 收数据 → 校验 → 落盘 → 删缓存)──
 
 sealed interface CgmReadState {
+    val report: CgmReadReport? get() = null
     data object Idle : CgmReadState
     data class Sending(val session: CgmSession) : CgmReadState
     data class Receiving(
-        val session: CgmSession, val accumulated: List<CgmRecord>, val retryCount: Int
+        val session: CgmSession, val accumulated: List<CgmRecord>, val retryCount: Int,
+        override val report: CgmReadReport? = null
     ) : CgmReadState
     data class Completed(
         val session: CgmSession, val filePath: String?, val deleteAcked: Boolean,
-        val records: List<CgmRecord>   // 校验通过的去重记录:UI 只读快照,会话结束后仍展示
+        val records: List<CgmRecord>,
+        override val report: CgmReadReport? = null
     ) : CgmReadState
     data class Failed(
         val session: CgmSession, val accumulated: List<CgmRecord>,
-        val reason: String, val retryCount: Int
+        val reason: String, val retryCount: Int,
+        override val report: CgmReadReport? = null
     ) : CgmReadState
     /** 断线等待重连:保留已收数据,重连成功自动重读继续(用户无感),失败闭环终止。 */
     data class Reconnecting(
-        val session: CgmSession, val accumulated: List<CgmRecord>, val attempt: Int
+        val session: CgmSession, val accumulated: List<CgmRecord>, val attempt: Int,
+        override val report: CgmReadReport? = null
     ) : CgmReadState
-    data class Error(val message: String) : CgmReadState
+    data class Error(val message: String, override val report: CgmReadReport? = null) : CgmReadState
     /** lastRecords:最后一次读取结果快照——用户可见只读数据,会话本身已结束(信道安全关闭)。 */
-    data class Stopped(val session: CgmSession?, val lastRecords: List<CgmRecord>) : CgmReadState
+    data class Stopped(
+        val session: CgmSession?,
+        val lastRecords: List<CgmRecord>,
+        val reason: StopReason = StopReason.COMPLETED,
+        override val report: CgmReadReport? = null
+    ) : CgmReadState
 }
 
 sealed interface CgmReadEvent {
@@ -63,7 +86,9 @@ sealed interface CgmReadEvent {
     data class DeviceReconnected(val sessionId: String) : CgmReadEvent
     /** 断线重连失败(Connection 域经 Root 转发):闭环终止,不再悬挂。 */
     data class DeviceReconnectFailed(val sessionId: String, val reason: String) : CgmReadEvent
-    data class FileWritten(val sessionId: String, val path: String) : CgmReadEvent
+    data class FileWritten(
+        val sessionId: String, val path: String, val result: CgmFileAppendResult? = null
+    ) : CgmReadEvent
     data class FileWriteFailed(val sessionId: String, val message: String) : CgmReadEvent
     /** 内部使用(隐式切换/用户换命令时由 Translation 发出),UI 不暴露(1.7)。 */
     data class StopCurrent(val deviceId: String) : CgmReadEvent
@@ -91,7 +116,11 @@ sealed interface CgmShortState {
     ) : CgmShortState
     /** 终态:对时成功 / 删除成功。Done 就是结果,没有"停止"语义。 */
     data class Done(val session: CgmSession, val purpose: CgmCommandPurpose) : CgmShortState
-    data class Failed(val session: CgmSession, val reason: String) : CgmShortState
+    data class Failed(
+        val session: CgmSession,
+        val reason: String,
+        val purpose: CgmCommandPurpose
+    ) : CgmShortState
 }
 
 sealed interface CgmShortEvent {

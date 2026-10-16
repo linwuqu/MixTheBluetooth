@@ -26,8 +26,7 @@ class AuthPortAdapterRemoteTest {
         AuthPortAdapter(
             kv = InMemoryKvStore(),
             http = http,
-            clock = clock,
-            debugOfflineMode = false   // 测试不启用调试离线会话
+            clock = clock
         )
 
     @Test

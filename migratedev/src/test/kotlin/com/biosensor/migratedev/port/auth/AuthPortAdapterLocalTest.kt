@@ -31,8 +31,7 @@ class AuthPortAdapterLocalTest {
         AuthPortAdapter(
             kv = kv,
             http = NoopHttpRemote,
-            clock = clock,
-            debugOfflineMode = false   // 测试不启用调试离线会话
+            clock = clock
         )
 
     private fun seededKv(raw: String): InMemoryKvStore =

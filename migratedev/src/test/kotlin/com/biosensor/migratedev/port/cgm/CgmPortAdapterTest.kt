@@ -18,16 +18,22 @@ import com.biosensor.migratedev.port.adapter.localport.FileEntry
 import com.biosensor.migratedev.port.adapter.localport.FileSpace
 import com.biosensor.migratedev.port.adapter.localport.FileStore
 import java.io.IOException
+import java.io.FileNotFoundException
+import com.biosensor.migratedev.decisioncore.cgm.CgmFileAppendResult
+import org.junit.Assert.assertFalse
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import okio.Buffer
 import okio.Sink
 import okio.Source
@@ -64,15 +70,19 @@ class CgmPortAdapterTest {
     // ── 读契约:StartRead / RetryRead ──
 
     @Test
-    fun `start read sends ALL and reports accepted then parsed records`() = runTest {
+    fun `start read sends only ALL and reports accepted then parsed records`() = runTest {
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size),
             BluetoothEvent.DataReceived(
                 ("Start Playback\n$eisText\nPlayback all done\n").encodeToByteArray()
             )
         )
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(listOf("ALL\n\r"), bluetooth.effects.map {
+            (it as BluetoothEffect.SendData).data.decodeToString()
+        })
 
         val sent = bluetooth.lastEffect as BluetoothEffect.SendData
         assertTrue(sent.data.contentEquals("ALL\n\r".encodeToByteArray()))
@@ -96,8 +106,8 @@ class CgmPortAdapterTest {
     fun `accepted only after full payload sent in chunks`() = runTest {
         // 分两次 DataSent:3 + 2 = 5,第二次才触发 CommandAccepted
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent(3),
-            BluetoothEvent.DataSent(2)
+            BluetoothEvent.DataSentAck(3),
+            BluetoothEvent.DataSentAck(2)
         )
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
@@ -108,7 +118,7 @@ class CgmPortAdapterTest {
     @Test
     fun `read flow maps disconnect to device disconnected`() = runTest {
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size),
             BluetoothEvent.Disconnected
         )
 
@@ -128,7 +138,7 @@ class CgmPortAdapterTest {
         // 真机行为(实测 2026-08-07 17:27):蓝牙事件流在断线后仍保持(命令期消费者挂住)→
         // readFlow 必须自行终止,否则占用消费权(新命令 flow 饿死)+ 60s 后打兜底超时日志
         bluetooth.results = flow {
-            emit(BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size))
+            emit(BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size))
             emit(BluetoothEvent.Disconnected)
             awaitCancellation()   // 蓝牙流保持不结束
         }
@@ -142,6 +152,26 @@ class CgmPortAdapterTest {
             ),
             events
         )
+    }
+
+    @Test
+    fun `read flow ends immediately after END while bluetooth flow stays open`() = runTest {
+        // 真机蓝牙 hub 本身是长流；收到 END 后本次订阅必须立刻退出，避免第二次读时旧订阅
+        // 同时收到并解析同一批通知，进而产生双份 RecordsProduced 和迟到超时。
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size))
+            emit(BluetoothEvent.DataReceived(
+                "Start Playback\nPlayback all done\n".encodeToByteArray()
+            ))
+            awaitCancellation()
+        }
+
+        val events = port.execute(CgmReadEffect.StartRead(session)).toList()
+
+        assertEquals(2, events.size)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events.first())
+        assertTrue(events.last() is CgmReadEvent.RecordsProduced)
+        assertTrue(events.none { it is CgmReadEvent.CommandTimeout })
     }
 
     @Test
@@ -179,7 +209,7 @@ class CgmPortAdapterTest {
     fun `read flow feeds pipeline per chunk and accumulates across chunks`() = runTest {
         // 命令确认后,缓存被切成两个字节块:第一块只到 EIS 行,END 行在下块
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size),
             BluetoothEvent.DataReceived(
                 "Start Playback\n$eisText\n".encodeToByteArray()
             ),
@@ -210,7 +240,7 @@ class CgmPortAdapterTest {
             BluetoothEvent.DataReceived(
                 "Start Playback\n$eisText\n".encodeToByteArray()
             ),
-            BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size),
             BluetoothEvent.DataReceived("Playback all done\n".encodeToByteArray())
         )
 
@@ -239,9 +269,14 @@ class CgmPortAdapterTest {
 
     @Test
     fun `retry read sends ALL again with same command flow`() = runTest {
-        bluetooth.results = flowOf(BluetoothEvent.DataSent(5))
+        bluetooth.results = flowOf(BluetoothEvent.DataSentAck(5))
 
+        port.execute(CgmReadEffect.StartRead(session)).toList()
         val events = port.execute(CgmReadEffect.RetryRead(session, "接收超时")).toList()
+
+        assertEquals(listOf("ALL\n\r", "ALL\n\r"), bluetooth.effects.map {
+            (it as BluetoothEffect.SendData).data.decodeToString()
+        })
 
         val sent = bluetooth.lastEffect as BluetoothEffect.SendData
         assertTrue(sent.data.contentEquals("ALL\n\r".encodeToByteArray()))
@@ -262,7 +297,7 @@ class CgmPortAdapterTest {
         // 空闲超时语义:数据流进行中不超时——大缓存回放可远超总时长窗(故障分析 12 §4.9)。
         // 5 块 × 30ms 间隔 = 150ms 虚拟时长 > 100ms 空闲阈值;若按总时长算早已超时。
         bluetooth.results = flow {
-            emit(BluetoothEvent.DataSent("ALL\n\r".encodeToByteArray().size))
+            emit(BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size))
             repeat(5) {
                 delay(30)
                 emit(BluetoothEvent.DataReceived("$eisText\n".encodeToByteArray()))
@@ -281,7 +316,7 @@ class CgmPortAdapterTest {
     fun `read flow times out when payload only half sent`() = runTest {
         // 只发出 3/5 字节:命令未完整送达,无 CommandAccepted;随后静默超时
         bluetooth.results = flow {
-            emit(BluetoothEvent.DataSent(3))
+            emit(BluetoothEvent.DataSentAck(3))
             awaitCancellation()
         }
 
@@ -296,7 +331,7 @@ class CgmPortAdapterTest {
     fun `send sync time waits for device data as ack`() = runTest {
         val payload = "TIME,2026,07,21,04,00,00\n\r".encodeToByteArray()
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent(payload.size),
+            BluetoothEvent.DataSentAck(payload.size),
             BluetoothEvent.DataReceived(byteArrayOf(0x01))   // 设备确认文本(形态待实测)
         )
 
@@ -326,12 +361,13 @@ class CgmPortAdapterTest {
         assertEquals(listOf(CgmShortEvent.CommandTimeout(session.id)), events)
     }
 
-    // ── 自动删除:确认 = 发送完成 ──
+    // ── 删除确认：设备明确回复 Log Cleared ──
 
     @Test
-    fun `delete flow confirms on full send`() = runTest {
+    fun `delete flow confirms only after device reply`() = runTest {
         bluetooth.results = flowOf(
-            BluetoothEvent.DataSent("DELETE\n\r".encodeToByteArray().size)
+            BluetoothEvent.DataSentAck("DELETE\n\r".encodeToByteArray().size),
+            BluetoothEvent.DataReceived("Log Cleared\r\n".encodeToByteArray())
         )
 
         val events = port.execute(CgmReadEffect.SendDelete(session)).toList()
@@ -344,18 +380,54 @@ class CgmPortAdapterTest {
         )
     }
 
+    @Test
+    fun `manual delete waits for Log Cleared and preserves event order`() = runTest {
+        val payloadSize = "DELETE\n\r".encodeToByteArray().size
+        bluetooth.results = flowOf(
+            // 即便设备回复比写确认回调更早，也要先上报 CommandAccepted，再上报业务 ACK。
+            BluetoothEvent.DataReceived("Log Cleared\r\n".encodeToByteArray()),
+            BluetoothEvent.DataSentAck(payloadSize)
+        )
+
+        val events = port.execute(
+            CgmShortEffect.SendCommand(session, CgmCommandPurpose.DELETE)
+        ).toList()
+
+        assertEquals(
+            listOf(
+                CgmShortEvent.CommandAccepted(session.id),
+                CgmShortEvent.AckReceived(session.id, CgmCommandPurpose.DELETE)
+            ),
+            events
+        )
+    }
+
+    @Test
+    fun `delete flow does not treat write ack as delete success`() = runTest {
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSentAck("DELETE\n\r".encodeToByteArray().size))
+            awaitCancellation()
+        }
+
+        val events = port.execute(CgmReadEffect.SendDelete(session)).toList()
+
+        assertEquals(listOf(CgmReadEvent.CommandTimeout(session.id)), events)
+    }
+
     // ── 落盘 ──
 
     @Test
-    fun `write file wraps records with playback boundary`() = runTest {
-        val records = listOf(CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText))
+    fun `write file appends data without playback boundaries`() = runTest {
+        val records = segment()
 
         val events = port.execute(CgmReadEffect.WriteFile(session, records)).toList()
 
-        assertEquals(listOf(CgmReadEvent.FileWritten(session.id, "cgm/s1.txt")), events)
+        assertEquals(listOf(CgmReadEvent.FileWritten(session.id, "cgm/AA_01.txt",
+            CgmFileAppendResult("cgm/AA_01.txt", 1, 0, 1, 0, 1))), events)
         assertEquals(FileSpace.RECEIVED, files.space)
-        assertEquals("cgm/s1.txt", files.path)
-        assertEquals("Start Playback\n$eisText\nPlayback all done\n", files.written.readUtf8())
+        assertEquals("cgm/AA_01.txt", files.path)
+        assertEquals(true, files.append)
+        assertEquals("LOG:1,1,1,2026-07-21 12:10:45\n$eisText\n", files.written.clone().readUtf8())
     }
 
     @Test
@@ -363,11 +435,87 @@ class CgmPortAdapterTest {
         files.failNext = true
 
         val events = port.execute(
-            CgmReadEffect.WriteFile(session, listOf(CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText)))
+            CgmReadEffect.WriteFile(session, segment())
         ).toList()
 
-        assertEquals(listOf(CgmReadEvent.FileWriteFailed(session.id, "文件写入失败")), events)
+        assertEquals(listOf(CgmReadEvent.FileWriteFailed(session.id, "文件追加失败: 磁盘满")), events)
     }
+
+    @Test
+    fun `second session appends only segments missing from the device file`() = runTest {
+        val first = segment()
+        val second = segment(number = 2, time = "2026-07-21 12:20:45")
+        port.execute(CgmReadEffect.WriteFile(session, first)).toList()
+        val events = port.execute(CgmReadEffect.WriteFile(session.copy(id = "s2"), first + second)).toList()
+        val saved = (events.single() as CgmReadEvent.FileWritten).result!!
+        assertEquals(1, saved.addedSegments)
+        assertEquals(1, saved.duplicateSegments)
+        assertEquals(1, saved.addedPoints)
+        assertEquals(2, saved.totalPoints)
+        assertEquals(2, files.writes)
+        val text = files.written.clone().readUtf8()
+        assertEquals(2, text.lineSequence().count { it.startsWith("LOG:") })
+        assertEquals(2, text.lineSequence().count { it.startsWith("EIS:") })
+        assertFalse(text.contains("Playback"))
+    }
+
+    @Test
+    fun `reading the same cache again does not append or change the file`() = runTest {
+        val records = segment()
+        port.execute(CgmReadEffect.WriteFile(session, records)).toList()
+        val original = files.written.clone().readUtf8()
+        val events = port.execute(CgmReadEffect.WriteFile(session.copy(id = "s2"), records)).toList()
+        val saved = (events.single() as CgmReadEvent.FileWritten).result!!
+        assertEquals(0, saved.addedPoints)
+        assertEquals(1, saved.duplicatePoints)
+        assertEquals(1, files.writes)
+        assertEquals(original, files.written.clone().readUtf8())
+    }
+
+    @Test
+    fun `same point values at a different LOG time are preserved`() = runTest {
+        port.execute(CgmReadEffect.WriteFile(session, segment())).toList()
+        val events = port.execute(CgmReadEffect.WriteFile(
+            session, segment(time = "2026-07-21 12:20:45")
+        )).toList()
+        assertEquals(1, (events.single() as CgmReadEvent.FileWritten).result!!.addedPoints)
+        assertEquals(2, files.written.clone().readUtf8().lineSequence().count { it.startsWith("EIS:") })
+    }
+
+    @Test
+    fun `devices use different cumulative files`() = runTest {
+        port.execute(CgmReadEffect.WriteFile(session, segment())).toList()
+        val other = session.copy(id = "s2", deviceId = "BB:02")
+        val event = port.execute(CgmReadEffect.WriteFile(other, segment())).toList().single() as CgmReadEvent.FileWritten
+        assertEquals("cgm/BB_02.txt", event.path)
+        assertEquals(0, event.result!!.duplicatePoints)
+        assertEquals(2, files.list(FileSpace.RECEIVED).size)
+    }
+
+    @Test
+    fun `file read failure is not treated as an empty file`() = runTest {
+        port.execute(CgmReadEffect.WriteFile(session, segment())).toList()
+        val original = files.written.clone().readUtf8()
+        files.failRead = true
+        val events = port.execute(CgmReadEffect.WriteFile(session, segment(number = 2))).toList()
+        assertTrue(events.single() is CgmReadEvent.FileWriteFailed)
+        assertEquals(1, files.writes)
+        assertEquals(original, files.written.clone().readUtf8())
+    }
+
+    @Test
+    fun `an incomplete stored segment prevents further append`() = runTest {
+        files.write(FileSpace.RECEIVED, "cgm/AA_01.txt", false).use {
+            (it as Buffer).writeUtf8("LOG:1,1,95,2026-07-21 12:10:45\n$eisText\n")
+        }
+        val events = port.execute(CgmReadEffect.WriteFile(session, segment(number = 2))).toList()
+        val failure = events.single() as CgmReadEvent.FileWriteFailed
+        assertTrue(failure.message.contains("已有文件校验失败"))
+        assertEquals(1, files.writes)
+    }
+
+    private fun segment(number: Int = 1, time: String = "2026-07-21 12:10:45"): List<CgmRecord> =
+        listOf(CgmRecord.Log("LOG:$number,1,1,$time"), CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText))
 
     // ── 会话结束信号 ──
 
@@ -380,14 +528,38 @@ class CgmPortAdapterTest {
         assertEquals(null, bluetooth.lastEffect)
     }
 
+    @Test
+    fun `stop runtime cancels an active read immediately`() = runTest {
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSentAck("ALL\n\r".encodeToByteArray().size))
+            awaitCancellation()
+        }
+        val events = mutableListOf<CgmReadEvent>()
+        val readJob = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            port.execute(CgmReadEffect.StartRead(session)).toList(events)
+        }
+        runCurrent()
+        assertEquals(listOf(CgmReadEvent.CommandAccepted(session.id)), events)
+
+        port.execute(CgmReadEffect.StopRuntime(session, StopReason.USER_CANCEL)).toList()
+        runCurrent()
+
+        assertTrue(readJob.isCancelled)
+        assertTrue(events.none { it is CgmReadEvent.CommandTimeout })
+    }
+
     // ── 测试替身 ──
 
     private class FakeBluetoothPort : BluetoothPort {
         var lastEffect: BluetoothEffect? = null
+
+        /** 全部下发 effect：每次读取或重读只发 ALL。 */
+        val effects = mutableListOf<BluetoothEffect>()
         var results: Flow<BluetoothEvent> = flowOf()
 
         override fun execute(effect: BluetoothEffect): Flow<BluetoothEvent> {
             lastEffect = effect
+            effects += effect
             return results
         }
 
@@ -395,27 +567,34 @@ class CgmPortAdapterTest {
     }
 
     private class FakeFileStore : FileStore {
-        val written = Buffer()
+        private val contents = mutableMapOf<String, Buffer>()
+        val written: Buffer get() = contents.getValue(requireNotNull(path))
         var space: FileSpace? = null
         var path: String? = null
-        var failNext: Boolean = false
+        var append: Boolean? = null
+        var writes = 0
+        var failNext = false
+        var failRead = false
 
-        override fun write(
-            space: FileSpace, relativePath: String, append: Boolean
-        ): Sink {
+        override fun write(space: FileSpace, relativePath: String, append: Boolean): Sink {
             this.space = space
             this.path = relativePath
+            this.append = append
             if (failNext) throw IOException("磁盘满")
-            return written
+            writes++
+            if (!append) contents[relativePath] = Buffer()
+            return contents.getOrPut(relativePath) { Buffer() }
         }
 
-        override fun read(space: FileSpace, relativePath: String): Source =
-            error("未实现")
+        override fun read(space: FileSpace, relativePath: String): Source {
+            if (failRead) throw IOException("文件读取失败")
+            return contents[relativePath]?.clone() ?: throw FileNotFoundException(relativePath)
+        }
 
         override fun list(space: FileSpace, relativePath: String): List<FileEntry> =
-            error("未实现")
+            contents.map { (path, buffer) -> FileEntry(path, buffer.size, null) }
 
         override fun delete(space: FileSpace, relativePath: String): FileDeleteResult =
-            error("未实现")
+            if (contents.remove(relativePath) != null) FileDeleteResult.Done else FileDeleteResult.None
     }
 }

@@ -30,7 +30,7 @@ class CgmShortDecisionTest {
     fun `short command from done or failed restarts`() {
         for (terminal in listOf(
             CgmShortState.Done(session, CgmCommandPurpose.SYNC_TIME),
-            CgmShortState.Failed(session, "命令超时")
+            CgmShortState.Failed(session, "命令超时", CgmCommandPurpose.SYNC_TIME)
         )) {
             val result = reduce(
                 terminal,
@@ -96,7 +96,10 @@ class CgmShortDecisionTest {
             CgmShortState.Sending(session, CgmCommandPurpose.DELETE),
             CgmShortEvent.CommandTimeout(session.id)
         )
-        assertEquals(CgmShortState.Failed(session, "命令超时"), result.newState)
+        assertEquals(
+            CgmShortState.Failed(session, "命令超时", CgmCommandPurpose.DELETE),
+            result.newState
+        )
         assertEquals(emptyList<CgmShortEffect>(), result.effects)
     }
 
@@ -106,7 +109,10 @@ class CgmShortDecisionTest {
             CgmShortState.WaitingAck(session, CgmCommandPurpose.DELETE),
             CgmShortEvent.CommandTimeout(session.id)
         )
-        assertEquals(CgmShortState.Failed(session, "命令超时"), result.newState)
+        assertEquals(
+            CgmShortState.Failed(session, "命令超时", CgmCommandPurpose.DELETE),
+            result.newState
+        )
     }
 
     @Test
@@ -116,7 +122,10 @@ class CgmShortDecisionTest {
             CgmShortState.WaitingAck(session, CgmCommandPurpose.SYNC_TIME)
         )) {
             val result = reduce(active, CgmShortEvent.DeviceDisconnected(session.id))
-            assertEquals(CgmShortState.Failed(session, "设备断开"), result.newState)
+            assertEquals(
+                CgmShortState.Failed(session, "设备断开", CgmCommandPurpose.SYNC_TIME),
+                result.newState
+            )
         }
     }
 
@@ -129,7 +138,7 @@ class CgmShortDecisionTest {
             CgmShortState.Sending(session, CgmCommandPurpose.SYNC_TIME),
             CgmShortState.WaitingAck(session, CgmCommandPurpose.SYNC_TIME),
             CgmShortState.Done(session, CgmCommandPurpose.SYNC_TIME),
-            CgmShortState.Failed(session, "x")
+            CgmShortState.Failed(session, "x", CgmCommandPurpose.SYNC_TIME)
         )
         val events = listOf<CgmShortEvent>(
             CgmShortEvent.ShortRequested(session.id, session.deviceId, CgmCommandPurpose.SYNC_TIME),

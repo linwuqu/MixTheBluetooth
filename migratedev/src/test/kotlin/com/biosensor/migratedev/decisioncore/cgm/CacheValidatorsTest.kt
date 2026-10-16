@@ -55,21 +55,6 @@ class CacheValidatorsTest {
         assertEquals(listOf(start, eis1, end), CacheBoundaryTrimmer.trim(records))
     }
 
-    // ── ② marker 校验 ──
-
-    @Test
-    fun `marker validator requires START then END`() {
-        val start = CgmRecord.Marker(MarkerKind.START, "Start Playback")
-        val end = CgmRecord.Marker(MarkerKind.END, "Playback all done")
-        val eis1 = CgmRecord.Eis(1, 60, "a", "b", "c", "d", "EIS:1,60,a,b,c,d")
-
-        assertTrue(CacheMarkerValidator.validate(listOf(start, eis1, end)).ok)
-        assertFalse(CacheMarkerValidator.validate(listOf(eis1, end)).ok)
-        assertFalse(CacheMarkerValidator.validate(listOf(start, eis1)).ok)
-        assertFalse(CacheMarkerValidator.validate(listOf(end, eis1, start)).ok)
-        assertFalse(CacheMarkerValidator.validate(emptyList()).ok)
-    }
-
     // ── ③ 去重 ──
 
     @Test
@@ -134,21 +119,120 @@ class CacheValidatorsTest {
     }
 
     @Test
-    fun `structure validator rejects non-contiguous EIS seq`() {
-        val records = buildString {
-            appendLine("LOG:1,1,95,2026-06-23 14:31:27")
-            appendLine("EIS:1,60,-1.0,2.0,3.0,4.0")
-            appendLine("EIS:3,80,-1.0,2.0,3.0,4.0")   // 2 缺失
-        }
-        val parsed = parseLines(buildString {
-            appendLine("Start Playback")
-            append(records)
-            appendLine("Playback all done")
-        })
+    fun `95 EIS points pass only with seq 1 through 95 in order`() {
+        val result = validatePlayback(eisSegment(95, (1..95).toList()))
+        assertTrue(result.reason, result.complete)
+        assertEquals(95, result.records.filterIsInstance<CgmRecord.Eis>().size)
+        assertEquals(95, result.records.filterIsInstance<CgmRecord.Eis>().last().seq)
+    }
 
-        val result = CacheStructureValidator.validate(parsed)
-        assertFalse(result.ok)
-        assertTrue("应提示 seq 不连续: ${result.message}", result.message!!.contains("seq"))
+    @Test
+    fun `EIS declaration 95 rejects missing last point`() {
+        val result = validatePlayback(eisSegment(95, (1..94).toList()))
+        assertFalse(result.complete)
+        assertTrue(result.reason, result.reason.orEmpty().contains("声明 95 点，实际 94 点"))
+    }
+
+    @Test
+    fun `last seq 95 alone cannot prove the segment complete`() {
+        val result = validatePlayback(eisSegment(95, (1..95).filter { it != 48 }))
+        assertFalse(result.complete)
+        assertTrue(result.reason, result.reason.orEmpty().contains("实际 94 点"))
+    }
+
+    @Test
+    fun `95 EIS rows ending at 95 still reject a middle gap`() {
+        val sequences = (1..95).map { if (it == 48) 49 else it }
+        val result = validatePlayback(eisSegment(95, sequences))
+        assertFalse(result.complete)
+        assertEquals("LOG:1 EIS 段第 48 点 seq 应为 48，实际 49", result.reason)
+    }
+
+    @Test
+    fun `95 EIS rows reject a wrong first or last seq and wrong order`() {
+        val cases = listOf(
+            (1..95).map { if (it == 1) 0 else it },
+            (1..95).map { if (it == 95) 94 else it },
+            (1..95).map { when (it) { 48 -> 49; 49 -> 48; else -> it } }
+        )
+        for (sequences in cases) {
+            val result = validatePlayback(eisSegment(95, sequences))
+            assertFalse(result.complete)
+            assertTrue(result.reason, result.reason.orEmpty().contains("seq"))
+        }
+    }
+
+    @Test
+    fun `EIS declaration 95 rejects an extra point`() {
+        val result = validatePlayback(eisSegment(95, (1..96).toList()))
+        assertFalse(result.complete)
+        assertTrue(result.reason, result.reason.orEmpty().contains("实际 96 点"))
+    }
+
+    @Test
+    fun `identical adjacent retransmission does not inflate declared count`() {
+        val lines = eisSegment(95, (1..95).toList()).toMutableList()
+        lines.add(49, lines[48])
+        val result = validatePlayback(lines)
+        assertTrue(result.reason, result.complete)
+        assertEquals(95, result.records.filterIsInstance<CgmRecord.Eis>().size)
+    }
+
+    @Test
+    fun `same seq with different content is not removed as retransmission`() {
+        val lines = eisSegment(95, (1..95).toList()).toMutableList()
+        lines.add(49, lines[48].replace("-1.0", "-2.0"))
+        val result = validatePlayback(lines)
+        assertFalse(result.complete)
+        assertTrue(result.reason, result.reason.orEmpty().contains("实际 96 点"))
+    }
+
+    @Test
+    fun `a new LOG cannot hide the previous segment missing point`() {
+        val lines = eisSegment(95, (1..94).toList()) +
+            listOf("LOG:2,2,1,2026-06-23 14:32:02", "CA:1,15.5")
+        val result = validatePlayback(lines)
+        assertFalse(result.complete)
+        assertTrue(result.reason, result.reason.orEmpty().startsWith("LOG:1 EIS 段"))
+    }
+
+    @Test
+    fun `CA also checks declared count and consecutive seq`() {
+        val invalid = listOf(
+            listOf("CA:1,10", "CA:2,20"),
+            listOf("CA:1,10", "CA:3,20", "CA:3,30")
+        )
+        for (points in invalid) {
+            assertFalse(validatePlayback(listOf("LOG:2,2,3,2026-06-23 14:32:02") + points).complete)
+        }
+        assertTrue(validatePlayback(listOf(
+            "LOG:2,2,3,2026-06-23 14:32:02", "CA:1,10", "CA:2,20", "CA:3,30"
+        )).complete)
+    }
+
+    @Test
+    fun `summarize is retained but does not count as a data point`() {
+        val summary = "summarize:2026-06-23 14:31:27 15.16 11505196.18"
+        val result = validatePlayback(eisSegment(95, (1..95).toList()) + summary)
+        assertTrue(result.reason, result.complete)
+        assertEquals(95, result.records.filterIsInstance<CgmRecord.Eis>().size)
+        assertTrue(result.records.last() is CgmRecord.Summarize)
+    }
+
+    @Test
+    fun `EIS timestamp rule and segment type are still checked`() {
+        val badTs = eisSegment(1, listOf(1)).map { it.replace("EIS:1,60,", "EIS:1,70,") }
+        assertTrue(validatePlayback(badTs).reason!!.contains("ts"))
+        assertTrue(validatePlayback(listOf(
+            "LOG:1,1,1,2026-06-23 14:31:27", "CA:1,10"
+        )).reason!!.contains("类型"))
+    }
+
+    @Test
+    fun `malformed or oversized LOG declaration returns failure`() {
+        for (log in listOf("LOG:bad", "LOG:1,1,99999999999999999,2026-06-23 14:31:27", "LOG:1,3,1,time")) {
+            assertFalse(validatePlayback(listOf(log)).complete)
+        }
     }
 
     @Test
@@ -210,7 +294,7 @@ class CacheValidatorsTest {
                 offset += 100
             }
 
-            // 完整链路:规整(样本首行杂散 EIS 先于 START)→ marker → 去重 → 结构
+            // 完整链路:首个 START..END → 相邻去重 → 按 LOG 校验各段
             val conclusion = CacheValidators.validate(records)
             assertTrue("样本 ${file.name} 应校验通过,实际: ${conclusion.reason}", conclusion.complete)
             assertTrue("结论记录应含 EIS", conclusion.records.any { it is CgmRecord.Eis })
@@ -243,6 +327,16 @@ class CacheValidatorsTest {
     }
 
     // ── 工具 ──
+
+    private fun eisSegment(count: Int, sequences: List<Int>): List<String> =
+        listOf("LOG:1,1,$count,2026-06-23 14:31:27") + sequences.mapIndexed { index, seq ->
+            "EIS:$seq,${60 + index * 10},-1.0,2.0,3.0,4.0"
+        }
+
+    private fun validatePlayback(lines: List<String>): ValidationConclusion =
+        CacheValidators.validate(parseLines(
+            (listOf("Start Playback") + lines + "Playback all done").joinToString("\n", postfix = "\n")
+        ))
 
     private fun parseLines(text: String): List<CgmRecord> = runBlocking {
         val pipeline = SequentialCgmParsePipeline()

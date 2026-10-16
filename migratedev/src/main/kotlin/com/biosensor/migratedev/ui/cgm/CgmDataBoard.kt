@@ -4,84 +4,107 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.biosensor.migratedev.translation.cgm.CgmReadPhase
+import com.biosensor.migratedev.translation.cgm.CgmUiState
+import kotlinx.coroutines.launch
 
-/** 数据看板:点数 / 轮数 + 可收起的最近记录流(11.8 性能要求)。
- *  滚动跟随仅当展开时:新数据到达自动滚到底部;收起不触发,零开销(11.8 ④)。 */
+/** 所有记录和报告在同一列表中滚动；接收新数据时不强制跳到底部，便于检查前面的数据。 */
 @Composable
-fun CgmDataBoard(
-    modifier: Modifier = Modifier,
-    progressPoints: Int,
-    roundCount: Int,
-    recentLines: List<String>
-) {
-    var expanded by rememberSaveable { mutableStateOf(true) }   // 纯 UI 态,可随旋转保存
+fun CgmDataBoard(state: CgmUiState, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
-    LaunchedEffect(roundCount) {
-        if (expanded && recentLines.isNotEmpty()) {
-            listState.scrollToItem(recentLines.lastIndex)
-        }
-    }
+    val scope = rememberCoroutineScope()
+    val checkRows = state.validationChecks.size.coerceAtLeast(1)
+    val dataStartIndex = 4 + checkRows
     Column(modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().clickable { expanded = !expanded },
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("点数: $progressPoints", style = MaterialTheme.typography.titleMedium)
-            Text("轮数: $roundCount", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.weight(1f))
-            Text(if (expanded) "收起" else "展开", color = MaterialTheme.colorScheme.primary)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text("本次数据和报告", style = MaterialTheme.typography.titleMedium)
+            if (state.dataLines.isNotEmpty()) {
+                Text("数据开头", color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { scope.launch { listState.scrollToItem(dataStartIndex) } })
+                Text("数据末尾", color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable {
+                        scope.launch { listState.scrollToItem(dataStartIndex + state.dataLines.lastIndex) }
+                    })
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider()
-        if (expanded) {
-            Spacer(Modifier.height(8.dp))
-            if (recentLines.isEmpty()) {
-                Text("暂无数据,点击「读缓存」开始接收", color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                Column {
+                    Text("基本信息", style = MaterialTheme.typography.titleMedium)
+                    Text("设备：${state.deviceId ?: "—"}")
+                    Text("会话：${state.sessionId ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                    Text("已接收 ${state.summary.recordCount} 条记录 · ${state.summary.segments} 段")
+                    Text("数据点 ${state.progressPoints} · EIS ${state.summary.eisPoints} · CA ${state.summary.caPoints}")
+                    Text("首段时间：${state.summary.firstTime ?: "—"}")
+                    Text("末段时间：${state.summary.lastTime ?: "—"}")
+                }
+            }
+            item { Text("校验过程", style = MaterialTheme.typography.titleMedium) }
+            if (state.validationChecks.isEmpty()) {
+                item {
+                    Text(if (state.readPhase == CgmReadPhase.Receiving) "接收中，等待 END 后校验"
+                        else "尚未执行校验")
+                }
             } else {
-                // 条件组合(if 而非固定高度):收起/展开都按当前内容重新测量,
-                // 不会残留旧高度导致布局错位(11.8 要求 3)
-                LazyColumn(
-                    modifier = Modifier.fillMaxHeight(),   // 由外层 weight 给定高度
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(recentLines) { line ->
-                        Text(line, style = MaterialTheme.typography.bodySmall)
+                items(state.validationChecks) { check ->
+                    Column {
+                        Text("${if (check.passed) "通过" else "失败"} · ${check.name}",
+                            color = if (check.passed) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error)
+                        Text(check.detail, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            item {
+                Column {
+                    Text("文件保存", style = MaterialTheme.typography.titleMedium)
+                    val saved = state.storageResult
+                    if (saved != null) {
+                        Text("新增 ${saved.addedSegments} 段 / ${saved.addedPoints} 点")
+                        Text("文件已有，跳过 ${saved.duplicateSegments} 段 / ${saved.duplicatePoints} 点")
+                        Text("文件累计 ${saved.totalPoints} 点")
+                        SelectionContainer { Text(saved.path, style = MaterialTheme.typography.bodySmall) }
+                    } else {
+                        Text(when (state.readPhase) {
+                            CgmReadPhase.Completed -> "正在与文件比较并追加"
+                            CgmReadPhase.Error -> "保存失败，请查看错误和校验报告"
+                            else -> "本次数据尚未保存"
+                        })
+                    }
+                }
+            }
+            item { Text("完整数据 · ${state.dataLines.size} 条", style = MaterialTheme.typography.titleMedium) }
+            if (state.dataLines.isEmpty()) {
+                item { Text("暂无数据，点击“读缓存”开始接收") }
+            } else {
+                itemsIndexed(state.dataLines) { index, line ->
+                    SelectionContainer {
+                        Text("${index + 1}. $line", fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun CgmDataBoardPreview() {
-    MaterialTheme {
-        CgmDataBoard(
-            progressPoints = 285,
-            roundCount = 3,
-            recentLines = listOf("EIS:95,1000,1,2,3,4", "CA:1,100", "summarize:2026-07-15 08:00:00"))
     }
 }

@@ -4,7 +4,6 @@ import com.biosensor.migratedev.port.adapter.localport.KvReadResult
 import com.biosensor.migratedev.port.adapter.localport.KvRemoveResult
 import com.biosensor.migratedev.port.adapter.localport.KvStore
 import com.biosensor.migratedev.port.adapter.localport.KvWriteResult
-import com.biosensor.migratedev.BuildConfig
 import com.biosensor.migratedev.decisioncore.auth.AuthEffect
 import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
@@ -42,8 +41,7 @@ class AuthPortAdapter(
     private val kv: KvStore,
     private val http: HttpRemote,
     private val clock: Clock = Clock.systemUTC(),
-    private val gson: Gson = Gson(),
-    private val debugOfflineMode: Boolean = BuildConfig.DEBUG
+    private val gson: Gson = Gson()
 ) : AuthPort {
 
     private val api: AccountApi by lazy { http.api(AccountApi::class.java) }
@@ -64,9 +62,7 @@ class AuthPortAdapter(
     private suspend fun runLocal(effect: AuthEffect): AuthEvent {
         val result = when (effect) {
             is AuthEffect.ReadSession -> when (val read = kv.read(SESSION_KEY)) {
-                KvReadResult.None -> DebugOfflineSession.maybeInject(   // 调试专用,删除时连带移除
-                    AuthEvent.SessionMissing, enabled = debugOfflineMode
-                )
+                KvReadResult.None -> AuthEvent.SessionMissing
 
                 is KvReadResult.Failed -> corrupted()
                 is KvReadResult.Value -> parse(read.value)
@@ -183,9 +179,7 @@ class AuthPortAdapter(
     private suspend fun validate(session: AuthSession): AuthEvent {
         val detail = when (val outcome = http.invoke { api.detail(session.token) }) {
             is HttpOutcome.Completed -> outcome.data
-            else -> return DebugOfflineSession.maybeTrust(
-                outcome.toSessionFailure(), local = session, enabled = debugOfflineMode
-            )
+            else -> return outcome.toSessionFailure()
         }
         val account = detail.data
         if (!detail.isOk() || account == null) {
@@ -237,44 +231,5 @@ private fun AccountDto.toDomainUser(): User {
         userName = username.orEmpty(),
         telephone = phone.orEmpty(),
         avatarUrl = avatarUrl
-    )
-}
-
-// ===== 调试专用:离线会话 =====
-// 服务器不可达时注入假会话直接进入扫描页,便于纯蓝牙功能调试。
-// 移除方式:删除本段(注解 + 对象)与两处"调试专用"调用点,零残留。
-
-@Retention(AnnotationRetention.SOURCE)
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
-annotation class DebugOnly
-
-/** 调试专用:仅 DEBUG 构建生效,release 构建行为与现状完全一致。 */
-@DebugOnly
-private object DebugOfflineSession {
-    private const val TAG = "Auth.Port.Debug"
-    private const val TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
-
-    /** 本地无会话时:启用注入离线会话,否则保持原结果。 */
-    fun maybeInject(sessionMissing: AuthEvent, enabled: Boolean): AuthEvent =
-        if (enabled) {
-            Timber.tag(TAG).w("调试模式:本地无会话,注入离线会话")
-            AuthEvent.SessionFound(offlineSession())
-        } else {
-            sessionMissing
-        }
-
-    /** 远端验证传输失败时:启用则信任本地会话,否则保持失败结果。 */
-    fun maybeTrust(failure: AuthEvent, local: AuthSession, enabled: Boolean): AuthEvent =
-        if (enabled) {
-            Timber.tag(TAG).w("调试模式:远端验证不可达,信任本地会话")
-            AuthEvent.SessionVerified(local)
-        } else {
-            failure
-        }
-
-    private fun offlineSession(): AuthSession = AuthSession(
-        user = User(id = "offline-dev", userName = "离线开发", telephone = "00000000000"),
-        token = "offline-token",
-        expiresAtMillis = Clock.systemUTC().millis() + TTL_MILLIS
     )
 }

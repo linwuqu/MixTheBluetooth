@@ -1,6 +1,7 @@
 package com.biosensor.migratedev.port.adapter.bluetoothport
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 data class BluetoothDeviceInfo(
     val id: String, val name: String?, val isBle: Boolean, val rssi: Int? = null
@@ -23,6 +24,9 @@ sealed interface BluetoothEvent {
     data class MtuChanged(val mtu: Int) : BluetoothEvent
 }
 
+/** 连接生命周期状态。进入 CGM 页面后 CONNECTING 即表示正在重连。 */
+enum class BluetoothConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
+
 class BluetoothScanException(
     msg: String, cause: Throwable? = null
 ) : Exception(msg, cause)
@@ -30,4 +34,8 @@ class BluetoothScanException(
 interface BluetoothPort {
     fun execute(effect: BluetoothEffect): Flow<BluetoothEvent>
     fun scanDevices(): Flow<BluetoothDeviceInfo>
+
+    /** 长生命周期状态流；默认实现只用于不关心连接状态的测试替身。 */
+    fun observeConnectionState(): Flow<BluetoothConnectionState> =
+        flowOf(BluetoothConnectionState.DISCONNECTED)
 }

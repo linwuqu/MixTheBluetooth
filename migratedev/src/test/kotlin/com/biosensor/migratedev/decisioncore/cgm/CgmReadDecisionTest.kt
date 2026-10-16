@@ -108,11 +108,10 @@ class CgmReadDecisionTest {
         )
         val completed = result.newState as? CgmReadState.Completed
         assertTrue("应完成而非重读,实际: ${result.newState}", completed != null)
-        assertEquals(2, result.effects.size)
+        assertEquals(1, result.effects.size)
         assertTrue("应先写盘", result.effects[0] is CgmReadEffect.WriteFile)
-        assertTrue("后发删除", result.effects[1] is CgmReadEffect.SendDelete)
-        // 完成时双闸门未到(落盘/删除确认都未回)
-        assertEquals(false, completed!!.deleteAcked)
+        // 测试期关闭自动删除：删除闸门预先满足，缓存保留供连续真机回归。
+        assertEquals(true, completed!!.deleteAcked)
         assertEquals(null, completed.filePath)
     }
 
@@ -340,7 +339,10 @@ class CgmReadDecisionTest {
             CgmReadEvent.StopCurrent(session.deviceId)
         )
         // Stopped 携带已收数据快照:会话关闭,UI 仍展示
-        assertEquals(CgmReadState.Stopped(session, accumulated), result.newState)
+        assertEquals(
+            CgmReadState.Stopped(session, accumulated, StopReason.USER_CANCEL),
+            result.newState
+        )
         assertEquals(
             listOf(CgmReadEffect.StopRuntime(session, StopReason.USER_CANCEL)), result.effects
         )

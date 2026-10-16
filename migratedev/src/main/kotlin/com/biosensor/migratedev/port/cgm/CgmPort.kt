@@ -5,6 +5,8 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmReadEvent
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothConnectionState
 
 /**
  * cgm 业务端口:读流程与短命令两条契约,各自执行领域副作用、翻译领域事件。
@@ -14,4 +16,7 @@ interface CgmPort {
     fun execute(effect: CgmReadEffect): Flow<CgmReadEvent>
 
     fun execute(effect: CgmShortEffect): Flow<CgmShortEvent>
+
+    fun observeConnectionState(): Flow<BluetoothConnectionState> =
+        flowOf(BluetoothConnectionState.CONNECTED)
 }

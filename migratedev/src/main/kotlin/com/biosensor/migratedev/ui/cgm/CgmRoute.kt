@@ -23,6 +23,7 @@ fun CgmRoute(translation: CgmTranslation) {
     CgmScreen(
         state = state,
         onRead = { translation.submit(CgmIntent.ReadCache) },
+        onForceStopRead = { translation.submit(CgmIntent.ForceStopRead) },
         onSyncTime = { translation.submit(CgmIntent.SyncTime) },
         onDelete = { translation.submit(CgmIntent.DeleteCache) }
     )

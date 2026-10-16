@@ -1,0 +1,22 @@
+-- Merging decision tree log ---
+manifest
+ADDED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:2:1-6:12
+INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:2:1-6:12
+	package
+		INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml
+	xmlns:android
+		ADDED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:2:11-69
+uses-feature#android.hardware.camera
+ADDED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:3:5-5:36
+	android:required
+		ADDED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:5:9-33
+	android:name
+		ADDED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml:4:9-47
+uses-sdk
+INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml
+INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from D:\Project\AndroidStudio\MixTheBluetooth\scannerlibrary\src\main\AndroidManifest.xml
