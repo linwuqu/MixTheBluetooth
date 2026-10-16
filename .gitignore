@@ -8,7 +8,6 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-/build
 /captures
 .externalNativeBuild
 .cursorrules
@@ -18,3 +17,10 @@
 .idea/
 tools/
 .claude/
+
+# ── 构建产物:任何模块的 build 目录与安装包都不进版本库 ──
+build/
+build */
+.kotlin/
+*.apk
+*.aab
