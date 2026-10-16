@@ -48,7 +48,11 @@ object CacheRecordDeduper {
     }
 }
 
-/** LOG:1,1,95,... 后必须有 95 个 EIS 点，seq 按接收顺序为 1..95。CA 使用同一规则。 */
+/**
+ * LOG:1,1,95,... 后必须有 95 个 EIS 点，seq 按接收顺序为 1..95，ts 从 60 起每点加 10。CA 只查前两项。
+ *
+ * 逐段检查但只报一条结论:段数多时逐段上报会把界面刷满,而读者只需要"过没过、哪段没过"。
+ */
 object CacheStructureValidator {
     data class StructureResult(
         val ok: Boolean, val message: String? = null, val checks: List<ValidationCheck> = emptyList()
@@ -57,78 +61,81 @@ object CacheStructureValidator {
     fun validate(records: List<CgmRecord>): StructureResult {
         var declaration: SegmentDeclaration? = null
         val points = mutableListOf<CgmRecord>()
-        val checks = mutableListOf<ValidationCheck>()
+        var segments = 0
+        var pointTotal = 0
+
+        /** 结算上一段。返回失败原因；null 表示通过。 */
+        fun closeSegment(): String? {
+            val segment = declaration ?: return null
+            val reason = segmentFailure(segment, points)
+            if (reason == null) {
+                segments += 1
+                pointTotal += points.size
+            }
+            return reason
+        }
+
         for (record in records) {
             when (record) {
                 is CgmRecord.Log -> {
-                    declaration?.let {
-                        checks += validateSegment(it, points).checks
+                    closeSegment()?.let { return structureFailure(it) }
+                    val parsed = parseDeclaration(record.text)
+                        ?: return structureFailure("LOG 段声明格式异常: ${record.text}")
+                    if (parsed.type != 1 && parsed.type != 2) {
+                        return structureFailure("LOG:${parsed.number} 未知段类型: ${parsed.type}")
                     }
-                    declaration = parseDeclaration(record.text)
-                        ?: return failed(checks, "LOG 声明", "LOG 段声明格式异常: ${record.text}")
-                    if (declaration.type != 1 && declaration.type != 2) {
-                        return failed(checks, "LOG 声明", "LOG:${declaration.number} 未知段类型: ${declaration.type}")
-                    }
+                    declaration = parsed
                     points.clear()
                 }
                 is CgmRecord.Eis, is CgmRecord.Ca -> {
-                    if (declaration == null) return failed(checks, "LOG 声明", "数据行前无 LOG 段声明: ${record.text}")
+                    if (declaration == null) {
+                        return structureFailure("数据行前无 LOG 段声明: ${record.text}")
+                    }
                     points += record
                 }
                 is CgmRecord.Summarize, is CgmRecord.Marker -> Unit
             }
         }
         // 新 LOG 结束上一段；回放结尾结束最后一段。没有 LOG 和数据点的空回放合法。
-        declaration?.let { checks += validateSegment(it, points).checks }
-        if (checks.isEmpty()) checks += ValidationCheck("缓存内容", true, "空缓存，0 个数据点")
-        return result(checks)
+        closeSegment()?.let { return structureFailure(it) }
+
+        val detail = if (segments == 0) "空缓存，0 个数据点"
+        else "$segments 段 · $pointTotal 点 · seq 与 ts 连续"
+        return StructureResult(true, checks = listOf(ValidationCheck("缓存结构", true, detail)))
     }
 
-    private fun validateSegment(
+    /** 返回本段第一处不合格的原因；null 表示本段通过。 */
+    private fun segmentFailure(
         declaration: SegmentDeclaration, points: List<CgmRecord>
-    ): StructureResult {
+    ): String? {
         val label = "LOG:${declaration.number} ${if (declaration.type == 1) "EIS" else "CA"} 段"
-        val checks = mutableListOf<ValidationCheck>()
-        val countMatches = points.size == declaration.pointCount
-        checks += ValidationCheck("$label / 点数", countMatches,
-            "$label 声明 ${declaration.pointCount} 点，实际 ${points.size} 点")
-        if (!countMatches) return result(checks)
-
+        if (points.size != declaration.pointCount) {
+            return "$label 声明 ${declaration.pointCount} 点，实际 ${points.size} 点"
+        }
         val wrongType = points.firstOrNull {
             if (declaration.type == 1) it !is CgmRecord.Eis else it !is CgmRecord.Ca
         }
-        if (wrongType != null) return failed(checks, "$label / 类型", "$label 数据点类型错误: ${wrongType.text}")
-        checks += ValidationCheck("$label / 类型", true, "全部数据点符合 LOG 声明")
+        if (wrongType != null) return "$label 数据点类型错误: ${wrongType.text}"
 
         for ((index, point) in points.withIndex()) {
             val seq = if (point is CgmRecord.Eis) point.seq else (point as CgmRecord.Ca).seq
             val expected = index + 1
-            if (seq != expected) {
-                return failed(checks, "$label / seq", "${label}第 $expected 点 seq 应为 $expected，实际 $seq")
-            }
+            if (seq != expected) return "${label}第 $expected 点 seq 应为 $expected，实际 $seq"
         }
-        checks += ValidationCheck("$label / seq", true, "seq 从 1 连续到 ${declaration.pointCount}")
-
         if (declaration.type == 1) {
             for ((index, point) in points.withIndex()) {
                 val eis = point as CgmRecord.Eis
                 val expectedTs = 60 + index * 10
                 if (eis.ts != expectedTs) {
-                    return failed(checks, "$label / ts", "$label seq=${eis.seq} 的 ts 应为 $expectedTs，实际 ${eis.ts}")
+                    return "$label seq=${eis.seq} 的 ts 应为 $expectedTs，实际 ${eis.ts}"
                 }
             }
-            checks += ValidationCheck("$label / ts", true, "ts 从 60 开始，每点增加 10")
         }
-        return result(checks)
+        return null
     }
 
-    private fun failed(checks: List<ValidationCheck>, name: String, reason: String): StructureResult =
-        result(checks + ValidationCheck(name, false, reason))
-
-    private fun result(checks: List<ValidationCheck>): StructureResult {
-        val failure = checks.firstOrNull { !it.passed }
-        return StructureResult(failure == null, failure?.detail, checks)
-    }
+    private fun structureFailure(reason: String): StructureResult =
+        StructureResult(false, reason, listOf(ValidationCheck("缓存结构", false, reason)))
 
     private fun parseDeclaration(text: String): SegmentDeclaration? {
         val match = LOG_PATTERN.matchEntire(text) ?: return null

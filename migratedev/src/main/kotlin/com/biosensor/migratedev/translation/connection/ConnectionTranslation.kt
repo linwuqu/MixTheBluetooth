@@ -306,7 +306,9 @@ class ConnectionTranslation private constructor(
     private fun requestReconnect(deviceId: String) {
         if (!reconnecting || logoutStarted) return
         reconnectAttempt += 1
-        orchestrator.dispatch(ConnectionEvent.ConnectRequested(deviceId))
+        orchestrator.dispatch(
+            ConnectionEvent.ConnectRequested(deviceId, RECONNECT_CONNECT_TIMEOUT_MILLIS)
+        )
     }
 
     private data class ScanRequest(
@@ -314,8 +316,14 @@ class ConnectionTranslation private constructor(
     )
 
     companion object {
-        private const val RECONNECT_ATTEMPT_LIMIT = 5
+        private const val RECONNECT_ATTEMPT_LIMIT = 8
         private const val RECONNECT_RETRY_DELAY_MILLIS = 1_500L
+
+        /**
+         * 重连的连接超时。首次连接给 15s(设备可能刚上电),重连是对已知设备重试,
+         * 超过 5s 基本可判本轮无望。实测一次卡满 15s 会让整个阶梯慢三倍。
+         */
+        private const val RECONNECT_CONNECT_TIMEOUT_MILLIS = 5_000L
 
         fun factory(
             userId: String, port: ConnectionPort, report: (ConnectionOutput) -> Unit = {}

@@ -29,8 +29,9 @@ class CgmReadPresentationTest {
         assertEquals(CgmReadPhase.WRITING, writing.phase)
         // 看板显示本次收到的原始记录(含边界标记),不去重不裁剪
         assertEquals(raw, writing.displayRecords)
-        assertTrue(writing.report!!.checks.any { it.name.contains("seq") && it.passed })
-        assertTrue(writing.report!!.checks.all { it.name.startsWith("第 1 次") })
+        // 逐段检查合并成一条汇总结论；首轮不加次数前缀
+        assertTrue(writing.report!!.checks.any { it.name == "缓存结构" && it.passed })
+        assertTrue(writing.report!!.checks.none { it.name.startsWith("第 ") })
 
         val saved = CgmFileAppendResult("cgm/AA_01.txt", 2, 0, 3, 0, 3)
         val stopped = CgmReadDecision.reduce(
@@ -75,7 +76,8 @@ class CgmReadPresentationTest {
             CgmReadEvent.RecordsProduced(session.id, raw, CacheValidators.validate(raw))
         ).newState
 
-        assertTrue(writing.report!!.checks.any { it.name.startsWith("第 1 次") && !it.passed })
+        // 首轮失败项不带前缀，重读轮的结论才标次数
+        assertTrue(writing.report!!.checks.any { !it.name.startsWith("第 ") && !it.passed })
         assertTrue(writing.report!!.checks.any { it.name.startsWith("第 2 次") && it.passed })
         assertEquals(raw, writing.displayRecords)
     }

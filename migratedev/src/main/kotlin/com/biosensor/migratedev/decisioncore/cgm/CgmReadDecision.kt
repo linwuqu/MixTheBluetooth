@@ -72,8 +72,11 @@ object CgmReadDecision : DecisionCore<CgmReadState, CgmReadEvent, CgmReadEffect>
         val attempt = current.retryCount + 1
         val report = CgmReadReport(
             receivedRecords = CacheBoundaryTrimmer.trim(accumulated).ifEmpty { accumulated },
+            // 首轮不加次数前缀:只有重读才需要区分是哪一轮的结论
             checks = current.report?.checks.orEmpty() +
-                conclusion.checks.map { it.copy(name = "第 $attempt 次 · ${it.name}") })
+                conclusion.checks.map {
+                    if (attempt == 1) it else it.copy(name = "第 $attempt 次 · ${it.name}")
+                })
 
         if (conclusion.complete) {
             return Transition(

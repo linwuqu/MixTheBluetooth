@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
+import com.biosensor.migratedev.decisioncore.connection.DEFAULT_CONNECT_TIMEOUT_MILLIS
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothDeviceInfo
 import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
@@ -22,6 +23,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -366,6 +368,57 @@ class ConnectionTranslationTest {
                     ConnectionOutput.Connected(device.id)
                 ),
                 outputs
+            )
+        } finally {
+            store.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
+
+    /**
+     * 重连用短超时。实测:掉线后第一次重连常落在设备还没恢复广播的窗口里,
+     * 若沿用首次连接的 15s 上限,一轮就会白等 15s,整个阶梯慢三倍(180928 → 8s)。
+     */
+    @Test
+    fun `reconnect uses a shorter connect timeout than the first connect`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val port = RecordingConnectionPort()
+        val device = BluetoothDeviceInfo(
+            id = "AA:BB:CC:DD:EE:FF", name = "BT24-S", isBle = true, rssi = -40
+        )
+        val timeouts = mutableListOf<Long>()
+        port.executeResults = { effect ->
+            when (effect) {
+                is ConnectionEffect.ConnectDevice -> {
+                    timeouts += effect.timeoutMillis
+                    flowOf(ConnectionEvent.DeviceConnected(device))
+                }
+                else -> emptyFlow()
+            }
+        }
+        try {
+            val translation = ViewModelProvider(
+                store,
+                ConnectionTranslation.factory("user-1", port, {})
+            )[ConnectionTranslation::class.java]
+            translation.submit(ConnectionIntent.BecameVisible)
+            translation.submit(ConnectionIntent.BluetoothAccessGranted)
+            advanceUntilIdle()
+            port.devices.emit(device)
+            advanceUntilIdle()
+            translation.submit(ConnectionIntent.SelectDevice(device.id))
+            advanceUntilIdle()
+
+            translation.submit(ConnectionIntent.Reconnect)
+            advanceUntilIdle()
+
+            assertEquals(2, timeouts.size)
+            assertEquals(DEFAULT_CONNECT_TIMEOUT_MILLIS, timeouts[0])
+            assertTrue(
+                "重连应短于首次连接,实际 ${timeouts[1]}ms",
+                timeouts[1] < DEFAULT_CONNECT_TIMEOUT_MILLIS
             )
         } finally {
             store.clear()

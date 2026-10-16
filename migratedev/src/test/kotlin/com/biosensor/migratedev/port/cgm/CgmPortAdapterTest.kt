@@ -361,14 +361,36 @@ class CgmPortAdapterTest {
         assertEquals(listOf(CgmShortEvent.CommandTimeout(session.id)), events)
     }
 
-    // ── 删除确认(短命令)：设备明确回复 Log Cleared ──
+    // ── 删除确认(短命令)：设备收到就清空，一个字都不回 ──
 
+    /** 2026-10-16 实机实测:发完 DELETE 后 60s 内设备零回包,缓存确实已清空。 */
     @Test
-    fun `manual delete waits for Log Cleared and preserves event order`() = runTest {
+    fun `manual delete completes on write ack without waiting for a reply`() = runTest {
+        val payloadSize = "DELETE\n\r".encodeToByteArray().size
+        bluetooth.results = flow {
+            emit(BluetoothEvent.DataSentAck(payloadSize))
+            awaitCancellation()   // 设备不回话:流不结束,只能靠写确认收尾
+        }
+
+        val events = port.execute(
+            CgmShortEffect.SendCommand(session, CgmCommandPurpose.DELETE)
+        ).toList()
+
+        assertEquals(
+            listOf(
+                CgmShortEvent.CommandAccepted(session.id),
+                CgmShortEvent.AckReceived(session.id, CgmCommandPurpose.DELETE)
+            ),
+            events
+        )
+    }
+
+    /** 回包比写确认先到:先上报 CommandAccepted，再上报业务 ACK。 */
+    @Test
+    fun `short command preserves event order when reply precedes write ack`() = runTest {
         val payloadSize = "DELETE\n\r".encodeToByteArray().size
         bluetooth.results = flowOf(
-            // 即便设备回复比写确认回调更早，也要先上报 CommandAccepted，再上报业务 ACK。
-            BluetoothEvent.DataReceived("Log Cleared\r\n".encodeToByteArray()),
+            BluetoothEvent.DataReceived("ack\r\n".encodeToByteArray()),
             BluetoothEvent.DataSentAck(payloadSize)
         )
 

@@ -16,10 +16,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
+import com.biosensor.migratedev.decisioncore.cgm.StopReason
 import com.biosensor.migratedev.translation.cgm.CgmShortResult
 import com.biosensor.migratedev.translation.cgm.CgmUiState
 
-/** 状态区:读流程阶段文案(带进度圈)+ 过程消息 + 短命令结果 + 冲突提示。
+/** 状态区:阶段标签(带进度圈)+ 只在有细节时的第二行 + 短命令结果 + 冲突提示。
  *  失败原因经 readMessage 展示;冲突提示(hint)等价 toast,下次操作自动消失。 */
 @Composable
 fun CgmStatusArea(state: CgmUiState) {
@@ -31,7 +32,7 @@ fun CgmStatusArea(state: CgmUiState) {
             if (state.readPhase.running) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             }
-            Text(state.readPhase.text(state.readMessage))
+            Text(state.readPhase.text(state.stopReason))
         }
         state.readMessage?.let {
             Spacer(Modifier.height(8.dp))
@@ -58,15 +59,14 @@ fun CgmStatusArea(state: CgmUiState) {
     }
 }
 
-private fun CgmReadPhase.text(message: String?): String = when (this) {
+private fun CgmReadPhase.text(stopReason: StopReason?): String = when (this) {
     CgmReadPhase.IDLE -> "空闲,可发起读取"
     CgmReadPhase.SENDING -> "命令发送中"
     CgmReadPhase.RECEIVING -> "接收缓存数据"
-    CgmReadPhase.WRITING -> "校验通过，正在追加保存"
+    CgmReadPhase.WRITING -> "正在追加保存"
     CgmReadPhase.FAILED -> "读取失败"
     CgmReadPhase.RECONNECTING -> "连接中断,正在重连"
-    CgmReadPhase.STOPPED -> if (message == "读取已强制停止") "读取已停止"
-        else "读取完成(会话已关闭,数据保留)"
+    CgmReadPhase.STOPPED -> if (stopReason == StopReason.USER_CANCEL) "读取已停止" else "读取完成"
     CgmReadPhase.ERROR -> "发生错误"
 }
 

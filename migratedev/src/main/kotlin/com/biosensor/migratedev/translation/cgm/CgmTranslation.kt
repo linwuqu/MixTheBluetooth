@@ -48,6 +48,8 @@ data class CgmShortResult(
 data class CgmUiState(
     val readPhase: CgmReadPhase,
     val readMessage: String?,
+    /** STOPPED 的原因:区分"读取完成"与"读取已停止"。 */
+    val stopReason: StopReason? = null,
     val progressPoints: Int,          // 本次接收的 EIS + CA 点数
     val roundCount: Int,              // LOG 段数
     val dataLines: List<String>,      // 本次完整记录
@@ -301,6 +303,7 @@ private fun CgmReadState.toUi(
     return CgmUiState(
         readPhase = phase,
         readMessage = readMessage(),
+        stopReason = stopReason,
         progressPoints = summary.eisPoints + summary.caPoints,
         roundCount = summary.segments,
         dataLines = shown.map { it.text },
@@ -315,17 +318,15 @@ private fun CgmReadState.toUi(
     )
 }
 
+/**
+ * 过程细节。阶段标签([CgmStatusArea])已说明状态,这里只补它没说的事:
+ * 失败原因,以及"这是第几轮重读"。没有新信息就返回 null,界面不留重复行。
+ */
 private fun CgmReadState.readMessage(): String? = when (phase) {
-    CgmReadPhase.IDLE -> null
-    CgmReadPhase.SENDING -> "命令发送中"
-    CgmReadPhase.RECEIVING -> "接收中(第 ${retryCount + 1} 次尝试)"
-    CgmReadPhase.WRITING -> "校验通过，正在追加保存"
-    CgmReadPhase.RECONNECTING -> "连接中断,正在重连…"
+    CgmReadPhase.IDLE, CgmReadPhase.SENDING, CgmReadPhase.WRITING,
+    CgmReadPhase.RECONNECTING, CgmReadPhase.STOPPED -> null
+    CgmReadPhase.RECEIVING -> if (retryCount == 0) null else "第 ${retryCount + 1} 次尝试"
     CgmReadPhase.FAILED, CgmReadPhase.ERROR -> message
-    CgmReadPhase.STOPPED -> when (stopReason) {
-        StopReason.USER_CANCEL -> "读取已强制停止"
-        else -> "读取完成(会话已关闭,数据保留)"
-    }
 }
 
 /** 冲突拒绝时的提示文案(§1.7 ②)。 */

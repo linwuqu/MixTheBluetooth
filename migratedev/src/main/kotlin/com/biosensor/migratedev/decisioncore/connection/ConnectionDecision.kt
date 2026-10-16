@@ -45,7 +45,9 @@ sealed interface ConnectionEvent {
     data object RefreshRequested : ConnectionEvent
 
     data class ConnectRequested(
-        val deviceId: String
+        val deviceId: String,
+        /** 本次连接的等待上限。重连传更短的值:一轮卡满会让整个重试阶梯变慢。 */
+        val timeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS
     ) : ConnectionEvent
 
     data class DeviceConnected(
@@ -76,11 +78,15 @@ sealed interface ConnectionEffect {
     ) : ConnectionEffect
 
     data class ConnectDevice(
-        val deviceId: String
+        val deviceId: String,
+        val timeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS
     ) : ConnectionEffect
 
     data object DisconnectDevice : ConnectionEffect
 }
+
+/** 首次连接:设备可能刚上电、广播还没起来,给足等待。 */
+const val DEFAULT_CONNECT_TIMEOUT_MILLIS = 15_000L
 
 object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, ConnectionEffect> {
 
@@ -99,7 +105,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         ConnectionEvent.RefreshRequested -> onRefresh(currentState)
 
         is ConnectionEvent.ConnectRequested -> onConnectRequested(
-            currentState, event.deviceId
+            currentState, event.deviceId, event.timeoutMillis
         )
 
         is ConnectionEvent.DeviceConnected -> onDeviceConnected(
@@ -156,7 +162,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
     }
 
     private fun onConnectRequested(
-        state: ConnectionState, deviceId: String
+        state: ConnectionState, deviceId: String, timeoutMillis: Long
     ): Transition<ConnectionState, ConnectionEffect> {
         val userId = when (state) {
             is ConnectionState.Scanning -> state.userId
@@ -165,7 +171,7 @@ object ConnectionDecisionCore : DecisionCore<ConnectionState, ConnectionEvent, C
         }
         return Transition(
             newState = ConnectionState.Connecting(userId, deviceId),
-            effects = listOf(ConnectionEffect.ConnectDevice(deviceId))
+            effects = listOf(ConnectionEffect.ConnectDevice(deviceId, timeoutMillis))
         )
     }
 

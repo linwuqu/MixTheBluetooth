@@ -11,6 +11,7 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmRecord
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import com.biosensor.migratedev.decisioncore.cgm.MarkerKind
+import com.biosensor.migratedev.decisioncore.cgm.StopReason
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothConnectionState
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +120,9 @@ class CgmTranslationTest {
             assertEquals(fullCache().size, translation.uiState.value.dataLines.size)
             assertEquals("Start Playback", translation.uiState.value.dataLines.first())
             assertEquals("Playback all done", translation.uiState.value.dataLines.last())
-            assertTrue(translation.uiState.value.validationChecks.any { it.name.contains("seq") && it.passed })
+            assertTrue(
+                translation.uiState.value.validationChecks.any { it.name == "缓存结构" && it.passed }
+            )
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -174,7 +177,9 @@ class CgmTranslationTest {
             advanceUntilIdle()
 
             assertEquals(CgmReadPhase.STOPPED, translation.uiState.value.readPhase)
-            assertEquals("读取已强制停止", translation.uiState.value.readMessage)
+            // 阶段标签由 stopReason 决定文案("读取已停止"),过程行为空不留重复行
+            assertEquals(StopReason.USER_CANCEL, translation.uiState.value.stopReason)
+            assertEquals(null, translation.uiState.value.readMessage)
             assertEquals("已强制停止本次读取", translation.uiState.value.hint)
             assertTrue(port.readEffects.any { it is CgmReadEffect.StopRuntime })
         } finally {
@@ -433,7 +438,8 @@ class CgmTranslationTest {
 
             val ui = translation.uiState.value
             assertEquals(CgmReadPhase.RECEIVING, ui.readPhase)
-            assertTrue(ui.readMessage!!.startsWith("接收中"))
+            // 首轮无细节可补:阶段标签已说明在接收,不为它再留一行重复文案
+            assertEquals(null, ui.readMessage)
             assertEquals(10, ui.progressPoints)
             assertEquals(1, ui.roundCount)
             assertEquals(12, ui.dataLines.size)   // 全部记录：START + LOG + 10 EIS

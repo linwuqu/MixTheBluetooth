@@ -39,7 +39,7 @@ class ConnectionPortAdapter(
         is ConnectionEffect.SaveBinding -> saveBinding(effect.userId, effect.deviceId)
 
         is ConnectionEffect.ConnectDevice -> bluetooth.execute(
-            BluetoothEffect.Connect(effect.deviceId)
+            BluetoothEffect.Connect(effect.deviceId, effect.timeoutMillis)
         ).map { it.toEvent() }
 
         ConnectionEffect.DisconnectDevice -> bluetooth.execute(

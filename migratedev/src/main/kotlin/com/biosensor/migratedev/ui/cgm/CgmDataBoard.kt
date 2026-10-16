@@ -29,7 +29,8 @@ import kotlinx.coroutines.launch
 fun CgmDataBoard(state: CgmUiState, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val checkRows = state.validationChecks.size.coerceAtLeast(1)
+    // 通过的校验占一行(只显示名字);失败的多占一行放原因
+    val checkRows = state.validationChecks.sumOf { if (it.passed) 1 else 2 }.coerceAtLeast(1)
     val dataStartIndex = 4 + checkRows
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -67,12 +68,15 @@ fun CgmDataBoard(state: CgmUiState, modifier: Modifier = Modifier) {
                         else "尚未执行校验")
                 }
             } else {
+                // 通过只报项目名,失败才展开原因——逐项细节会把这一屏刷满
                 items(state.validationChecks) { check ->
-                    Column {
-                        Text("${if (check.passed) "通过" else "失败"} · ${check.name}",
-                            color = if (check.passed) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error)
-                        Text(check.detail, style = MaterialTheme.typography.bodySmall)
+                    if (check.passed) {
+                        Text("通过 · ${check.name}", color = MaterialTheme.colorScheme.primary)
+                    } else {
+                        Column {
+                            Text("失败 · ${check.name}", color = MaterialTheme.colorScheme.error)
+                            Text(check.detail, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }

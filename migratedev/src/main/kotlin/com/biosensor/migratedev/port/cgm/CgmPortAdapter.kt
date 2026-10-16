@@ -164,46 +164,46 @@ class CgmPortAdapter(
     }
 
     // ── 短命令流:发 TIME/DELETE → 等确认 ──
-
+    //
+    // 设备回包行为不同(2026-10-16 实机实测,BT24-S):
+    //   对时 → 回 "Time sync ok\r\n",约 100ms 到达,收到回包才算完成。
+    //   删除 → 回 "Log cleared\r\n"(小写 c),但比写确认晚约 70ms。
+    //
+    // 删除不按回包文案判定:回包在写确认之后才到,等它只是平白加延迟,而且一旦固件改字
+    // (曾经写成 "Log Cleared")就会一路等到 60s 空闲超时——真机踩过。写确认 = 设备 BLE
+    // 栈已收下整条指令,对"清空缓存"这种不需要回执的动作足够,且永不依赖固件措辞。
     private fun shortFlow(
         session: CgmSession, purpose: CgmCommandPurpose
     ): Flow<CgmShortEvent> = sessionFlow(session) {
         val payload = encode(purpose).encodeToByteArray()
-        val response = StringBuilder()
+        val doneOnWrite = purpose == CgmCommandPurpose.DELETE
         var sentBytes = 0
         var accepted = false
+        var replySeen = false   // 设备已回话(可能比写确认先到)
         var settled = false
-        var ackPending = false
         try {
             bluetooth.execute(BluetoothEffect.SendData(payload))
                 .timeout(commandIdleTimeoutMillis.milliseconds).collect { event ->
                     when (event) {
                         is BluetoothEvent.DataSentAck -> {
                             sentBytes += event.bytesSentAck
-                            if (!accepted && sentBytes >= payload.size) {
-                                accepted = true
-                                emit(CgmShortEvent.CommandAccepted(session.id))
-                                if (ackPending) {
-                                    settled = true
-                                    emit(CgmShortEvent.AckReceived(session.id, purpose))
-                                    throw SessionEnded
-                                }
-                            }
-                        }
-
-                        is BluetoothEvent.DataReceived -> {
-                            response.append(event.data.decodeToString())
-                            // 删除必须等设备明确回复 Log Cleared(写出 ACK 不算);对时不校验回包内容
-                            val confirmed = purpose != CgmCommandPurpose.DELETE ||
-                                response.contains(DELETE_ACK)
-                            if (!confirmed) return@collect
-                            if (!accepted) {
-                                ackPending = true   // 回包比写确认先到:先记下,确认时再上报
-                            } else {
+                            if (accepted || sentBytes < payload.size) return@collect
+                            accepted = true
+                            emit(CgmShortEvent.CommandAccepted(session.id))
+                            // 删除:写确认即完成;对时:回包若已先到,此刻补上报
+                            if (doneOnWrite || replySeen) {
                                 settled = true
                                 emit(CgmShortEvent.AckReceived(session.id, purpose))
                                 throw SessionEnded
                             }
+                        }
+
+                        is BluetoothEvent.DataReceived -> {
+                            replySeen = true
+                            if (!accepted) return@collect   // 写确认未到:等那一步统一上报
+                            settled = true
+                            emit(CgmShortEvent.AckReceived(session.id, purpose))
+                            throw SessionEnded
                         }
 
                         is BluetoothEvent.Disconnected, is BluetoothEvent.ConnectFailed -> {
@@ -307,7 +307,6 @@ class CgmPortAdapter(
     private companion object {
         const val CGM_TAG = "Cgm.Port"
         const val COMMAND_IDLE_TIMEOUT_MILLIS = 60_000L   // 空闲超时:距上次事件 60s 无数据才判超时
-        const val DELETE_ACK = "Log Cleared"
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy,MM,dd,HH,mm,ss")
     }
 }
