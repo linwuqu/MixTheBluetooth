@@ -82,10 +82,12 @@ fun AppMain(graph: AppGraph) {
 
             composable(CGM_ROUTE) {
                 val cgm = root.cgmOrNull()
-                if (cgm == null) {
+                // 贴片与 Cgm 同时建出来,缺一个都还没准备好
+                val patch = root.patchOrNull()
+                if (cgm == null || patch == null) {
                     AppLoading()
                 } else {
-                    CgmRoute(cgm)
+                    CgmRoute(cgm, patch)
                 }
             }
         }

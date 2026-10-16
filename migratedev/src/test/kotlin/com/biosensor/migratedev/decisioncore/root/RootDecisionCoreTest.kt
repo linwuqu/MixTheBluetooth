@@ -160,7 +160,7 @@ class RootDecisionCoreTest {
             result.newState.screen()
         )
         assertEquals(
-            listOf(RootEffect.StartCgmEffect("AA:01")),
+            listOf(RootEffect.StartCgmEffect("user-1", "AA:01")),
             result.effects
         )
     }

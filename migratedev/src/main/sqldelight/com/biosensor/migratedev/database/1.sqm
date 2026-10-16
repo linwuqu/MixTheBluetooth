@@ -1,0 +1,20 @@
+-- v1 -> v2:新增贴片绑定表。
+-- 这个文件不能省:SQLDelight 的 schema 版本 = .sqm 文件数 + 1,没有 .sqm 时版本恒为 1,
+-- 只往 .sq 里加表会出现「新装能建、老库永远不建」(user_version 已是 1,onUpgrade 不触发)。
+-- 守门测试:test/.../database/PatchBindingMigrationTest.kt
+CREATE TABLE patchBinding (
+    userId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    patchId TEXT NOT NULL,
+    modelId INTEGER,
+    lotNo TEXT,
+    manufacturedOn TEXT,
+    expiresOn TEXT,
+    maxUseMinutes INTEGER,
+    calibrationRef TEXT,
+    rawCode TEXT NOT NULL,
+    boundAtMillis INTEGER NOT NULL,
+    PRIMARY KEY (userId, deviceId, patchId)
+);
+
+CREATE INDEX patchBindingByDevice ON patchBinding(userId, deviceId, boundAtMillis);

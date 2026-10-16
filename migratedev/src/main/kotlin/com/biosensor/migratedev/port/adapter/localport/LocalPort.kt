@@ -1,6 +1,7 @@
 package com.biosensor.migratedev.port.adapter.localport
 
 import com.biosensor.migratedev.database.DeviceBindingQueries
+import com.biosensor.migratedev.database.PatchBindingQueries
 import okio.Sink
 import okio.Source
 
@@ -36,6 +37,7 @@ sealed interface KvRemoveResult {
 
 interface SqlStore {
     val deviceBinding: DeviceBindingQueries
+    val patchBinding: PatchBindingQueries
 }
 
 interface FileStore {

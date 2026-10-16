@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import com.biosensor.migratedev.translation.cgm.CgmConnectionStatus
 import com.biosensor.migratedev.translation.cgm.CgmDataSummary
 import com.biosensor.migratedev.decisioncore.cgm.ValidationCheck
 import com.biosensor.migratedev.decisioncore.cgm.CgmFileAppendResult
+import com.biosensor.migratedev.decisioncore.patch.PatchBinding
 import com.biosensor.migratedev.decisioncore.upload.CgmResult
 
 /** 页面两块内容:设备读回来的缓存明文流,和上传后后端给的分析结果。 */
@@ -43,10 +45,17 @@ private enum class CgmScreenTab(val title: String) {
     RESULT("分析结果")
 }
 
-/** 纯呈现:标题/连接态 + 命令栏 + 状态区 + 两个页签。长按读缓存提供强停入口。 */
+/**
+ * 纯呈现:标题/连接态 + 贴片入口 + 命令栏 + 状态区 + 两个页签。长按读缓存提供强停入口。
+ *
+ * [bindings] / [patchMessage] 来自贴片域,不是 [CgmUiState] 的一部分——CGM 页只是它的读者。
+ */
 @Composable
 fun CgmScreen(
     state: CgmUiState,
+    bindings: List<PatchBinding>,
+    patchMessage: String?,
+    onScanPatch: () -> Unit,
     onRead: () -> Unit,
     onForceStopRead: () -> Unit,
     onUpload: () -> Unit,
@@ -69,7 +78,24 @@ fun CgmScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("缓存明文流", style = MaterialTheme.typography.headlineSmall)
-            CgmConnectionIndicator(state.connectionStatus)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 常驻入口:扫过之后变成「重扫贴片」,想换一枚随时点
+                TextButton(onClick = onScanPatch) {
+                    Text(if (bindings.isEmpty()) "扫码绑定" else "重扫贴片")
+                }
+                CgmConnectionIndicator(state.connectionStatus)
+            }
+        }
+        // 贴片域的事故(读绑定失败 / 相机权限被拒)在这里出声,不挤进 CgmStatusArea
+        if (patchMessage != null) {
+            Text(
+                text = patchMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
         Spacer(Modifier.height(12.dp))
         CgmCommandBar(
@@ -98,6 +124,7 @@ fun CgmScreen(
             )
             CgmScreenTab.RESULT -> CgmResultPanel(
                 state = state,
+                bindings = bindings,
                 onUpload = onUpload,
                 modifier = Modifier.weight(1f)
             )
@@ -171,6 +198,17 @@ private fun CgmScreenPreview() {
                     )
                 )
             ),
+            bindings = listOf(
+                PatchBinding(
+                    patchId = "550e8400-e29b-41d4-a716-446655440000",
+                    modelId = 1, lotNo = "DEMO-260701",
+                    manufacturedOn = "2026-07-01", expiresOn = "2027-07-01",
+                    maxUseMinutes = 120, calibrationRef = "DEMO-CAL",
+                    rawCode = "", boundAtMillis = 0
+                )
+            ),
+            patchMessage = null,
+            onScanPatch = {},
             onRead = {}, onForceStopRead = {}, onUpload = {}, onSyncTime = {}, onDelete = {}
         )
     }

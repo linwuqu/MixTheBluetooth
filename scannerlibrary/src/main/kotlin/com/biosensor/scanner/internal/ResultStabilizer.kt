@@ -50,18 +50,4 @@ internal class ResultStabilizer(
 
     private fun elapsed(now: Long, then: Long): Long =
         if (then == Long.MIN_VALUE) Long.MAX_VALUE else (now - then).coerceAtLeast(0L)
-
-    private data class ResultKey(
-        val formatName: String,
-        val text: String?,
-        val bytes: List<Byte>,
-    ) {
-        companion object {
-            fun from(result: ScanResult): ResultKey = ResultKey(
-                formatName = result.format.name,
-                text = result.text,
-                bytes = result.rawBytes?.toList().orEmpty(),
-            )
-        }
-    }
 }

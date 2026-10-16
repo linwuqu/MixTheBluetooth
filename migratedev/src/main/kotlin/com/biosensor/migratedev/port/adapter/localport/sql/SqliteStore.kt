@@ -4,6 +4,7 @@ import android.content.Context
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.biosensor.migratedev.database.DeviceBindingQueries
 import com.biosensor.migratedev.database.LocalDatabase
+import com.biosensor.migratedev.database.PatchBindingQueries
 import com.biosensor.migratedev.port.adapter.localport.SqlStore
 
 /** 结构化实现浅壳:查询对象直接暴露,不映射、不建表接口。 */
@@ -12,6 +13,7 @@ class SqliteStore internal constructor(
 ) : SqlStore {
 
     override val deviceBinding: DeviceBindingQueries = database.deviceBindingQueries
+    override val patchBinding: PatchBindingQueries = database.patchBindingQueries
 
     companion object {
         fun create(context: Context): SqlStore {

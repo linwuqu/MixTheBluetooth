@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
+import com.biosensor.migratedev.decisioncore.patch.PatchBinding
 import com.biosensor.migratedev.decisioncore.upload.CgmResult
 import com.biosensor.migratedev.decisioncore.upload.PredictionStats
 import com.biosensor.migratedev.decisioncore.upload.ResultPoint
@@ -48,6 +49,7 @@ import java.util.Locale
 @Composable
 fun CgmResultPanel(
     state: CgmUiState,
+    bindings: List<PatchBinding>,
     onUpload: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -78,7 +80,7 @@ fun CgmResultPanel(
         val index = selected.coerceIn(0, summaries.lastIndex)
         UnitPicker(summaries, index) { selected = it }
         Spacer(Modifier.height(8.dp))
-        UnitNumbers(summaries[index])
+        UnitNumbers(summaries[index], bindings)
         Spacer(Modifier.height(12.dp))
         CgmGlucoseChart(points = result.units[index].points)
         Spacer(Modifier.height(8.dp))
@@ -142,12 +144,18 @@ private fun UnitPicker(
 }
 
 @Composable
-private fun UnitNumbers(summary: CgmUnitSummary) {
+private fun UnitNumbers(summary: CgmUnitSummary, bindings: List<PatchBinding>) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            summary.title ?: "单元 ${summary.unit}",
-            style = MaterialTheme.typography.titleSmall
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                summary.title ?: "单元 ${summary.unit}",
+                style = MaterialTheme.typography.titleSmall
+            )
+            PatchBadge(bindings)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Figure("平均", summary.mean?.let(::formatValue) ?: "—")
             Figure("高值", formatPercent(summary.highRatio))
@@ -217,6 +225,15 @@ private fun CgmResultPanelPreview() {
                             )
                         )
                     )
+                )
+            ),
+            bindings = listOf(
+                PatchBinding(
+                    patchId = "550e8400-e29b-41d4-a716-446655440000",
+                    modelId = 1, lotNo = "DEMO-260701",
+                    manufacturedOn = "2026-07-01", expiresOn = "2027-07-01",
+                    maxUseMinutes = 120, calibrationRef = "DEMO-CAL",
+                    rawCode = "", boundAtMillis = 0
                 )
             ),
             onUpload = {}

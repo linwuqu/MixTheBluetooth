@@ -34,7 +34,8 @@ sealed interface RootEvent {
 sealed interface RootEffect {
     data object StartAuthEffect : RootEffect
     data class StartConnectionEffect(val userId: String) : RootEffect
-    data class StartCgmEffect(val deviceId: String) : RootEffect
+    /** 带 userId:贴片绑定按账号隔离,子域建起来时就要(架构 13 §D2)。 */
+    data class StartCgmEffect(val userId: String, val deviceId: String) : RootEffect
     data object ClearAuthSessionEffect : RootEffect
     data object ReleaseConnectionEffect : RootEffect
 }
@@ -113,7 +114,7 @@ object RootDecisionCore : DecisionCore<RootState, RootEvent, RootEffect> {
         is RootEvent.CgmConnectedEvent -> when (currentState) {
             is RootState.RunningConnection -> Transition(
                 RootState.RunningCgm(currentState.userId, event.deviceId),
-                listOf(RootEffect.StartCgmEffect(event.deviceId))
+                listOf(RootEffect.StartCgmEffect(currentState.userId, event.deviceId))
             )
 
             else -> unchanged(currentState)

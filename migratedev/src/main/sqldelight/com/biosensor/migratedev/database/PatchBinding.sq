@@ -1,0 +1,47 @@
+-- 贴片绑定:一台蓝牙设备上扫过哪些贴片(1:n)。
+-- 列名与贴片编码协议 V1 的字段 01-07 一一对应;不认识的扩展字段留在 rawCode 里不丢。
+-- 主键带 userId:业务查询按账号过滤,换账号不转移旧数据(架构 13 §4.4)。
+-- 同片重扫命中主键,只刷新 boundAtMillis,不增行。
+CREATE TABLE patchBinding (
+    userId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    patchId TEXT NOT NULL,
+    modelId INTEGER,
+    lotNo TEXT,
+    manufacturedOn TEXT,
+    expiresOn TEXT,
+    maxUseMinutes INTEGER,
+    calibrationRef TEXT,
+    rawCode TEXT NOT NULL,
+    boundAtMillis INTEGER NOT NULL,
+    PRIMARY KEY (userId, deviceId, patchId)
+);
+
+CREATE INDEX patchBindingByDevice ON patchBinding(userId, deviceId, boundAtMillis);
+
+upsert:
+INSERT OR REPLACE INTO patchBinding(
+    userId,
+    deviceId,
+    patchId,
+    modelId,
+    lotNo,
+    manufacturedOn,
+    expiresOn,
+    maxUseMinutes,
+    calibrationRef,
+    rawCode,
+    boundAtMillis
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- 最近绑的排前:界面上第一个短号就是刚扫的那枚
+selectByDevice:
+SELECT userId, deviceId, patchId, modelId, lotNo, manufacturedOn,
+       expiresOn, maxUseMinutes, calibrationRef, rawCode, boundAtMillis
+FROM patchBinding
+WHERE userId = ? AND deviceId = ?
+ORDER BY boundAtMillis DESC;
+
+deleteByDevice:
+DELETE FROM patchBinding
+WHERE userId = ? AND deviceId = ?;

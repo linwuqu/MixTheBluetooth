@@ -14,6 +14,8 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import com.biosensor.migratedev.decisioncore.cgm.MarkerKind
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEffect
 import com.biosensor.migratedev.decisioncore.connection.ConnectionEvent
+import com.biosensor.migratedev.decisioncore.patch.PatchEffect
+import com.biosensor.migratedev.decisioncore.patch.PatchEvent
 import com.biosensor.migratedev.decisioncore.root.RootState
 import com.biosensor.migratedev.decisioncore.upload.UploadEffect
 import com.biosensor.migratedev.decisioncore.upload.UploadEvent
@@ -22,6 +24,7 @@ import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
+import com.biosensor.migratedev.port.patch.PatchPort
 import com.biosensor.migratedev.port.upload.UploadPort
 import com.biosensor.migratedev.translation.cgm.CgmIntent
 import com.biosensor.migratedev.translation.connection.ConnectionIntent
@@ -56,6 +59,7 @@ class RootWorkflowTest {
                 connectionPort = EmptyConnectionPort,
                 cgmPort = FakeCgmPort(),
                 uploadPort = EmptyUploadPort,
+                patchPort = EmptyPatchPort,
                 scope = this
             )
             try {
@@ -179,6 +183,7 @@ class RootWorkflowTest {
                 connectionPort = connectPort,
                 cgmPort = cgmPort,
                 uploadPort = EmptyUploadPort,
+                patchPort = EmptyPatchPort,
                 scope = this
             )
             try {
@@ -217,6 +222,11 @@ class RootWorkflowTest {
     /** 本文件不测上传:挂一个空端口,让 Cgm 域能装起来即可。 */
     private object EmptyUploadPort : UploadPort {
         override fun execute(effect: UploadEffect): Flow<UploadEvent> = emptyFlow()
+    }
+
+    /** 本文件不测贴片:挂一个空端口,让贴片域能装起来即可。 */
+    private object EmptyPatchPort : PatchPort {
+        override fun execute(effect: PatchEffect): Flow<PatchEvent> = emptyFlow()
     }
 
     /** 每次 ConnectDevice 都成功连接(自动重连由 Root 转发 Reconnect 驱动,断线事件不经过连接端口)。 */
@@ -282,6 +292,7 @@ class RootWorkflowTest {
                 connectionPort = connectingPort,
                 cgmPort = cgmPort,
                 uploadPort = EmptyUploadPort,
+                patchPort = EmptyPatchPort,
                 scope = this
             )
             try {

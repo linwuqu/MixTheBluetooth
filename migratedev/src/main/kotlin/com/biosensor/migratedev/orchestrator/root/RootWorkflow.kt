@@ -10,6 +10,7 @@ import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.port.auth.AuthPort
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.ConnectionPort
+import com.biosensor.migratedev.port.patch.PatchPort
 import com.biosensor.migratedev.port.upload.UploadPort
 import com.biosensor.migratedev.translation.auth.AuthIntent
 import com.biosensor.migratedev.translation.auth.AuthOutput
@@ -20,6 +21,7 @@ import com.biosensor.migratedev.translation.cgm.CgmTranslation
 import com.biosensor.migratedev.translation.connection.ConnectionIntent
 import com.biosensor.migratedev.translation.connection.ConnectionOutput
 import com.biosensor.migratedev.translation.connection.ConnectionTranslation
+import com.biosensor.migratedev.translation.patch.PatchTranslation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +46,7 @@ class RootWorkflow(
     private val connectionPort: ConnectionPort,
     private val cgmPort: CgmPort,
     private val uploadPort: UploadPort,
+    private val patchPort: PatchPort,
     scope: CoroutineScope
 ) : AutoCloseable {
 
@@ -55,6 +58,10 @@ class RootWorkflow(
 
     private var cgmStore: ViewModelStore? = null
     private var cgm: CgmTranslation? = null
+
+    /** 贴片是独立子域:与 Cgm 平级,各有各的 ViewModelStore(架构 13 §D3)。 */
+    private var patchStore: ViewModelStore? = null
+    private var patch: PatchTranslation? = null
 
     private val orchestrator = WorkflowOrchestrator(
         initialState = RootState.Starting,
@@ -76,6 +83,8 @@ class RootWorkflow(
 
     fun cgmOrNull(): CgmTranslation? = cgm
 
+    fun patchOrNull(): PatchTranslation? = patch
+
     private fun execute(effect: RootEffect): Flow<RootEvent> = flow {
         when (effect) {
             RootEffect.StartAuthEffect -> {
@@ -89,7 +98,7 @@ class RootWorkflow(
             }
 
             is RootEffect.StartCgmEffect -> {
-                startCgm(effect.deviceId)
+                startCgm(effect.userId, effect.deviceId)
                 emit(RootEvent.CgmStartedEvent)
             }
 
@@ -131,9 +140,12 @@ class RootWorkflow(
         connection = null
     }
 
-    private fun startCgm(deviceId: String) {
+    private fun startCgm(userId: String, deviceId: String) {
         check(cgm == null) {
             "CgmTranslation 已存在"
+        }
+        check(patch == null) {
+            "PatchTranslation 已存在"
         }
         val store = ViewModelStore()
         cgmStore = store
@@ -142,6 +154,15 @@ class RootWorkflow(
                 deviceId = deviceId, port = cgmPort, uploadPort = uploadPort, report = ::report
             )
         )[CgmTranslation::class.java]
+
+        // 贴片与 Cgm 同生共死:都挂在 RunningCgm 上,各自一个 store 以便分开回收
+        val patchOwnStore = ViewModelStore()
+        patchStore = patchOwnStore
+        patch = ViewModelProvider(
+            patchOwnStore, PatchTranslation.factory(
+                userId = userId, deviceId = deviceId, port = patchPort
+            )
+        )[PatchTranslation::class.java]
     }
 
     private fun report(output: AuthOutput) {
@@ -197,11 +218,14 @@ class RootWorkflow(
     override fun close() {
         orchestrator.close()
         cgmStore?.clear()
+        patchStore?.clear()
         connectionStore?.clear()
         authStore.clear()
         cgmStore = null
+        patchStore = null
         connectionStore = null
         cgm = null
+        patch = null
         connection = null
         auth = null
     }
