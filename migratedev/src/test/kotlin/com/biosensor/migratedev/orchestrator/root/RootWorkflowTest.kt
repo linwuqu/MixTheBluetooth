@@ -4,9 +4,10 @@ import com.biosensor.migratedev.decisioncore.auth.AuthEffect
 import com.biosensor.migratedev.decisioncore.auth.AuthEvent
 import com.biosensor.migratedev.decisioncore.auth.AuthSession
 import com.biosensor.migratedev.decisioncore.auth.User
-import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
+import com.biosensor.migratedev.decisioncore.cgm.CacheValidators
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEvent
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.decisioncore.cgm.CgmRecord
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
@@ -20,7 +21,6 @@ import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.connection.BindingSnapshot
 import com.biosensor.migratedev.port.connection.ConnectionPort
 import com.biosensor.migratedev.translation.cgm.CgmIntent
-import com.biosensor.migratedev.translation.cgm.CgmReadPhase
 import com.biosensor.migratedev.translation.connection.ConnectionIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -161,12 +161,11 @@ class RootWorkflowTest {
                     )
                     is CgmReadEffect.RetryRead -> flowOf(
                         CgmReadEvent.CommandAccepted(effect.session.id),
-                        CgmReadEvent.RecordsProduced(effect.session.id, cgmCache)
+                        CgmReadEvent.RecordsProduced(
+                            effect.session.id, cgmCache, CacheValidators.validate(cgmCache))
                     )
                     is CgmReadEffect.WriteFile -> flowOf(
                         CgmReadEvent.FileWritten(effect.session.id, "cgm/s1.txt"))
-                    is CgmReadEffect.SendDelete -> flowOf(
-                        CgmReadEvent.AckReceived(effect.session.id, CgmCommandPurpose.DELETE))
                     is CgmReadEffect.StopRuntime -> flowOf()
                 }
             }
@@ -198,7 +197,7 @@ class RootWorkflowTest {
                 advanceUntilIdle()
 
                 assertEquals("重连后应自动重读并完成",
-                    CgmReadPhase.Stopped, cgm.uiState.value.readPhase)
+                    CgmReadPhase.STOPPED, cgm.uiState.value.readPhase)
                 assertEquals("重连成功应完成(非失败),实际: ${cgm.uiState.value.readMessage}",
                     null, cgm.uiState.value.readMessage?.takeIf { it.contains("失败") })
                 assertEquals("重连应是第二次连接", 2, connectPort.connectCount)
@@ -317,7 +316,7 @@ class RootWorkflowTest {
             shortResults(effect)
     }
 
-    /** 完整单段缓存:EIS 段 95 点,校验必过 → 双闸门完成。 */
+    /** 完整单段缓存:EIS 段 95 点,收集校验必过 → 入库 → 收工。 */
     private fun FakeCgmPort.completeReadFlow() {
         val cache = buildList {
             add(CgmRecord.Marker(MarkerKind.START, "Start Playback"))
@@ -336,16 +335,16 @@ class RootWorkflowTest {
             when (effect) {
                 is CgmReadEffect.StartRead -> flowOf(
                     CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, cache)
+                    CgmReadEvent.RecordsProduced(
+                        effect.session.id, cache, CacheValidators.validate(cache))
                 )
                 is CgmReadEffect.RetryRead -> flowOf(
                     CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, cache)
+                    CgmReadEvent.RecordsProduced(
+                        effect.session.id, cache, CacheValidators.validate(cache))
                 )
                 is CgmReadEffect.WriteFile -> flowOf(
                     CgmReadEvent.FileWritten(effect.session.id, "cgm/s1.txt"))
-                is CgmReadEffect.SendDelete -> flowOf(
-                    CgmReadEvent.AckReceived(effect.session.id, CgmCommandPurpose.DELETE))
                 is CgmReadEffect.StopRuntime -> flowOf()
             }
         }

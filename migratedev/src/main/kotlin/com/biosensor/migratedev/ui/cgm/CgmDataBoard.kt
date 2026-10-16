@@ -20,7 +20,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.biosensor.migratedev.translation.cgm.CgmReadPhase
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.translation.cgm.CgmUiState
 import kotlinx.coroutines.launch
 
@@ -63,7 +63,7 @@ fun CgmDataBoard(state: CgmUiState, modifier: Modifier = Modifier) {
             item { Text("校验过程", style = MaterialTheme.typography.titleMedium) }
             if (state.validationChecks.isEmpty()) {
                 item {
-                    Text(if (state.readPhase == CgmReadPhase.Receiving) "接收中，等待 END 后校验"
+                    Text(if (state.readPhase == CgmReadPhase.RECEIVING) "接收中，等待 END 后校验"
                         else "尚未执行校验")
                 }
             } else {
@@ -87,8 +87,8 @@ fun CgmDataBoard(state: CgmUiState, modifier: Modifier = Modifier) {
                         SelectionContainer { Text(saved.path, style = MaterialTheme.typography.bodySmall) }
                     } else {
                         Text(when (state.readPhase) {
-                            CgmReadPhase.Completed -> "正在与文件比较并追加"
-                            CgmReadPhase.Error -> "保存失败，请查看错误和校验报告"
+                            CgmReadPhase.WRITING -> "正在与文件比较并追加"
+                            CgmReadPhase.ERROR -> "保存失败，请查看错误和校验报告"
                             else -> "本次数据尚未保存"
                         })
                     }

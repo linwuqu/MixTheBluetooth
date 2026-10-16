@@ -3,62 +3,50 @@ package com.biosensor.migratedev.decisioncore.cgm
 import com.biosensor.migratedev.decisioncore.DecisionCore
 import com.biosensor.migratedev.decisioncore.Transition
 
-// State / Event / Effect 词汇在 CgmContracts.kt(文件 04)
-
 /**
  * 短命令状态机(对时/删除):发一条 → 等确认 → Done,四态足够。
  * Done 就是终态(对时成功/删除成功),没有"停止"概念;超时/断开直接 Failed,不重试(重试 = 用户再点一次)。
  */
 object CgmShortDecision : DecisionCore<CgmShortState, CgmShortEvent, CgmShortEffect> {
     override fun reduce(
-        currentState: CgmShortState, event: CgmShortEvent
+        current: CgmShortState, event: CgmShortEvent
     ): Transition<CgmShortState, CgmShortEffect> = when (event) {
-        is CgmShortEvent.ShortRequested -> when (currentState) {
+        is CgmShortEvent.ShortRequested -> when (current) {
             CgmShortState.Idle, is CgmShortState.Done, is CgmShortState.Failed -> {
                 val session = CgmSession(event.sessionId, event.deviceId)
                 Transition(
                     CgmShortState.Sending(session, event.purpose),
                     listOf(CgmShortEffect.SendCommand(session, event.purpose)))
             }
-            else -> Transition(currentState)   // 兜底忽略;正常路径由 Translation 先复位再开始(架构 07 §1.7 ②)
+            // 兜底忽略;正常路径由 Translation 先复位再开始(架构 07 §1.7 ②)
+            else -> Transition(current)
         }
 
-        is CgmShortEvent.CommandAccepted -> when (currentState) {
-            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) {
-                Transition(CgmShortState.WaitingAck(currentState.session, currentState.purpose))
-            } else Transition(currentState)
-            else -> Transition(currentState)
+        is CgmShortEvent.CommandAccepted -> when (current) {
+            is CgmShortState.Sending -> if (current.session.id == event.sessionId) {
+                Transition(CgmShortState.WaitingAck(current.session, current.purpose))
+            } else Transition(current)
+            else -> Transition(current)
         }
 
-        is CgmShortEvent.AckReceived -> when (currentState) {
+        is CgmShortEvent.AckReceived -> when (current) {
+            // purpose 不匹配:串行下不会发生,防御性忽略
             is CgmShortState.WaitingAck ->
-                if (currentState.session.id == event.sessionId &&
-                    currentState.purpose == event.purpose
-                ) {
-                    Transition(CgmShortState.Done(currentState.session, currentState.purpose))
-                } else Transition(currentState)   // purpose 不匹配:串行下不会发生,防御性忽略
-            else -> Transition(currentState)
+                if (current.session.id == event.sessionId && current.purpose == event.purpose) {
+                    Transition(CgmShortState.Done(current.session, current.purpose))
+                } else Transition(current)
+            else -> Transition(current)
         }
 
-        // 逐类型分支:多分支并列时 smart cast 不成立,每个类型单独取 session
-        is CgmShortEvent.CommandTimeout -> when (currentState) {
-            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) Transition(
-                CgmShortState.Failed(currentState.session, "命令超时", currentState.purpose))
-            else Transition(currentState)
-            is CgmShortState.WaitingAck -> if (currentState.session.id == event.sessionId) Transition(
-                CgmShortState.Failed(currentState.session, "命令超时", currentState.purpose))
-            else Transition(currentState)
-            else -> Transition(currentState)
-        }
-
-        is CgmShortEvent.DeviceDisconnected -> when (currentState) {
-            is CgmShortState.Sending -> if (currentState.session.id == event.sessionId) Transition(
-                CgmShortState.Failed(currentState.session, "设备断开", currentState.purpose))
-            else Transition(currentState)
-            is CgmShortState.WaitingAck -> if (currentState.session.id == event.sessionId) Transition(
-                CgmShortState.Failed(currentState.session, "设备断开", currentState.purpose))
-            else Transition(currentState)
-            else -> Transition(currentState)
-        }
+        is CgmShortEvent.CommandTimeout -> current.fail(event.sessionId, "命令超时")
+        is CgmShortEvent.DeviceDisconnected -> current.fail(event.sessionId, "设备断开")
     }
+
+    /** 命令在途时失败;其他状态忽略(迟到的终止事件)。 */
+    private fun CgmShortState.fail(
+        sessionId: String, reason: String
+    ): Transition<CgmShortState, CgmShortEffect> =
+        if (this is CgmShortState.Pending && session.id == sessionId) {
+            Transition(CgmShortState.Failed(session, reason, purpose))
+        } else Transition(this)
 }

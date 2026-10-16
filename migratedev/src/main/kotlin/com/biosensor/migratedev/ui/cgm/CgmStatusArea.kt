@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
-import com.biosensor.migratedev.translation.cgm.CgmReadPhase
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.translation.cgm.CgmShortResult
 import com.biosensor.migratedev.translation.cgm.CgmUiState
 
@@ -28,7 +28,7 @@ fun CgmStatusArea(state: CgmUiState) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (state.readPhase.isBusy()) {
+            if (state.readPhase.running) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             }
             Text(state.readPhase.text(state.readMessage))
@@ -37,8 +37,8 @@ fun CgmStatusArea(state: CgmUiState) {
             Spacer(Modifier.height(8.dp))
             Text(
                 it,
-                color = if (state.readPhase == CgmReadPhase.Failed ||
-                    state.readPhase == CgmReadPhase.Error
+                color = if (state.readPhase == CgmReadPhase.FAILED ||
+                    state.readPhase == CgmReadPhase.ERROR
                 ) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -58,20 +58,16 @@ fun CgmStatusArea(state: CgmUiState) {
     }
 }
 
-private fun CgmReadPhase.isBusy(): Boolean =
-    this == CgmReadPhase.Sending || this == CgmReadPhase.Receiving ||
-        this == CgmReadPhase.Completed || this == CgmReadPhase.Reconnecting
-
 private fun CgmReadPhase.text(message: String?): String = when (this) {
-    CgmReadPhase.Idle -> "空闲,可发起读取"
-    CgmReadPhase.Sending -> "命令发送中"
-    CgmReadPhase.Receiving -> "接收缓存数据"
-    CgmReadPhase.Completed -> "校验通过，正在追加保存"
-    CgmReadPhase.Failed -> "读取失败"
-    CgmReadPhase.Reconnecting -> "连接中断,正在重连"
-    CgmReadPhase.Stopped -> if (message == "读取已强制停止") "读取已停止"
+    CgmReadPhase.IDLE -> "空闲,可发起读取"
+    CgmReadPhase.SENDING -> "命令发送中"
+    CgmReadPhase.RECEIVING -> "接收缓存数据"
+    CgmReadPhase.WRITING -> "校验通过，正在追加保存"
+    CgmReadPhase.FAILED -> "读取失败"
+    CgmReadPhase.RECONNECTING -> "连接中断,正在重连"
+    CgmReadPhase.STOPPED -> if (message == "读取已强制停止") "读取已停止"
         else "读取完成(会话已关闭,数据保留)"
-    CgmReadPhase.Error -> "发生错误"
+    CgmReadPhase.ERROR -> "发生错误"
 }
 
 @Preview(showBackground = true)
@@ -80,7 +76,7 @@ private fun CgmStatusAreaPreview() {
     MaterialTheme {
         CgmStatusArea(
             CgmUiState(
-                readPhase = CgmReadPhase.Receiving,
+                readPhase = CgmReadPhase.RECEIVING,
                 readMessage = "接收中(第 1 次尝试)",
                 progressPoints = 0, roundCount = 0, dataLines = emptyList(),
                 shortResult = CgmShortResult(CgmCommandPurpose.SYNC_TIME, ok = true, message = "对时成功"))

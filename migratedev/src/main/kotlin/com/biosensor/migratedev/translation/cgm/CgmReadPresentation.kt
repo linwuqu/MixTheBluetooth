@@ -1,35 +1,25 @@
 package com.biosensor.migratedev.translation.cgm
 
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadState
 import com.biosensor.migratedev.decisioncore.cgm.CgmRecord
-import com.biosensor.migratedev.decisioncore.cgm.CgmSession
 
 data class CgmDataSummary(
     val recordCount: Int = 0, val eisPoints: Int = 0, val caPoints: Int = 0,
     val segments: Int = 0, val firstTime: String? = null, val lastTime: String? = null
 )
 
-/** 接收时显示全部累积记录；结束或保存失败后仍保留本次原始记录及边界标记。 */
-internal fun CgmReadState.displayRecords(): List<CgmRecord> = when (this) {
-    is CgmReadState.Receiving -> accumulated
-    is CgmReadState.Failed -> accumulated
-    is CgmReadState.Reconnecting -> accumulated
-    is CgmReadState.Completed -> report?.receivedRecords ?: records
-    is CgmReadState.Stopped -> report?.receivedRecords ?: lastRecords
-    is CgmReadState.Error -> report?.receivedRecords.orEmpty()
-    else -> emptyList()
-}
-
-internal fun CgmReadState.displaySession(): CgmSession? = when (this) {
-    is CgmReadState.Sending -> session
-    is CgmReadState.Receiving -> session
-    is CgmReadState.Completed -> session
-    is CgmReadState.Failed -> session
-    is CgmReadState.Reconnecting -> session
-    is CgmReadState.Stopped -> session
-    is CgmReadState.Error -> report?.session
-    else -> null
-}
+/**
+ * 看板要显示的记录。
+ * 收集校验前显示实时累积;校验后显示本次结论里的原始记录(含边界标记)。
+ * FAILED 用累积:超时失败时还没有校验结论。
+ */
+internal val CgmReadState.displayRecords: List<CgmRecord>
+    get() = when (phase) {
+        CgmReadPhase.WRITING, CgmReadPhase.STOPPED, CgmReadPhase.ERROR ->
+            report?.receivedRecords ?: records
+        else -> records
+    }
 
 internal fun summarizeRecords(records: List<CgmRecord>): CgmDataSummary {
     val logs = records.filterIsInstance<CgmRecord.Log>()

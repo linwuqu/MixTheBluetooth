@@ -86,20 +86,18 @@ class CgmPortAdapterTest {
 
         val sent = bluetooth.lastEffect as BluetoothEffect.SendData
         assertTrue(sent.data.contentEquals("ALL\n\r".encodeToByteArray()))
+        assertEquals(2, events.size)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events[0])
+        val produced = events[1] as CgmReadEvent.RecordsProduced
         assertEquals(
             listOf(
-                CgmReadEvent.CommandAccepted(session.id),
-                CgmReadEvent.RecordsProduced(
-                    session.id,
-                    listOf(
-                        CgmRecord.Marker(MarkerKind.START, "Start Playback"),
-                        CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText),
-                        CgmRecord.Marker(MarkerKind.END, "Playback all done")
-                    )
-                )
+                CgmRecord.Marker(MarkerKind.START, "Start Playback"),
+                CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText),
+                CgmRecord.Marker(MarkerKind.END, "Playback all done")
             ),
-            events
+            produced.records
         )
+        assertTrue("收到 END 的这批要带收集校验结论", produced.conclusion != null)
     }
 
     @Test
@@ -112,7 +110,10 @@ class CgmPortAdapterTest {
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
 
-        assertEquals(listOf(CgmReadEvent.CommandAccepted(session.id)), events)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events.first())
+        assertEquals(1, events.count { it is CgmReadEvent.CommandAccepted })
+        // 没收到 END 流就结束了:兜底超时,状态机重读而不是死挂
+        assertEquals(CgmReadEvent.CommandTimeout(session.id), events.last())
     }
 
     @Test
@@ -246,25 +247,24 @@ class CgmPortAdapterTest {
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
 
+        assertEquals(3, events.size)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events[0])
+
+        // 确认时补发缓冲(确认前已到的数据):缓存开头不丢
+        val flushed = events[1] as CgmReadEvent.RecordsProduced
         assertEquals(
             listOf(
-                CgmReadEvent.CommandAccepted(session.id),
-                // 确认时补发缓冲(确认前已到的数据)
-                CgmReadEvent.RecordsProduced(
-                    session.id,
-                    listOf(
-                        CgmRecord.Marker(MarkerKind.START, "Start Playback"),
-                        CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText)
-                    )
-                ),
-                // 确认后继续按块上报
-                CgmReadEvent.RecordsProduced(
-                    session.id,
-                    listOf(CgmRecord.Marker(MarkerKind.END, "Playback all done"))
-                )
+                CgmRecord.Marker(MarkerKind.START, "Start Playback"),
+                CgmRecord.Eis(1, 60, "a", "b", "c", "d", eisText)
             ),
-            events
+            flushed.records
         )
+        assertEquals("还没收到 END,不收尾", null, flushed.conclusion)
+
+        // 确认后继续按块上报
+        val last = events[2] as CgmReadEvent.RecordsProduced
+        assertEquals(listOf(CgmRecord.Marker(MarkerKind.END, "Playback all done")), last.records)
+        assertTrue(last.conclusion != null)
     }
 
     @Test
@@ -280,7 +280,7 @@ class CgmPortAdapterTest {
 
         val sent = bluetooth.lastEffect as BluetoothEffect.SendData
         assertTrue(sent.data.contentEquals("ALL\n\r".encodeToByteArray()))
-        assertEquals(listOf(CgmReadEvent.CommandAccepted(session.id)), events)
+        assertEquals(CgmReadEvent.CommandAccepted(session.id), events.first())
     }
 
     @Test
@@ -306,10 +306,10 @@ class CgmPortAdapterTest {
 
         val events = port.execute(CgmReadEffect.StartRead(session)).toList()
 
-        assertEquals(6, events.size)   // CommandAccepted + 5 块 RecordsProduced
+        assertEquals(5, events.filterIsInstance<CgmReadEvent.RecordsProduced>().size)
         assertEquals(CgmReadEvent.CommandAccepted(session.id), events.first())
-        assertTrue(events.none { it == CgmReadEvent.CommandTimeout(session.id) })
-        assertTrue(events.last() is CgmReadEvent.RecordsProduced)
+        // 唯一一次超时来自流结束(全程没收到 END),不是空闲超时
+        assertEquals(CgmReadEvent.CommandTimeout(session.id), events.last())
     }
 
     @Test
@@ -361,24 +361,7 @@ class CgmPortAdapterTest {
         assertEquals(listOf(CgmShortEvent.CommandTimeout(session.id)), events)
     }
 
-    // ── 删除确认：设备明确回复 Log Cleared ──
-
-    @Test
-    fun `delete flow confirms only after device reply`() = runTest {
-        bluetooth.results = flowOf(
-            BluetoothEvent.DataSentAck("DELETE\n\r".encodeToByteArray().size),
-            BluetoothEvent.DataReceived("Log Cleared\r\n".encodeToByteArray())
-        )
-
-        val events = port.execute(CgmReadEffect.SendDelete(session)).toList()
-
-        val sent = bluetooth.lastEffect as BluetoothEffect.SendData
-        assertTrue(sent.data.contentEquals("DELETE\n\r".encodeToByteArray()))
-        assertEquals(
-            listOf(CgmReadEvent.AckReceived(session.id, CgmCommandPurpose.DELETE)),
-            events
-        )
-    }
+    // ── 删除确认(短命令)：设备明确回复 Log Cleared ──
 
     @Test
     fun `manual delete waits for Log Cleared and preserves event order`() = runTest {
@@ -400,18 +383,6 @@ class CgmPortAdapterTest {
             ),
             events
         )
-    }
-
-    @Test
-    fun `delete flow does not treat write ack as delete success`() = runTest {
-        bluetooth.results = flow {
-            emit(BluetoothEvent.DataSentAck("DELETE\n\r".encodeToByteArray().size))
-            awaitCancellation()
-        }
-
-        val events = port.execute(CgmReadEffect.SendDelete(session)).toList()
-
-        assertEquals(listOf(CgmReadEvent.CommandTimeout(session.id)), events)
     }
 
     // ── 落盘 ──

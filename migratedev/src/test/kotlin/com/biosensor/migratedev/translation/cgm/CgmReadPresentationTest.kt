@@ -16,20 +16,32 @@ class CgmReadPresentationTest {
         CgmRecord.Marker(MarkerKind.END, "Playback all done")
     )
 
+    /** 端口在收到 END 时做收集校验,结论随这批记录送回状态机。 */
+    private fun concluded(records: List<CgmRecord>) =
+        CgmReadDecision.reduce(
+            CgmReadState(phase = CgmReadPhase.RECEIVING, session = session),
+            CgmReadEvent.RecordsProduced(session.id, records, CacheValidators.validate(records))
+        ).newState
+
     @Test
     fun `completed save retains raw data and detailed reports for display`() {
-        val completed = CgmReadDecision.reduce(CgmReadState.Receiving(session, emptyList(), 0),
-            CgmReadEvent.RecordsProduced(session.id, raw)).newState as CgmReadState.Completed
-        assertEquals(raw, completed.displayRecords())
-        assertTrue(completed.records.none { it is CgmRecord.Marker })
-        assertTrue(completed.report!!.checks.any { it.name.contains("seq") && it.passed })
+        val writing = concluded(raw)
+        assertEquals(CgmReadPhase.WRITING, writing.phase)
+        // 看板显示本次收到的原始记录(含边界标记),不去重不裁剪
+        assertEquals(raw, writing.displayRecords)
+        assertTrue(writing.report!!.checks.any { it.name.contains("seq") && it.passed })
+        assertTrue(writing.report!!.checks.all { it.name.startsWith("第 1 次") })
+
         val saved = CgmFileAppendResult("cgm/AA_01.txt", 2, 0, 3, 0, 3)
-        val stopped = CgmReadDecision.reduce(completed,
-            CgmReadEvent.FileWritten(session.id, saved.path, saved)).newState as CgmReadState.Stopped
-        assertEquals(raw, stopped.displayRecords())
+        val stopped = CgmReadDecision.reduce(
+            writing, CgmReadEvent.FileWritten(session.id, saved.path, saved)
+        ).newState
+
+        assertEquals(CgmReadPhase.STOPPED, stopped.phase)
+        assertEquals(raw, stopped.displayRecords)
         assertEquals(saved, stopped.report!!.storage)
         assertTrue(stopped.report!!.checks.last().passed)
-        val summary = summarizeRecords(stopped.displayRecords())
+        val summary = summarizeRecords(stopped.displayRecords)
         assertEquals(7, summary.recordCount)
         assertEquals(1, summary.eisPoints)
         assertEquals(2, summary.caPoints)
@@ -40,33 +52,40 @@ class CgmReadPresentationTest {
 
     @Test
     fun `save failure keeps received data instead of clearing the board`() {
-        val completed = CgmReadDecision.reduce(CgmReadState.Receiving(session, emptyList(), 0),
-            CgmReadEvent.RecordsProduced(session.id, raw)).newState as CgmReadState.Completed
-        val error = CgmReadDecision.reduce(completed,
-            CgmReadEvent.FileWriteFailed(session.id, "磁盘满")).newState as CgmReadState.Error
-        assertEquals(raw, error.displayRecords())
-        assertEquals(session, error.displaySession())
+        val writing = concluded(raw)
+        val error = CgmReadDecision.reduce(writing,
+            CgmReadEvent.FileWriteFailed(session.id, "磁盘满")).newState
+
+        assertEquals(CgmReadPhase.ERROR, error.phase)
+        assertEquals(raw, error.displayRecords)
+        assertEquals(session, error.session)
         assertFalse(error.report!!.checks.last().passed)
     }
 
     @Test
     fun `retry preserves earlier failure checks and adds new passing checks`() {
         val incomplete = raw.filterNot { it is CgmRecord.Ca && it.seq == 2 }
-        val failed = CgmReadDecision.reduce(CgmReadState.Receiving(session, emptyList(), 0),
-            CgmReadEvent.RecordsProduced(session.id, incomplete)).newState as CgmReadState.Failed
-        val receiving = CgmReadDecision.reduce(failed, CgmReadEvent.CommandAccepted(session.id)).newState
-        val completed = CgmReadDecision.reduce(receiving,
-            CgmReadEvent.RecordsProduced(session.id, raw)).newState as CgmReadState.Completed
-        assertTrue(completed.report!!.checks.any { it.name.startsWith("第 1 次") && !it.passed })
-        assertTrue(completed.report!!.checks.any { it.name.startsWith("第 2 次") && it.passed })
-        assertEquals(raw, completed.displayRecords())
+        val failed = concluded(incomplete)
+        assertEquals(CgmReadPhase.FAILED, failed.phase)
+
+        val receiving = CgmReadDecision.reduce(
+            failed, CgmReadEvent.CommandAccepted(session.id)).newState
+        val writing = CgmReadDecision.reduce(
+            receiving,
+            CgmReadEvent.RecordsProduced(session.id, raw, CacheValidators.validate(raw))
+        ).newState
+
+        assertTrue(writing.report!!.checks.any { it.name.startsWith("第 1 次") && !it.passed })
+        assertTrue(writing.report!!.checks.any { it.name.startsWith("第 2 次") && it.passed })
+        assertEquals(raw, writing.displayRecords)
     }
 
     @Test
     fun `receiving exposes all records rather than only the final ten`() {
         val points = (1..95).map { CgmRecord.Ca(it, "10", "CA:$it,10") }
-        val state = CgmReadState.Receiving(session, points, 0)
-        assertEquals(95, state.displayRecords().size)
-        assertEquals(95, summarizeRecords(state.displayRecords()).caPoints)
+        val state = CgmReadState(
+            phase = CgmReadPhase.RECEIVING, session = session, records = points)
+        assertEquals(95, state.displayRecords.size)
+        assertEquals(95, summarizeRecords(state.displayRecords).caPoints)
     }
 }

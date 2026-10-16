@@ -2,9 +2,11 @@ package com.biosensor.migratedev.translation.cgm
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import com.biosensor.migratedev.decisioncore.cgm.CacheValidators
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEvent
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.decisioncore.cgm.CgmRecord
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEffect
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
@@ -49,7 +51,7 @@ class CgmTranslationTest {
         override fun observeConnectionState(): Flow<BluetoothConnectionState> = connection
     }
 
-    /** 完整单段缓存:EIS 段 95 点,校验必过。 */
+    /** 完整单段缓存:EIS 段 95 点,收集校验必过。 */
     private fun fullCache(): List<CgmRecord> = buildList {
         add(CgmRecord.Marker(MarkerKind.START, "Start Playback"))
         add(CgmRecord.Log("LOG:1,1,95,2026-07-21 12:10:45"))
@@ -60,7 +62,7 @@ class CgmTranslationTest {
         add(CgmRecord.Marker(MarkerKind.END, "Playback all done"))
     }
 
-    /** 声明 95 点只到 1 点:校验必不过,触发重读。 */
+    /** 声明 95 点只到 1 点:收集校验必不过,触发重读。 */
     private fun incompleteCache(): List<CgmRecord> = listOf(
         CgmRecord.Marker(MarkerKind.START, "Start Playback"),
         CgmRecord.Log("LOG:1,1,95,2026-07-21 12:10:45"),
@@ -68,22 +70,20 @@ class CgmTranslationTest {
         CgmRecord.Marker(MarkerKind.END, "Playback all done")
     )
 
-    /** 读全流程 fake:StartRead/RetryRead 回完整缓存,写盘/删除都成功 → 双闸门完成。 */
+    /** 端口收到 END 时做收集校验,结论随这批记录送回——fake 照做。 */
+    private fun delivered(sessionId: String, records: List<CgmRecord>) = flowOf(
+        CgmReadEvent.CommandAccepted(sessionId),
+        CgmReadEvent.RecordsProduced(sessionId, records, CacheValidators.validate(records))
+    )
+
+    /** 读全流程 fake:StartRead/RetryRead 回完整缓存(带结论),写盘成功 → 收工。 */
     private fun FakeCgmPort.completeReadFlow() {
         readResults = { effect ->
             when (effect) {
-                is CgmReadEffect.StartRead -> flowOf(
-                    CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, fullCache())
-                )
-                is CgmReadEffect.RetryRead -> flowOf(
-                    CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, fullCache())
-                )
+                is CgmReadEffect.StartRead -> delivered(effect.session.id, fullCache())
+                is CgmReadEffect.RetryRead -> delivered(effect.session.id, fullCache())
                 is CgmReadEffect.WriteFile -> flowOf(
                     CgmReadEvent.FileWritten(effect.session.id, "cgm/s1.txt"))
-                is CgmReadEffect.SendDelete -> flowOf(
-                    CgmReadEvent.AckReceived(effect.session.id, CgmCommandPurpose.DELETE))
                 is CgmReadEffect.StopRuntime -> flowOf()
             }
         }
@@ -111,16 +111,15 @@ class CgmTranslationTest {
             translation.submit(CgmIntent.ReadCache)
             advanceUntilIdle()
 
-            // 双闸门完成 → Stopped → 上报 ReadCompleted(仅一次)
+            // 收集校验过 → 入库 → Stopped → 上报 ReadCompleted(仅一次)
             assertEquals(listOf<CgmOutput>(CgmOutput.ReadCompleted("cgm/s1.txt")), outputs)
-            assertEquals(CgmReadPhase.Stopped, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.STOPPED, translation.uiState.value.readPhase)
             assertEquals(95, translation.uiState.value.progressPoints)
             assertTrue(translation.uiState.value.dataLines.isNotEmpty())
             assertEquals(fullCache().size, translation.uiState.value.dataLines.size)
             assertEquals("Start Playback", translation.uiState.value.dataLines.first())
             assertEquals("Playback all done", translation.uiState.value.dataLines.last())
             assertTrue(translation.uiState.value.validationChecks.any { it.name.contains("seq") && it.passed })
-            assertTrue(port.readEffects.none { it is CgmReadEffect.SendDelete })
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -174,7 +173,7 @@ class CgmTranslationTest {
             translation.submit(CgmIntent.ForceStopRead)
             advanceUntilIdle()
 
-            assertEquals(CgmReadPhase.Stopped, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.STOPPED, translation.uiState.value.readPhase)
             assertEquals("读取已强制停止", translation.uiState.value.readMessage)
             assertEquals("已强制停止本次读取", translation.uiState.value.hint)
             assertTrue(port.readEffects.any { it is CgmReadEffect.StopRuntime })
@@ -235,7 +234,7 @@ class CgmTranslationTest {
 
             assertEquals(
                 listOf(CgmOutput.Blocked("正在执行命令中,请等待执行完毕")), outputs)
-            assertEquals(CgmReadPhase.Idle, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.IDLE, translation.uiState.value.readPhase)
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -261,7 +260,7 @@ class CgmTranslationTest {
 
             assertEquals(
                 listOf(CgmOutput.Blocked("正在执行读取中,请等待执行完毕")), outputs)
-            assertEquals(CgmReadPhase.Sending, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.SENDING, translation.uiState.value.readPhase)
             assertEquals(null, translation.uiState.value.shortResult)
         } finally {
             store.clear()
@@ -337,14 +336,8 @@ class CgmTranslationTest {
         var writeFileCount = 0
         port.readResults = { effect ->
             when (effect) {
-                is CgmReadEffect.StartRead -> flowOf(
-                    CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, fullCache())
-                )
-                is CgmReadEffect.RetryRead -> flowOf(
-                    CgmReadEvent.CommandAccepted(effect.session.id),
-                    CgmReadEvent.RecordsProduced(effect.session.id, fullCache())
-                )
+                is CgmReadEffect.StartRead -> delivered(effect.session.id, fullCache())
+                is CgmReadEffect.RetryRead -> delivered(effect.session.id, fullCache())
                 is CgmReadEffect.WriteFile -> {
                     writeFileCount++
                     if (writeFileCount == 1) {
@@ -353,8 +346,6 @@ class CgmTranslationTest {
                         flowOf(CgmReadEvent.FileWritten(effect.session.id, "cgm/s1.txt"))
                     }
                 }
-                is CgmReadEffect.SendDelete -> flowOf(
-                    CgmReadEvent.AckReceived(effect.session.id, CgmCommandPurpose.DELETE))
                 is CgmReadEffect.StopRuntime -> flowOf()
             }
         }
@@ -363,7 +354,7 @@ class CgmTranslationTest {
 
             translation.submit(CgmIntent.ReadCache)
             advanceUntilIdle()
-            assertEquals(CgmReadPhase.Error, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.ERROR, translation.uiState.value.readPhase)
 
             // 第二次读:Error 自动复位(无 Blocked),完整跑完 → ReadCompleted
             translation.submit(CgmIntent.ReadCache)
@@ -375,7 +366,7 @@ class CgmTranslationTest {
                     CgmOutput.ReadCompleted("cgm/s1.txt")
                 ),
                 outputs)
-            assertEquals(CgmReadPhase.Stopped, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.STOPPED, translation.uiState.value.readPhase)
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -391,14 +382,8 @@ class CgmTranslationTest {
         val port = FakeCgmPort().apply {
             readResults = { effect ->
                 when (effect) {
-                    is CgmReadEffect.StartRead -> flowOf(
-                        CgmReadEvent.CommandAccepted(effect.session.id),
-                        CgmReadEvent.RecordsProduced(effect.session.id, incompleteCache())
-                    )
-                    is CgmReadEffect.RetryRead -> flowOf(
-                        CgmReadEvent.CommandAccepted(effect.session.id),
-                        CgmReadEvent.RecordsProduced(effect.session.id, incompleteCache())
-                    )
+                    is CgmReadEffect.StartRead -> delivered(effect.session.id, incompleteCache())
+                    is CgmReadEffect.RetryRead -> delivered(effect.session.id, incompleteCache())
                     else -> flowOf()
                 }
             }
@@ -409,12 +394,12 @@ class CgmTranslationTest {
             translation.submit(CgmIntent.ReadCache)
             advanceUntilIdle()
 
-            // 4 次超时/校验失败:每次 Failed 转移都上报;最后一次 StopRuntime(RETRY_EXHAUSTED)
+            // 4 次校验失败:每次 Failed 转移都上报;最后一次 StopRuntime(RETRY_EXHAUSTED)
             assertTrue(
                 "应上报 4 次 Failed,实际 $outputs",
                 outputs.size == 4 && outputs.all { it is CgmOutput.Failed }
             )
-            assertEquals(CgmReadPhase.Failed, translation.uiState.value.readPhase)
+            assertEquals(CgmReadPhase.FAILED, translation.uiState.value.readPhase)
         } finally {
             store.clear()
             Dispatchers.resetMain()
@@ -447,7 +432,7 @@ class CgmTranslationTest {
             advanceUntilIdle()
 
             val ui = translation.uiState.value
-            assertEquals(CgmReadPhase.Receiving, ui.readPhase)
+            assertEquals(CgmReadPhase.RECEIVING, ui.readPhase)
             assertTrue(ui.readMessage!!.startsWith("接收中"))
             assertEquals(10, ui.progressPoints)
             assertEquals(1, ui.roundCount)

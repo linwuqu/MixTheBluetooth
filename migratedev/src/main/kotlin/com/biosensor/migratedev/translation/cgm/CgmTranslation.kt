@@ -8,11 +8,12 @@ import com.biosensor.migratedev.decisioncore.cgm.CgmFileAppendResult
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadDecision
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadEvent
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.decisioncore.cgm.CgmReadState
-import com.biosensor.migratedev.decisioncore.cgm.CgmRecord
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortDecision
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortEvent
 import com.biosensor.migratedev.decisioncore.cgm.CgmShortState
+import com.biosensor.migratedev.decisioncore.cgm.StopReason
 import com.biosensor.migratedev.orchestrator.WorkflowOrchestrator
 import com.biosensor.migratedev.port.cgm.CgmPort
 import com.biosensor.migratedev.port.adapter.bluetoothport.BluetoothConnectionState
@@ -37,8 +38,6 @@ sealed interface CgmIntent {
     /** 内部信号(非 UI):断线重连失败,Root 转发。 */
     data object DeviceReconnectFailed : CgmIntent
 }
-
-enum class CgmReadPhase { Idle, Sending, Receiving, Completed, Failed, Reconnecting, Stopped, Error }
 
 enum class CgmConnectionStatus { Connected, Reconnecting, Disconnected }
 
@@ -85,7 +84,7 @@ class CgmTranslation private constructor(
 ) : ViewModel(), Translation<CgmIntent, CgmUiState> {
 
     private val readOrchestrator = WorkflowOrchestrator(
-        initialState = CgmReadState.Idle,
+        initialState = CgmReadState(),
         decisionCore = CgmReadDecision,
         effectExecutor = port::execute,
         scope = viewModelScope,
@@ -142,7 +141,7 @@ class CgmTranslation private constructor(
             read.toUi(short, hint, status)
         }.stateIn(
             viewModelScope, SharingStarted.Eagerly,
-            CgmReadState.Idle.toUi(
+            CgmReadState().toUi(
                 CgmShortState.Idle, null, CgmConnectionStatus.Connected)
         )
 
@@ -158,31 +157,33 @@ class CgmTranslation private constructor(
             // 内部信号:断线重连结果(Root 转发,UI 不触发)
             CgmIntent.DeviceReconnected -> {
                 reconnectInProgress.value = false
-                val reconnecting = readOrchestrator.state.value
-                if (reconnecting is CgmReadState.Reconnecting) {
-                    readOrchestrator.dispatch(
-                        CgmReadEvent.DeviceReconnected(reconnecting.session.id))
+                reconnectingSession()?.let {
+                    readOrchestrator.dispatch(CgmReadEvent.DeviceReconnected(it.id))
                 }
             }
             CgmIntent.DeviceReconnectFailed -> {
                 reconnectInProgress.value = false
                 // 允许用户在设备重新上电后，通过任一命令按钮再次触发连接域重连。
                 reconnectReported = false
-                val reconnecting = readOrchestrator.state.value
-                if (reconnecting is CgmReadState.Reconnecting) {
+                reconnectingSession()?.let {
                     readOrchestrator.dispatch(
-                        CgmReadEvent.DeviceReconnectFailed(reconnecting.session.id, "重连失败"))
+                        CgmReadEvent.DeviceReconnectFailed(it.id, "重连失败"))
                 }
             }
         }
     }
+
+    /** 正在等重连的会话;不在重连态则为 null(迟到的重连结果忽略)。 */
+    private fun reconnectingSession() = readOrchestrator.state.value
+        .takeIf { it.phase == CgmReadPhase.RECONNECTING }
+        ?.session
 
     private fun startRead() {
         val read = readOrchestrator.state.value
         val short = shortOrchestrator.state.value
         connectionBlockHint()?.let { return blocked(it) }
         if (short.isActive()) return blocked(short.hint())      // 短命令进行中:拒绝 + toast
-        if (read.isActive()) return blocked(read.hint())        // 防重复点击读缓存
+        if (read.phase.running) return blocked(read.hint())     // 防重复点击读缓存
         hint.value = null                                       // 新命令开始,清除旧提示
         resetErrorIfNeeded()
         readOrchestrator.dispatch(CgmReadEvent.ReadRequested(newSessionId(), deviceId))
@@ -190,8 +191,8 @@ class CgmTranslation private constructor(
 
     private fun forceStopRead() {
         val read = readOrchestrator.state.value
-        val session = read.sessionOrNull ?: return blocked("当前没有进行中的读取")
-        if (!read.isActive()) return blocked("当前没有进行中的读取")
+        val session = read.session
+        if (session == null || !read.phase.running) return blocked("当前没有进行中的读取")
         hint.value = "已强制停止本次读取"
         readOrchestrator.dispatch(CgmReadEvent.StopCurrent(session.deviceId))
     }
@@ -201,7 +202,7 @@ class CgmTranslation private constructor(
         val short = shortOrchestrator.state.value
         connectionBlockHint()?.let { return blocked(it) }
         if (short.isActive()) return blocked(short.hint())      // 自身活跃(防连点):拒绝 + toast
-        if (read.isActive()) return blocked(read.hint())        // 读活跃(昂贵操作):拒绝 + toast
+        if (read.phase.running) return blocked(read.hint())     // 读活跃(昂贵操作):拒绝 + toast
         hint.value = null                                       // 新命令开始,清除旧提示
         resetErrorIfNeeded()
         shortOrchestrator.dispatch(
@@ -215,8 +216,7 @@ class CgmTranslation private constructor(
 
     /** Error 态自动复位(无 toast)。dispatch 同步入队单循环处理,先复位后开始。 */
     private fun resetErrorIfNeeded() {
-        val read = readOrchestrator.state.value
-        if (read is CgmReadState.Error) {
+        if (readOrchestrator.state.value.phase == CgmReadPhase.ERROR) {
             readOrchestrator.dispatch(CgmReadEvent.ResetError)
         }
     }
@@ -235,17 +235,15 @@ class CgmTranslation private constructor(
     ) {
         if (previous == current) return
         when {
-            // 测试阶段关闭自动删除后：FileWritten 直接跨过已满足的删除闸门进入 Stopped。
-            event is CgmReadEvent.FileWritten && current is CgmReadState.Stopped ->
+            // 入库校验完成 → STOPPED:读流程收工
+            event is CgmReadEvent.FileWritten && current.phase == CgmReadPhase.STOPPED ->
                 report(CgmOutput.ReadCompleted(event.path))
-            // 双闸门完成:Completed(带 filePath)经 FileWritten/AckReceived 第二闸 → Stopped
-            previous is CgmReadState.Completed && current is CgmReadState.Stopped &&
-                previous.filePath != null ->
-                report(CgmOutput.ReadCompleted(previous.filePath))
-            current is CgmReadState.Failed -> report(CgmOutput.Failed(current.reason))
-            current is CgmReadState.Error -> report(CgmOutput.Failed(current.message))
+            current.phase == CgmReadPhase.FAILED ->
+                report(CgmOutput.Failed(current.message ?: "读取失败"))
+            current.phase == CgmReadPhase.ERROR ->
+                report(CgmOutput.Failed(current.message ?: "写入失败"))
             // 断线 → 上报 Root 驱动重连(无命令 effect,重连是连接域职责)
-            current is CgmReadState.Reconnecting -> reportConnectionLostOnce()
+            current.phase == CgmReadPhase.RECONNECTING -> reportConnectionLostOnce()
             else -> Unit
         }
     }
@@ -298,16 +296,14 @@ private fun CgmReadState.toUi(
     hint: String?,
     connectionStatus: CgmConnectionStatus
 ): CgmUiState {
-    val (phase, message) = toPhase()
-    val records = displayRecords()
-    val summary = summarizeRecords(records)
-    val session = displaySession()
+    val shown = displayRecords
+    val summary = summarizeRecords(shown)
     return CgmUiState(
         readPhase = phase,
-        readMessage = message,
+        readMessage = readMessage(),
         progressPoints = summary.eisPoints + summary.caPoints,
         roundCount = summary.segments,
-        dataLines = records.map { it.text },
+        dataLines = shown.map { it.text },
         shortResult = short.toResult(),
         hint = hint,
         connectionStatus = connectionStatus,
@@ -319,12 +315,24 @@ private fun CgmReadState.toUi(
     )
 }
 
-/** 活跃判定与 toast 文案(§1.7 ②:冲突拒绝时的提示)。 */
-private fun CgmReadState.isActive(): Boolean = when (this) {
-    // Reconnecting 也活跃:重连后自动重读继续,期间拒绝新命令避免会话冲突
-    is CgmReadState.Sending, is CgmReadState.Receiving, is CgmReadState.Completed,
-    is CgmReadState.Reconnecting -> true
-    else -> false
+private fun CgmReadState.readMessage(): String? = when (phase) {
+    CgmReadPhase.IDLE -> null
+    CgmReadPhase.SENDING -> "命令发送中"
+    CgmReadPhase.RECEIVING -> "接收中(第 ${retryCount + 1} 次尝试)"
+    CgmReadPhase.WRITING -> "校验通过，正在追加保存"
+    CgmReadPhase.RECONNECTING -> "连接中断,正在重连…"
+    CgmReadPhase.FAILED, CgmReadPhase.ERROR -> message
+    CgmReadPhase.STOPPED -> when (stopReason) {
+        StopReason.USER_CANCEL -> "读取已强制停止"
+        else -> "读取完成(会话已关闭,数据保留)"
+    }
+}
+
+/** 冲突拒绝时的提示文案(§1.7 ②)。 */
+private fun CgmReadState.hint(): String = when (phase) {
+    CgmReadPhase.RECEIVING -> "正在读取缓存中,请等待执行完毕"
+    CgmReadPhase.RECONNECTING -> "连接中断,正在重连中,请稍候"
+    else -> "正在执行读取中,请等待执行完毕"
 }
 
 private fun CgmShortState.isActive(): Boolean = when (this) {
@@ -332,28 +340,7 @@ private fun CgmShortState.isActive(): Boolean = when (this) {
     else -> false
 }
 
-private fun CgmReadState.hint(): String = when (this) {
-    is CgmReadState.Receiving -> "正在读取缓存中,请等待执行完毕"
-    is CgmReadState.Reconnecting -> "连接中断,正在重连中,请稍候"
-    else -> "正在执行读取中,请等待执行完毕"
-}
-
-private fun CgmShortState.hint(): String =
-    "正在执行命令中,请等待执行完毕"
-
-private fun CgmReadState.toPhase(): Pair<CgmReadPhase, String?> = when (this) {
-    CgmReadState.Idle -> CgmReadPhase.Idle to null
-    is CgmReadState.Sending -> CgmReadPhase.Sending to "命令发送中"
-    is CgmReadState.Receiving -> CgmReadPhase.Receiving to "接收中(第 ${retryCount + 1} 次尝试)"
-    is CgmReadState.Completed -> CgmReadPhase.Completed to "校验通过，正在追加保存"
-    is CgmReadState.Failed -> CgmReadPhase.Failed to reason
-    is CgmReadState.Error -> CgmReadPhase.Error to message
-    is CgmReadState.Reconnecting -> CgmReadPhase.Reconnecting to "连接中断,正在重连…"
-    is CgmReadState.Stopped -> CgmReadPhase.Stopped to when (reason) {
-        com.biosensor.migratedev.decisioncore.cgm.StopReason.USER_CANCEL -> "读取已强制停止"
-        else -> "读取完成(会话已关闭,数据保留)"
-    }
-}
+private fun CgmShortState.hint(): String = "正在执行命令中,请等待执行完毕"
 
 private fun CgmShortState.toResult(): CgmShortResult? = when (this) {
     is CgmShortState.Done -> CgmShortResult(
@@ -362,17 +349,6 @@ private fun CgmShortState.toResult(): CgmShortResult? = when (this) {
     is CgmShortState.Failed -> CgmShortResult(purpose, ok = false, message = reason)
     else -> null
 }
-
-private val CgmReadState.sessionOrNull
-    get() = when (this) {
-        is CgmReadState.Sending -> session
-        is CgmReadState.Receiving -> session
-        is CgmReadState.Completed -> session
-        is CgmReadState.Failed -> session
-        is CgmReadState.Reconnecting -> session
-        is CgmReadState.Stopped -> session
-        else -> null
-    }
 
 private fun BluetoothConnectionState.toUiStatus(): CgmConnectionStatus = when (this) {
     BluetoothConnectionState.CONNECTED -> CgmConnectionStatus.Connected

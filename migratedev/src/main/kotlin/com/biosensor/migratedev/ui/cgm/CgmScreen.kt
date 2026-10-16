@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.biosensor.migratedev.decisioncore.cgm.CgmCommandPurpose
-import com.biosensor.migratedev.translation.cgm.CgmReadPhase
+import com.biosensor.migratedev.decisioncore.cgm.CgmReadPhase
 import com.biosensor.migratedev.translation.cgm.CgmShortResult
 import com.biosensor.migratedev.translation.cgm.CgmUiState
 import com.biosensor.migratedev.translation.cgm.CgmConnectionStatus
@@ -95,7 +95,7 @@ private fun CgmScreenPreview() {
     MaterialTheme {
         CgmScreen(
             state = CgmUiState(
-                readPhase = CgmReadPhase.Stopped,
+                readPhase = CgmReadPhase.STOPPED,
                 readMessage = "读取完成",
                 progressPoints = 3,
                 roundCount = 2,
